@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { install, uninstall, doctor, mergeHooks, markInstructions, runCommand, url } from '../dist/installer.js';
@@ -193,4 +193,21 @@ test('uninstall validates recorded paths before changing settings', () => {
   assert.throws(() => uninstall(f.options), /unexpected path/);
   assert.equal(f.read('.claude/settings.json'), settings);
   assert.equal(f.calls.filter(call => call[2] === 'remove').length, 0);
+});
+
+
+test('install and uninstall preserve symlinked configuration files', () => {
+  const f = fixture();
+  f.write('dotfiles/settings.json', JSON.stringify(originalSettings));
+  f.write('dotfiles/CLAUDE.md', 'Original rules\n');
+  mkdirSync(join(f.home, '.claude'), { recursive: true });
+  symlinkSync(join(f.home, 'dotfiles/settings.json'), join(f.home, '.claude/settings.json'));
+  symlinkSync(join(f.home, 'dotfiles/CLAUDE.md'), join(f.home, '.claude/CLAUDE.md'));
+  install(f.options);
+  assert.ok(lstatSync(join(f.home, '.claude/settings.json')).isSymbolicLink());
+  assert.ok(lstatSync(join(f.home, '.claude/CLAUDE.md')).isSymbolicLink());
+  uninstall(f.options);
+  assert.ok(lstatSync(join(f.home, '.claude/settings.json')).isSymbolicLink());
+  assert.deepEqual(JSON.parse(f.read('dotfiles/settings.json')), originalSettings);
+  assert.equal(f.read('dotfiles/CLAUDE.md'), 'Original rules\n');
 });

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, unlinkSync, openSync, closeSync, copyFileSync, renameSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, unlinkSync, openSync, closeSync, copyFileSync, renameSync, chmodSync, lstatSync, realpathSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -77,10 +77,11 @@ export function markInstructions(text: string, agent: Agent, remove = false): st
 }
 
 function atomicWrite(path: string, content: string | Buffer) {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const temp = `${path}.${randomUUID()}.tmp`;
+  const target = existsSync(path) && lstatSync(path).isSymbolicLink() ? realpathSync(path) : path;
+  mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+  const temp = `${target}.${randomUUID()}.tmp`;
   writeFileSync(temp, content, { mode: 0o600 });
-  renameSync(temp, path);
+  renameSync(temp, target);
 }
 
 function loadManifest(home: string): Manifest {
