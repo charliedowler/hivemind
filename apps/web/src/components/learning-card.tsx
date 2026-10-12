@@ -1,138 +1,108 @@
 "use client";
-import { useState } from "react";
-import type {
-  FeedbackResult,
-  FeedbackVote,
-  LearningView,
-  SearchHit,
-} from "@hivemind/core";
-import { errorMessage, relativeTime, requestJson } from "@/lib/client";
-import { Markdown } from "./markdown";
-import { CopyButton } from "./primitives";
 
-const sourceNames = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  manual: "Manual",
-};
+import type { LearningView, SearchHit } from "@hivemind/core";
+import {
+  Badge,
+  Card,
+  LearningCell,
+  MemberBee,
+  Sprite,
+  Tag,
+} from "@hivemind/design-system";
+import { relativeTime } from "@/lib/client";
+import {
+  agentKind,
+  learnedBy,
+  learningStatus,
+} from "@/lib/learning-presentation";
 
 export function LearningCard({
   learning,
   highlighted = false,
-  expanded = false,
-  domId,
+  onOpen,
 }: {
-  learning: LearningView | SearchHit;
+  learning: LearningView;
   highlighted?: boolean;
-  expanded?: boolean;
-  domId?: string;
+  onOpen: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(expanded);
-  const [feedback, setFeedback] = useState<{
-    votes: LearningView["votes"];
-    vote: FeedbackVote;
-  }>();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const votes = feedback?.votes ?? learning.votes;
-  async function vote(value: FeedbackVote) {
-    const previous = feedback;
-    const next = { ...votes };
-    if (feedback) next[feedback.vote] = Math.max(0, next[feedback.vote] - 1);
-    next[value] += 1;
-    setFeedback({ votes: next, vote: value });
-    setPending(true);
-    setError("");
-    try {
-      const result = await requestJson<FeedbackResult>("/api/app/feedback", {
-        id: learning.id,
-        vote: value,
-      });
-      setFeedback({ votes: result.votes, vote: value });
-    } catch (error) {
-      setFeedback(previous);
-      setError(errorMessage(error));
-    } finally {
-      setPending(false);
-    }
-  }
   return (
-    <article
-      id={domId ?? learning.id}
-      className={`learning-card ${highlighted ? "new-learning" : ""}`}
-    >
+    <LearningCell
+      title={learning.title}
+      repo={learning.repo ?? "Across the hive"}
+      learnedBy={learnedBy(learning)}
+      when={relativeTime(learning.lastPushedAt)}
+      votes={learning.votes.up}
+      status={learningStatus(learning)}
+      filling={highlighted}
+      onClick={() => onOpen(learning.id)}
+      footer={
+        <>
+          <Sprite name="thumb" scale={1} />
+          {learning.votes.up}
+          {learning.pushCount > 1 ? (
+            <span>seen {learning.pushCount} times</span>
+          ) : null}
+        </>
+      }
+    />
+  );
+}
+
+export function SearchHitCard({
+  hit,
+  onOpen,
+}: {
+  hit: SearchHit;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <Card className="search-hit" id={hit.id}>
       <div className="row between wrap">
-        <span className={`kind kind-${learning.kind}`}>{learning.kind}</span>
+        <Badge tone={learningStatus(hit)}>{learningStatus(hit)}</Badge>
+        <span className="score">Score {hit.score.toFixed(2)}</span>
+      </div>
+      <button className="cell-title-link" onClick={() => onOpen(hit.id)}>
+        <h3>{hit.title}</h3>
+      </button>
+      <div className="row wrap">
+        <MemberBee
+          name={learnedBy(hit)}
+          agent={agentKind(hit.source)}
+          size="sm"
+        />
+        <code className="repo">{hit.repo ?? "Across the hive"}</code>
         <span className="small muted">
-          {sourceNames[learning.source]}
-          {learning.pushCount > 1 && ` · seen ${learning.pushCount} times`}
+          {relativeTime(hit.lastPushedAt)}
+          {hit.pushCount > 1 ? ` · seen ${hit.pushCount} times` : ""}
         </span>
       </div>
-      <h2>{learning.title}</h2>
-      <div className="learning-meta">
-        <span>{learning.author.name}</span>
-        <time dateTime={learning.lastPushedAt}>
-          {relativeTime(learning.lastPushedAt)}
-        </time>
-        {learning.repo && <span className="repo">{learning.repo}</span>}
+      <div className="tags">
+        {hit.tags.map((tag) => (
+          <Tag key={tag}>{tag}</Tag>
+        ))}
       </div>
-      <div className={open ? "" : "collapsed-body"}>
-        <Markdown text={learning.body} />
-      </div>
-      <button
-        className="text-button small"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-      >
-        {open ? "Show less" : "Show more"}
-      </button>
-      {learning.tags.length > 0 && (
-        <div className="tags">
-          {learning.tags.map((tag) => (
-            <span key={tag}>#{tag}</span>
-          ))}
+      <dl className="signals">
+        <div>
+          <dt>Vector</dt>
+          <dd>{hit.signals.vector?.toFixed(2) ?? "n/a"}</dd>
         </div>
-      )}
-      {"signals" in learning && (
-        <div className="signals">
-          <strong>Score {learning.score.toFixed(2)}</strong>
-          <span>Vector {learning.signals.vector?.toFixed(2) ?? "n/a"}</span>
-          <span>Text {learning.signals.fts.toFixed(2)}</span>
-          <span>Recency {learning.signals.recency.toFixed(2)}</span>
-          <span>Votes {learning.signals.votes.toFixed(2)}</span>
-          <span>Repo {learning.signals.repoMatch ? "match" : "no match"}</span>
+        <div>
+          <dt>Text</dt>
+          <dd>{hit.signals.fts.toFixed(2)}</dd>
         </div>
-      )}
-      <footer className="card-footer">
-        <div className="votes">
-          {(
-            [
-              { id: "up", label: "↑ Useful" },
-              { id: "down", label: "↓ Unhelpful" },
-              { id: "outdated", label: "◷ Outdated" },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.id}
-              disabled={pending}
-              aria-pressed={feedback?.vote === item.id}
-              onClick={() => vote(item.id)}
-              aria-label={`${item.label}, ${votes[item.id]} votes`}
-            >
-              {item.label} <span>{votes[item.id]}</span>
-            </button>
-          ))}
+        <div>
+          <dt>Recency</dt>
+          <dd>{hit.signals.recency.toFixed(2)}</dd>
         </div>
-        <div className="row small">
-          <code title={learning.id}>{learning.id.slice(0, 10)}</code>
-          <CopyButton text={learning.id} label="Copy ID" />
+        <div>
+          <dt>Votes</dt>
+          <dd>{hit.signals.votes.toFixed(2)}</dd>
         </div>
-      </footer>
-      {error && (
-        <p role="alert" className="field-error">
-          {error}
-        </p>
-      )}
-    </article>
+        <div>
+          <dt>Repo</dt>
+          <dd>{hit.signals.repoMatch ? "match" : "no match"}</dd>
+        </div>
+      </dl>
+    </Card>
   );
 }

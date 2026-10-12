@@ -1,13 +1,34 @@
 "use client";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { LearningView, SearchHit } from "@hivemind/core";
-import { errorMessage, requestJson } from "@/lib/client";
-import { LearningCard } from "./learning-card";
+import {
+  ActivityFeed,
+  Badge,
+  Button,
+  Card,
+  CombGrid,
+  Input,
+  Select,
+  Sprite,
+} from "@hivemind/design-system";
+import { errorMessage, relativeTime, requestJson } from "@/lib/client";
+import { agentKind, learnedBy } from "@/lib/learning-presentation";
+import { LearningCard, SearchHitCard } from "./learning-card";
+import { LearningDialog } from "./learning-dialog";
 import { AskPanel } from "./ask-panel";
-import { ErrorPanel } from "./primitives";
+import { ErrorPanel, LoadingPanel } from "./primitives";
 
-function SearchResults({ query, repo }: { query: string; repo: string }) {
+function SearchResults({
+  query,
+  repo,
+  onOpen,
+}: {
+  query: string;
+  repo: string;
+  onOpen: (id: string) => void;
+}) {
   const [result, setResult] = useState<{ hits?: SearchHit[]; error?: string }>(
     {},
   );
@@ -33,40 +54,39 @@ function SearchResults({ query, repo }: { query: string; repo: string }) {
   if (result.error) return <ErrorPanel message={result.error} />;
   if (!result.hits)
     return (
-      <p className="panel muted" role="status">
-        Searching the hive…
-      </p>
+      <LoadingPanel>A forager is looking for matching cells.</LoadingPanel>
     );
-  const hits = repo
-    ? result.hits.filter((hit) => hit.repo === repo)
-    : result.hits;
   return (
-    <>
-      <p className="muted small" role="status">
-        {hits.length} results
+    <div className="stack">
+      <p className="small muted" role="status">
+        {result.hits.length} {result.hits.length === 1 ? "cell" : "cells"}{" "}
+        found. Every ranking signal is shown below.
       </p>
-      {hits.length ? (
-        hits.map((hit) => <LearningCard key={hit.id} learning={hit} />)
-      ) : (
-        <div className="panel">
-          <h2>No matching learnings.</h2>
-          <p className="muted">Try a shorter query or another repository.</p>
+      {result.hits.length ? (
+        <div className="search-results">
+          {result.hits.map((hit) => (
+            <SearchHitCard key={hit.id} hit={hit} onOpen={onOpen} />
+          ))}
         </div>
+      ) : (
+        <Card>
+          <h2>The hive has no cell for that yet.</h2>
+          <p className="muted">
+            Try a shorter ask. Or bring the first learning back.
+          </p>
+        </Card>
       )}
-    </>
+    </div>
   );
 }
 
-export function Feed() {
+function useHiveFeed() {
   const [state, setState] = useState<{
     learnings: LearningView[];
     loaded: boolean;
     error: string;
     newIds: string[];
   }>({ learnings: [], loaded: false, error: "", newIds: [] });
-  const [query, setQuery] = useState("");
-  const [repo, setRepo] = useState("");
-  const [searchRevision, setSearchRevision] = useState(0);
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let stopped = false;
@@ -83,23 +103,24 @@ export function Feed() {
         if (stopped) return;
         const anchor = list.current
           ? Array.from(
-              list.current.querySelectorAll<HTMLElement>("article"),
+              list.current.querySelectorAll<HTMLElement>(".hm-cell"),
             ).find((element) => element.getBoundingClientRect().bottom > 0)
           : undefined;
         const before = anchor?.getBoundingClientRect().top;
-        setState((previous) => ({
-          learnings: result.learnings,
-          loaded: true,
-          error: "",
-          newIds: previous.loaded
+        setState((previous) => {
+          const oldIds = new Set(previous.learnings.map((item) => item.id));
+          const newIds = previous.loaded
             ? result.learnings
-                .filter(
-                  (item) =>
-                    !previous.learnings.some((old) => old.id === item.id),
-                )
+                .filter((item) => !oldIds.has(item.id))
                 .map((item) => item.id)
-            : [],
-        }));
+            : [];
+          return {
+            learnings: result.learnings,
+            loaded: true,
+            error: "",
+            newIds,
+          };
+        });
         requestAnimationFrame(() => {
           if (
             !stopped &&
@@ -112,7 +133,7 @@ export function Feed() {
         clearTimeout(highlightTimer);
         highlightTimer = setTimeout(
           () => setState((previous) => ({ ...previous, newIds: [] })),
-          2400,
+          1800,
         );
       } catch (error) {
         if (!stopped)
@@ -133,6 +154,15 @@ export function Feed() {
       clearTimeout(highlightTimer);
     };
   }, []);
+  return { state, setState, list };
+}
+
+export function Feed() {
+  const { state, setState, list } = useHiveFeed();
+  const [query, setQuery] = useState("");
+  const [repo, setRepo] = useState("");
+  const [searchRevision, setSearchRevision] = useState(0);
+  const [selected, setSelected] = useState<string>();
   const repos = [
     ...new Set(
       state.learnings.flatMap((item) => (item.repo ? [item.repo] : [])),
@@ -145,93 +175,189 @@ export function Feed() {
     event.preventDefault();
     setSearchRevision((value) => value + 1);
   }
+  function updateVotes(id: string, votes: LearningView["votes"]) {
+    setState((previous) => ({
+      ...previous,
+      learnings: previous.learnings.map((item) =>
+        item.id === id ? { ...item, votes } : item,
+      ),
+    }));
+  }
+  const newIds = new Set(state.newIds);
   return (
-    <>
+    <div className="stack dashboard">
       <div className="page-heading">
         <div>
-          <h1>Your team’s memory</h1>
-          <p className="muted">Small discoveries. Shared understanding.</p>
+          <span className="eyebrow">Shared memory for coding agents</span>
+          <h1>Your hive, together.</h1>
+          <p className="muted">
+            One agent figures it out. The whole team remembers.
+          </p>
         </div>
-        <span className="live-label">
-          <span />
-          Live · refreshes every 5s
-        </span>
+        <div className="row wrap">
+          <Badge tone="fresh" icon="icon-cell">
+            {state.learnings.length} cells
+          </Badge>
+          <a href="#ask" className="hm-btn hm-btn-secondary hm-btn-sm">
+            Ask the hive
+          </a>
+          <span className="small live-label">
+            <Sprite name="bee-hover" scale={1} />
+            Refreshes every 5s
+          </span>
+        </div>
       </div>
-      <div className="feed-grid">
-        <section className="feed-column">
-          <form className="search-form" onSubmit={search}>
-            <label className="sr-only" htmlFor="search">
-              Search learnings
-            </label>
-            <input
-              id="search"
-              type="search"
-              placeholder="Search a task, an error, a decision…"
-              value={query}
-              maxLength={500}
-              onChange={(event) => setQuery(event.target.value)}
+      <section className="stack" aria-label="The comb">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">What the foragers brought back</span>
+            <h2>The comb</h2>
+          </div>
+          <span className="small muted">Fresh nectar. Shared learnings.</span>
+        </div>
+        <form className="search-form" onSubmit={search}>
+          <Input
+            id="search"
+            label="Search the hive"
+            type="search"
+            iconLeft="icon-search"
+            placeholder="A task, an error, a decision"
+            value={query}
+            maxLength={500}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <Select
+            label={query.trim() ? "Boost a repo" : "Choose a repo"}
+            aria-label="Choose a repo"
+            value={repo}
+            onChange={(event) => setRepo(event.target.value)}
+            options={[
+              { value: "", label: "All repos" },
+              ...repos.map((name) => ({ value: name, label: name })),
+            ]}
+          />
+          <Button type="submit" variant="secondary" iconLeft="icon-search">
+            Search
+          </Button>
+          {query ? (
+            <Button variant="ghost" onClick={() => setQuery("")}>
+              Clear search
+            </Button>
+          ) : null}
+        </form>
+        <div ref={list}>
+          {query.trim() ? (
+            <SearchResults
+              key={`${query.trim()}:${repo}:${searchRevision}`}
+              query={query.trim()}
+              repo={repo}
+              onOpen={setSelected}
             />
-            <button className="secondary">Search</button>
-          </form>
-          <div className="repo-filters" aria-label="Filter repository">
-            <button aria-pressed={!repo} onClick={() => setRepo("")}>
-              All repos
-            </button>
-            {repos.map((name) => (
-              <button
-                key={name}
-                aria-pressed={repo === name}
-                onClick={() => setRepo(name)}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-          <div ref={list} className="feed-list">
-            {query.trim() ? (
-              <SearchResults
-                key={`${query.trim()}:${repo}:${searchRevision}`}
-                query={query.trim()}
-                repo={repo}
-              />
-            ) : (
-              <>
-                {state.error && <ErrorPanel message={state.error} />}
-                {!state.loaded && (
-                  <p className="panel muted" role="status">
-                    Loading your team’s memory…
-                  </p>
-                )}
-                {state.loaded && !state.error && !visible.length && (
-                  <div className="panel empty-state">
-                    <span className="hive-mark" aria-hidden="true" />
-                    <h2>
-                      {repo
-                        ? "No learnings in this repo yet."
-                        : "Your hive starts here."}
-                    </h2>
-                    <p className="muted">
-                      Connect an agent and share the first thing your team
-                      should remember.
-                    </p>
-                    <Link href="/app/install" className="primary">
-                      Connect your agent
-                    </Link>
-                  </div>
-                )}
-                {visible.map((item) => (
-                  <LearningCard
-                    key={item.id}
-                    learning={item}
-                    highlighted={state.newIds.includes(item.id)}
-                  />
-                ))}
-              </>
-            )}
-          </div>
-        </section>
-        <AskPanel repo={repo || undefined} />
+          ) : (
+            <CombPanel
+              state={state}
+              visible={visible}
+              repo={repo}
+              newIds={newIds}
+              onOpen={setSelected}
+            />
+          )}
+        </div>
+      </section>
+      <div id="ask">
+        <AskPanel repo={repo || undefined} learnings={state.learnings} />
       </div>
+      <section className="stack" aria-label="Hive activity">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Arrivals at the hive</span>
+            <h2>Fresh nectar</h2>
+          </div>
+          <Sprite name="bee-carry" scale={2} />
+        </div>
+        {!state.loaded ? (
+          <LoadingPanel>A forager is finding the latest arrivals.</LoadingPanel>
+        ) : state.learnings.length ? (
+          <ActivityFeed
+            items={state.learnings.slice(0, 5).map((item) => ({
+              id: item.id,
+              kind: "learned",
+              who: learnedBy(item),
+              title: item.title,
+              when: relativeTime(item.lastPushedAt),
+              repo: item.repo ?? "across the hive",
+              source: agentKind(item.source) ?? "manual",
+            }))}
+          />
+        ) : state.error ? (
+          <ErrorPanel message={state.error} />
+        ) : (
+          <Card>
+            <p className="muted">
+              No nectar has arrived yet. Your first forager starts the comb.
+            </p>
+          </Card>
+        )}
+      </section>
+      {selected ? (
+        <LearningDialog
+          key={selected}
+          id={selected}
+          onClose={() => setSelected(undefined)}
+          onFeedback={updateVotes}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CombPanel({
+  state,
+  visible,
+  repo,
+  newIds,
+  onOpen,
+}: {
+  state: { loaded: boolean; error: string };
+  visible: LearningView[];
+  repo: string;
+  newIds: Set<string>;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <>
+      {state.error ? <ErrorPanel message={state.error} /> : null}
+      {!state.loaded ? (
+        <LoadingPanel>A forager is gathering the comb.</LoadingPanel>
+      ) : null}
+      {state.loaded && !state.error && !visible.length ? (
+        <Card className="empty-state">
+          <Sprite name="cell-empty" scale={4} />
+          <h2>
+            {repo ? "No cells in this repo yet." : "Your hive starts here."}
+          </h2>
+          <p className="muted">
+            Add your agent. Bring the first learning back.
+          </p>
+          <Link href="/app/install" className="hm-btn hm-btn-primary hm-btn-md">
+            Add your agent
+          </Link>
+        </Card>
+      ) : null}
+      {visible.length ? (
+        <div className="comb-field">
+          <CombGrid columns={4}>
+            {visible.map((item) => (
+              <LearningCard
+                key={item.id}
+                learning={item}
+                highlighted={newIds.has(item.id)}
+                onOpen={onOpen}
+              />
+            ))}
+          </CombGrid>
+        </div>
+      ) : null}
     </>
   );
 }

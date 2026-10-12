@@ -1,23 +1,42 @@
 "use client";
-import { useState, type FormEvent } from "react";
-import type { AskResult } from "@hivemind/core";
+
+import { useState } from "react";
+import type { AskResult, LearningView } from "@hivemind/core";
+import {
+  AnswerCard,
+  AskBox,
+  Badge,
+  Button,
+  Card,
+  Sprite,
+} from "@hivemind/design-system";
 import { requestJson, errorMessage } from "@/lib/client";
+import { learnedBy, learningStatus } from "@/lib/learning-presentation";
 import { Markdown } from "./markdown";
 import { ErrorPanel } from "./primitives";
 import { LearningDialog } from "./learning-dialog";
 
-type Question = { question: string; result: AskResult };
-export function AskPanel({ repo }: { repo?: string }) {
+type Question = {
+  question: string;
+  result: AskResult;
+  citedLearnings: LearningView[];
+};
+
+export function AskPanel({
+  repo,
+  learnings = [],
+}: {
+  repo?: string;
+  learnings?: LearningView[];
+}) {
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<Question[]>([]);
   const [current, setCurrent] = useState<Question>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [citation, setCitation] = useState<string>();
-  async function ask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!question.trim() || pending) return;
-    const asked = question.trim();
+  async function ask(asked: string) {
+    if (pending) return;
     setPending(true);
     setError("");
     try {
@@ -25,7 +44,23 @@ export function AskPanel({ repo }: { repo?: string }) {
         question: asked,
         repo,
       });
-      const entry = { question: asked, result };
+      const knownIds = new Set(learnings.map((learning) => learning.id));
+      const citedLearnings = await Promise.all(
+        result.citations
+          .filter((source) => !knownIds.has(source.id))
+          .map((source) =>
+            requestJson<LearningView>(
+              `/api/app/learnings/${encodeURIComponent(source.id)}`,
+            ).catch(() => undefined),
+          ),
+      );
+      const entry = {
+        question: asked,
+        result,
+        citedLearnings: citedLearnings.filter(
+          (learning): learning is LearningView => learning !== undefined,
+        ),
+      };
       setCurrent(entry);
       setHistory((items) =>
         [entry, ...items.filter((item) => item.question !== asked)].slice(0, 5),
@@ -37,102 +72,145 @@ export function AskPanel({ repo }: { repo?: string }) {
     }
   }
   return (
-    <aside className="ask-panel panel">
-      <div className="row">
-        <span className="hive-mark" aria-hidden="true" />
-        <h2>Ask the hive</h2>
-      </div>
-      <p className="muted">Answers grounded in what your team has learned.</p>
-      <form onSubmit={ask} className="stack">
-        <label className="sr-only" htmlFor="ask-question">
-          Your question
-        </label>
-        <textarea
-          id="ask-question"
+    <section className="ask-section" aria-label="Ask the hive">
+      <div className="stack">
+        <div>
+          <span className="eyebrow">Start with what the hive knows</span>
+          <h2>Ask once. Cite the cells.</h2>
+          <p className="muted">
+            Join your team's learnings into an answer with sources.
+          </p>
+        </div>
+        <AskBox
           value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="What should I check before trusting a green CI run?"
-          rows={4}
-          maxLength={2000}
-          required
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
+          onChange={setQuestion}
+          state={pending ? "flying" : current ? "returned" : "idle"}
+          onAsk={ask}
+          placeholder="What should I check when CI is green?"
+          statusText={{
+            flying: `Out looking through ${learnings.length} cells`,
+            returned: `Back with a jar. ${current?.result.citations.length ?? 0} cells cited.`,
           }}
         />
-        <div className="row between">
-          <span className="small muted">⌘ / Ctrl + Enter</span>
-          <button className="primary" disabled={pending || !question.trim()}>
-            {pending ? "Thinking…" : "Ask"}
-          </button>
-        </div>
-      </form>
-      {pending && (
-        <p role="status" className="thinking">
-          The hive is thinking…
-        </p>
-      )}
-      {error && <ErrorPanel message={error} />}
-      {current && !pending && (
-        <section className="answer">
-          <h3>{current.question}</h3>
-          <div className="row wrap small">
-            <span
-              className={`confidence confidence-${current.result.confidence}`}
-            >
-              {current.result.confidence} confidence
-            </span>
-            {!current.result.synthesized && (
-              <span className="muted">Unsynthesized list</span>
-            )}
-          </div>
-          <Markdown text={current.result.answer} onCitation={setCitation} />
-          {current.result.gaps !== null && (
-            <div className="gaps">
-              <strong>What’s missing</strong>
-              <p>{current.result.gaps}</p>
-            </div>
-          )}
-          {current.result.citations.length > 0 && (
-            <div className="sources">
-              <h3>Sources</h3>
-              {current.result.citations.map((source) => (
-                <button key={source.id} onClick={() => setCitation(source.id)}>
-                  <strong>{source.title}</strong>
-                  <span>{source.why}</span>
-                  <code>{source.id}</code>
-                </button>
+        <span className="small muted">Ctrl or Cmd + Enter to ask</span>
+        {error ? <ErrorPanel message={error} /> : null}
+        {history.length ? (
+          <div className="stack">
+            <span className="eyebrow">Recent asks</span>
+            <div className="history">
+              {history.map((entry) => (
+                <Button
+                  key={entry.question}
+                  variant="ghost"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => {
+                    setCurrent(entry);
+                    setQuestion(entry.question);
+                  }}
+                >
+                  {entry.question}
+                </Button>
               ))}
             </div>
-          )}
-        </section>
-      )}
-      {history.length > 0 && (
-        <div className="question-history">
-          <h3>Recent questions</h3>
-          {history.map((entry) => (
-            <button
-              key={entry.question}
-              onClick={() => {
-                setCurrent(entry);
-                setQuestion(entry.question);
-              }}
-              disabled={pending}
-            >
-              {entry.question}
-            </button>
-          ))}
-        </div>
-      )}
-      {citation && (
+          </div>
+        ) : null}
+      </div>
+      <HiveAnswer
+        current={current}
+        pending={pending}
+        learnings={learnings}
+        onCitation={setCitation}
+      />
+      {citation ? (
         <LearningDialog
           key={citation}
           id={citation}
           onClose={() => setCitation(undefined)}
         />
-      )}
-    </aside>
+      ) : null}
+    </section>
+  );
+}
+
+function HiveAnswer({
+  current,
+  pending,
+  learnings,
+  onCitation,
+}: {
+  current?: Question;
+  pending: boolean;
+  learnings: LearningView[];
+  onCitation: (id: string) => void;
+}) {
+  if (!current || pending) return <WaitingAnswer pending={pending} />;
+  const sources = new Map(
+    [...learnings, ...current.citedLearnings].map((learning) => [
+      learning.id,
+      learning,
+    ]),
+  );
+  return (
+    <AnswerCard
+      question={current.question}
+      eyebrow={current.result.synthesized ? "The hive knows" : "From the cells"}
+      citations={current.result.citations.map((source) => {
+        const learning = sources.get(source.id);
+        return {
+          id: source.id,
+          title: source.title,
+          learnedBy: learning ? learnedBy(learning) : source.why,
+          repo: learning?.repo ?? undefined,
+          outdated: learning ? learningStatus(learning) === "outdated" : false,
+          onClick: () => onCitation(source.id),
+        };
+      })}
+    >
+      <div className="row wrap answer-confidence">
+        <Badge
+          tone={current.result.confidence === "high" ? "confirmed" : "fresh"}
+        >
+          {current.result.confidence} confidence
+        </Badge>
+        {!current.result.synthesized ? (
+          <span className="small muted">
+            Collected cells. No synthesis yet.
+          </span>
+        ) : null}
+      </div>
+      <Markdown
+        text={current.result.answer}
+        onCitation={onCitation}
+        citations={current.result.citations}
+      />
+      <div className="gaps">
+        <h3>What the hive does not know yet</h3>
+        <p>
+          {current.result.gaps ??
+            "No gaps were flagged in this answer. Check the cited cells for context."}
+        </p>
+      </div>
+    </AnswerCard>
+  );
+}
+
+function WaitingAnswer({ pending }: { pending: boolean }) {
+  return (
+    <Card className="answer-waiting" role={pending ? "status" : undefined}>
+      <Sprite
+        name={pending ? "bee-fly" : "jar"}
+        scale={4}
+        className={pending ? "hm-bob" : undefined}
+      />
+      <h3>
+        {pending ? "A forager is out looking." : "An answer with a source."}
+      </h3>
+      <p className="muted">
+        {pending
+          ? "The hive is gathering the cells that answer your ask."
+          : "Ask about a task, an error or a decision. Every answer cites the cells it came from."}
+      </p>
+    </Card>
   );
 }

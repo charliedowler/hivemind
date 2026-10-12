@@ -25,14 +25,13 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
-    "zod": "^4.2.0"
+    "zod": "^4.2.0",
+    "@hivemind/design-system": "workspace:*"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tailwindcss": "^4.0.0",
     "tsx": "^4.23.15",
     "vitest": "^4.1.11"
   }

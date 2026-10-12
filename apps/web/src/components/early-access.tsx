@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { earlyAccessInput, teamSizes } from "@hivemind/core";
+import { Button, Input, Select, Sprite } from "@hivemind/design-system";
 import { requestJson, errorMessage } from "@/lib/client";
 import { ErrorPanel } from "./primitives";
 
@@ -41,10 +42,10 @@ export function EarlyAccessForm() {
   }
   if (done)
     return (
-      <div className="thank-you" role="status">
-        <span className="hive-mark" />
-        <h3>You’re on the list.</h3>
-        <p>Thanks for joining. We’ll be in touch when your hive is ready.</p>
+      <div className="thank-you stack" role="status">
+        <Sprite name="bee-carry" scale={4} />
+        <h3>You're on the list.</h3>
+        <p>Thanks for joining. We'll be in touch when your hive is ready.</p>
       </div>
     );
   return (
@@ -64,49 +65,33 @@ export function EarlyAccessForm() {
           autoComplete: "organization",
         },
       ].map((field) => (
-        <label key={field.name}>
-          {field.title}
-          <input
-            name={field.name}
-            type={field.type}
-            autoComplete={field.autoComplete}
-            required={field.name !== "company"}
-            aria-invalid={!!fields[field.name]}
-            aria-describedby={
-              fields[field.name] ? `${field.name}-error` : undefined
-            }
-          />
-          {fields[field.name] && (
-            <span id={`${field.name}-error`} className="field-error">
-              {fields[field.name]}
-            </span>
-          )}
-        </label>
+        <Input
+          key={field.name}
+          label={field.title}
+          name={field.name}
+          type={field.type}
+          autoComplete={field.autoComplete}
+          required={field.name !== "company"}
+          error={fields[field.name]}
+        />
       ))}
-      <label>
-        Team size
-        <select
-          name="teamSize"
-          defaultValue=""
-          aria-invalid={!!fields.teamSize}
-        >
-          <option disabled value="">
-            Select a size
-          </option>
-          {teamSizes.map((size) => (
-            <option key={size} value={size}>
-              {size} people
-            </option>
-          ))}
-        </select>
-        {fields.teamSize && (
-          <span className="field-error">Choose your team size.</span>
-        )}
-      </label>
-      {error && <ErrorPanel message={error} />}
-      <button className="primary" disabled={pending}>
-        {pending ? "Joining the list…" : "Get early access"}
-      </button>
+      <Select
+        label="Team size"
+        name="teamSize"
+        defaultValue=""
+        error={fields.teamSize ? "Choose your team size." : undefined}
+        options={[
+          { value: "", label: "Choose a size", disabled: true },
+          ...teamSizes.map((size) => ({
+            value: size,
+            label: `${size} people`,
+          })),
+        ]}
+      />
+      {error ? <ErrorPanel message={error} /> : null}
+      <Button type="submit" loading={pending} fullWidth>
+        {pending ? "Joining the list" : "Get early access"}
+      </Button>
     </form>
   );
 }

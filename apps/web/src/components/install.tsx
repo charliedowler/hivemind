@@ -1,6 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Badge,
+  Button,
+  Card,
+  InstallSnippet,
+  Sprite,
+} from "@hivemind/design-system";
 import { buildInstallSnippets } from "@/lib/install";
 import { requestJson, errorMessage } from "@/lib/client";
 import { CopyButton, ErrorPanel } from "./primitives";
@@ -12,34 +19,67 @@ export function InstallSnippets({
   baseUrl: string;
   apiKey?: string;
 }) {
+  const snippets = buildInstallSnippets({ baseUrl, apiKey });
   return (
     <div className="snippet-list">
-      {buildInstallSnippets({ baseUrl, apiKey }).map((snippet) => (
-        <section className="snippet" key={snippet.id}>
-          <div className="row between">
-            <h3>{snippet.title}</h3>
-            <CopyButton text={snippet.code} label={`Copy ${snippet.title}`} />
-          </div>
-          <p className="muted">{snippet.description}</p>
-          <pre data-language={snippet.language}>
-            <code>{snippet.code}</code>
-          </pre>
-        </section>
-      ))}
+      {snippets.map((snippet) =>
+        snippet.id === "claude" || snippet.id === "codex" ? (
+          <section className="stack" key={snippet.id}>
+            <div>
+              <h2>{snippet.title}</h2>
+              <p className="muted">{snippet.description}</p>
+            </div>
+            <InstallSnippet
+              options={[
+                { agent: snippet.id, label: snippet.title, code: snippet.code },
+              ]}
+            />
+          </section>
+        ) : (
+          <section className="stack" key={snippet.id}>
+            <div>
+              <h2>{snippet.title}</h2>
+              <p className="muted">{snippet.description}</p>
+            </div>
+            <Card variant="terminal" className="terminal-card">
+              <div className="row between wrap">
+                <span className="eyebrow">{snippet.language}</span>
+                <CopyButton
+                  text={snippet.code}
+                  label={`Copy ${snippet.title}`}
+                />
+              </div>
+              <pre
+                data-language={snippet.language}
+                tabIndex={0}
+                aria-label={snippet.title}
+              >
+                <code>{snippet.code}</code>
+              </pre>
+            </Card>
+          </section>
+        ),
+      )}
     </div>
   );
 }
 
 export function KeyBox({ apiKey }: { apiKey: string }) {
   return (
-    <section className="key-box">
+    <Card className="key-box">
+      <div className="row wrap">
+        <Sprite name="cell-sealed" scale={2} />
+        <Badge tone="fresh">Shown once</Badge>
+      </div>
       <h2>Your API key</h2>
-      <p>Shown once. Save it now. Treat it like a password.</p>
-      <div className="row">
+      <p>
+        Save it now. Treat it like a password. The hive cannot show it again.
+      </p>
+      <div className="row wrap">
         <code className="breakable">{apiKey}</code>
         <CopyButton text={apiKey} label="Copy key" />
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -60,23 +100,31 @@ export function InstallPage({ baseUrl }: { baseUrl: string }) {
     }
   }
   return (
-    <div className="narrow stack">
-      <div>
-        <h1>Connect your agents</h1>
-        <p className="muted">One connection. Everything your team learns.</p>
+    <div className="install-page stack">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">Bring a forager</span>
+          <h1>Add your agent</h1>
+          <p className="muted">
+            One connection. What your agent learns, the whole hive knows.
+          </p>
+        </div>
+        <Sprite name="bee-carry" scale={4} />
       </div>
       {apiKey ? (
         <KeyBox apiKey={apiKey} />
       ) : (
-        <button
-          className="primary self-start"
-          onClick={createKey}
-          disabled={pending}
-        >
-          {pending ? "Creating key…" : "Create a new key"}
-        </button>
+        <Card className="row between wrap">
+          <div>
+            <h2>A key for your forager</h2>
+            <p className="muted">Create a key to fill the commands below.</p>
+          </div>
+          <Button onClick={createKey} loading={pending} iconLeft="icon-plus">
+            {pending ? "Creating a key" : "Create a new key"}
+          </Button>
+        </Card>
       )}
-      {error && <ErrorPanel message={error} />}
+      {error ? <ErrorPanel message={error} /> : null}
       <InstallSnippets baseUrl={baseUrl} apiKey={apiKey} />
     </div>
   );

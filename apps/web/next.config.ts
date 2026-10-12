@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@hivemind/core"],
+  devIndicators: false,
+  transpilePackages: ["@hivemind/core", "@hivemind/design-system"],
 };
 
 export default nextConfig;

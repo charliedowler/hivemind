@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Sprite } from "@hivemind/design-system";
 import { Login } from "@/components/login";
 import { getBaseUrl } from "@/lib/base-url";
 import { ErrorPanel } from "@/components/primitives";
@@ -13,7 +14,7 @@ export default async function LoginPage({
     return (
       <main className="page">
         <Link className="brand login-brand" href="/">
-          <span className="hive-mark" aria-hidden="true" />
+          <Sprite name="bee" scale={3} />
           Hivemind
         </Link>
         <Login

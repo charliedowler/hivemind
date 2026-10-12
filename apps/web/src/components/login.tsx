@@ -4,12 +4,37 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createTeamInput, joinTeamInput, signInInput } from "@hivemind/core";
+import { Button, Card, Input, Sprite, Tabs } from "@hivemind/design-system";
 import { requestJson, errorMessage } from "@/lib/client";
 import { CopyButton, ErrorPanel } from "./primitives";
 import { InstallSnippets, KeyBox } from "./install";
 
 type Mode = "teams" | "join" | "session";
 type Created = { apiKey: string; inviteCode?: string };
+
+const modes = {
+  teams: {
+    title: "Start your hive",
+    description: "A home for what your team's agents learn.",
+    label: "Create a team",
+    action: "Create a team",
+    schema: createTeamInput,
+  },
+  join: {
+    title: "Join your hive",
+    description: "Your invite brings you into the shared comb.",
+    label: "Join a team",
+    action: "Join the team",
+    schema: joinTeamInput,
+  },
+  session: {
+    title: "Welcome back",
+    description: "Use the key you saved when you joined.",
+    label: "Sign in",
+    action: "Sign in",
+    schema: signInInput,
+  },
+};
 
 export function Login({
   baseUrl,
@@ -26,12 +51,7 @@ export function Login({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    const schema =
-      mode === "teams"
-        ? createTeamInput
-        : mode === "join"
-          ? joinTeamInput
-          : signInInput;
+    const schema = modes[mode].schema;
     const parsed = schema.safeParse(
       Object.fromEntries(new FormData(event.currentTarget)),
     );
@@ -55,113 +75,140 @@ export function Login({
       setPending(false);
     }
   }
-  if (created)
-    return (
-      <div className="narrow stack">
-        <h1>You’re in.</h1>
-        <KeyBox apiKey={created.apiKey} />
-        {created.inviteCode && (
-          <div className="panel">
-            <h2>Invite your team</h2>
-            <div className="row">
-              <code>{created.inviteCode}</code>
-              <CopyButton text={created.inviteCode} />
-            </div>
-          </div>
-        )}
-        <Link className="primary self-start" href="/app">
-          Go to the dashboard
-        </Link>
-        <InstallSnippets baseUrl={baseUrl} apiKey={created.apiKey} />
-      </div>
-    );
+  if (created) return <CreatedLogin created={created} baseUrl={baseUrl} />;
   return (
-    <div className="login-panel panel">
-      <h1>A place for what you learn.</h1>
-      <p className="muted">Bring your agents. Build your team’s memory.</p>
-      <div className="tabs" aria-label="Account options">
-        {(
-          [
-            { id: "teams", name: "Create a team" },
-            { id: "join", name: "Join a team" },
-            { id: "session", name: "Sign in" },
-          ] as const
-        ).map((tab) => (
-          <button
-            type="button"
-            key={tab.id}
-            aria-pressed={mode === tab.id}
-            onClick={() => {
-              setMode(tab.id);
-              setError("");
-            }}
-            disabled={pending}
-          >
-            {tab.name}
-          </button>
-        ))}
+    <div className="login-layout">
+      <div className="login-intro">
+        <span className="eyebrow">One team. One shared comb.</span>
+        <h1>What you learn belongs in the hive.</h1>
+        <p className="lead">
+          Give your agents a shared memory. The next forager starts with what
+          your team already knows.
+        </p>
+        <div className="login-scene" aria-hidden="true">
+          <Sprite name="comb-cluster" scale={5} />
+          <Sprite name="bee-carry" scale={3} className="hm-bob" />
+        </div>
+        <p className="small muted">
+          Claude is clay. Codex is teal. Every learning has a source.
+        </p>
       </div>
-      <form key={mode} className="stack" onSubmit={submit}>
-        {mode === "teams" && (
-          <label>
-            Team name
-            <input
-              name="teamName"
-              maxLength={80}
-              required
-              autoComplete="organization"
-            />
-          </label>
-        )}
-        {mode === "join" && (
-          <label>
-            Invite code
-            <input
-              name="inviteCode"
-              defaultValue={invite}
-              required
-              maxLength={64}
-              placeholder="hive-…"
-            />
-          </label>
-        )}
-        {mode !== "session" && (
-          <label>
-            Your name
-            <input
-              name="memberName"
-              autoComplete="name"
-              maxLength={80}
-              required
-            />
-          </label>
-        )}
-        {mode === "session" && (
-          <label>
-            API key
-            <input
-              name="apiKey"
-              type="password"
-              autoComplete="off"
-              required
-              placeholder="hm_…"
-            />
-            <span className="muted">
-              Use the key you saved when you joined.
-            </span>
-          </label>
-        )}
-        {error && <ErrorPanel message={error} />}
-        <button className="primary" disabled={pending}>
-          {pending
-            ? "Connecting…"
-            : mode === "teams"
-              ? "Create a team"
-              : mode === "join"
-                ? "Join the team"
-                : "Sign in"}
-        </button>
-      </form>
+      <Card className="login-panel">
+        <h2>{modes[mode].title}</h2>
+        <p className="muted">{modes[mode].description}</p>
+        <Tabs
+          label="Account options"
+          tabs={[
+            { id: "teams", label: "Create a team" },
+            { id: "join", label: "Join a team" },
+            { id: "session", label: "Sign in" },
+          ]}
+          value={mode}
+          onChange={(value) => {
+            if (!pending) {
+              setMode(value as Mode);
+              setError("");
+            }
+          }}
+        />
+        <form
+          key={mode}
+          className="stack"
+          onSubmit={submit}
+          aria-label={modes[mode].label}
+        >
+          <LoginFields mode={mode} invite={invite} />
+          {error ? <ErrorPanel message={error} /> : null}
+          <Button type="submit" fullWidth loading={pending}>
+            {pending ? "Joining the hive" : modes[mode].action}
+          </Button>
+        </form>
+      </Card>
     </div>
+  );
+}
+
+function CreatedLogin({
+  created,
+  baseUrl,
+}: {
+  created: Created;
+  baseUrl: string;
+}) {
+  return (
+    <div className="install-page stack">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">A place in the comb</span>
+          <h1>You're in the hive.</h1>
+          <p className="muted">Save your key. Then bring your first forager.</p>
+        </div>
+        <Sprite name="bee-carry" scale={4} />
+      </div>
+      <KeyBox apiKey={created.apiKey} />
+      {created.inviteCode ? (
+        <Card>
+          <h2>Invite your team</h2>
+          <p className="muted">
+            Share this code so their learnings join the same comb.
+          </p>
+          <div className="row wrap">
+            <code>{created.inviteCode}</code>
+            <CopyButton text={created.inviteCode} label="Copy invite code" />
+          </div>
+        </Card>
+      ) : null}
+      <Link className="hm-btn hm-btn-primary hm-btn-md self-start" href="/app">
+        Open the hive
+      </Link>
+      <InstallSnippets baseUrl={baseUrl} apiKey={created.apiKey} />
+    </div>
+  );
+}
+
+function LoginFields({ mode, invite }: { mode: Mode; invite: string }) {
+  return (
+    <>
+      {mode === "teams" ? (
+        <Input
+          label="Team name"
+          name="teamName"
+          maxLength={80}
+          required
+          autoComplete="organization"
+          placeholder="Your team's hive"
+        />
+      ) : null}
+      {mode === "join" ? (
+        <Input
+          label="Invite code"
+          name="inviteCode"
+          defaultValue={invite}
+          required
+          maxLength={64}
+          placeholder="hive-..."
+        />
+      ) : null}
+      {mode !== "session" ? (
+        <Input
+          label="Your name"
+          name="memberName"
+          autoComplete="name"
+          maxLength={80}
+          required
+          placeholder="How the hive knows you"
+        />
+      ) : (
+        <Input
+          label="API key"
+          name="apiKey"
+          type="password"
+          autoComplete="off"
+          required
+          placeholder="hm_..."
+          hint="Your key stays private. It opens your team's hive."
+        />
+      )}
+    </>
   );
 }
