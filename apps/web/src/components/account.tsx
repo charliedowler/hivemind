@@ -64,7 +64,6 @@ export function Account({ initial }: { initial: AccountData }) {
     <div className="stack narrow">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Your place in the hive</span>
           <h1>Your account</h1>
         </div>
       </div>
@@ -117,7 +116,7 @@ export function Account({ initial }: { initial: AccountData }) {
       <Card className="stack">
         <h2>Your keys</h2>
         <p className="muted">
-          Keys are shown once. Revoke a key when its forager no longer needs
+          The hive shows each key once. Revoke it when the agent no longer needs
           access.
         </p>
         {data.keys.map((item) => (

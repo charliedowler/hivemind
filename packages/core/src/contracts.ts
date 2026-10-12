@@ -124,28 +124,58 @@ export type TeamOverview = {
 export const teamSizes = ["1-5", "6-20", "21-50", "51-200", "200+"] as const;
 
 export const earlyAccessInput = z.object({
-  name: z.string().trim().min(1).max(120),
-  email: z.email().max(200),
-  company: z.string().trim().max(160).default(""),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Enter your name.")
+    .max(120, "Keep your name to 120 characters or fewer."),
+  email: z
+    .email("Enter a valid email address.")
+    .max(200, "Keep your email to 200 characters or fewer."),
+  company: z
+    .string()
+    .trim()
+    .max(160, "Keep the company name to 160 characters or fewer.")
+    .default(""),
   teamSize: z.enum(teamSizes),
   source: z.string().trim().max(200).optional(),
 });
 export type EarlyAccessInput = z.infer<typeof earlyAccessInput>;
 
 export const createTeamInput = z.object({
-  teamName: z.string().trim().min(1).max(80),
-  memberName: z.string().trim().min(1).max(80),
+  teamName: z
+    .string()
+    .trim()
+    .min(1, "Enter a team name.")
+    .max(80, "Keep the team name to 80 characters or fewer."),
+  memberName: z
+    .string()
+    .trim()
+    .min(1, "Enter your name.")
+    .max(80, "Keep your name to 80 characters or fewer."),
 });
 export type CreateTeamInput = z.infer<typeof createTeamInput>;
 
 export const joinTeamInput = z.object({
-  inviteCode: z.string().trim().min(4).max(64),
-  memberName: z.string().trim().min(1).max(80),
+  inviteCode: z
+    .string()
+    .trim()
+    .min(4, "Enter the invite code from your team.")
+    .max(64, "Check your invite code. It must be 64 characters or fewer."),
+  memberName: z
+    .string()
+    .trim()
+    .min(1, "Enter your name.")
+    .max(80, "Keep your name to 80 characters or fewer."),
 });
 export type JoinTeamInput = z.infer<typeof joinTeamInput>;
 
 export const signInInput = z.object({
-  apiKey: z.string().trim().min(8).max(200),
+  apiKey: z
+    .string()
+    .trim()
+    .min(8, "Enter your saved API key.")
+    .max(200, "Check your API key. It must be 200 characters or fewer."),
 });
 export type SignInInput = z.infer<typeof signInInput>;
 

@@ -16,21 +16,22 @@ type Created = { apiKey: string; inviteCode?: string };
 const modes = {
   teams: {
     title: "Start your hive",
-    description: "A home for what your team's agents learn.",
+    description: "Create a hive with your work email.",
     label: "Create a team",
     action: "Create a team",
     schema: createTeamInput,
   },
   join: {
     title: "Join your hive",
-    description: "Your invite brings you into the shared comb.",
+    description: "Enter the invite code from your team.",
     label: "Join a team",
     action: "Join the team",
     schema: joinTeamInput,
   },
   domain: {
     title: "Join with your work email",
-    description: "A verified work domain can bring you into its hive.",
+    description:
+      "Your team must allow your work email domain before you can join.",
     label: "Join by domain",
     action: "Send a code",
     schema: joinTeamInput.omit({ inviteCode: true }),
@@ -90,19 +91,15 @@ export function Login({
   return (
     <div className="login-layout">
       <div className="login-intro">
-        <span className="eyebrow">One team. One shared comb.</span>
-        <h1>What you learn belongs in the hive.</h1>
+        <h1>Your agents learn together.</h1>
         <p className="lead">
-          Give your agents a shared memory. The next forager starts with what
-          your team already knows.
+          Create a hive or join your team's. Connect your agent to start sharing
+          learnings.
         </p>
         <div className="login-scene" aria-hidden="true">
           <Sprite name="comb-cluster" scale={5} />
           <Sprite name="bee-carry" scale={3} className="hm-bob" />
         </div>
-        <p className="small muted">
-          Claude is clay. Codex is teal. Every learning has a source.
-        </p>
       </div>
       <Card className="login-panel">
         <h2>{modes[mode].title}</h2>
@@ -140,7 +137,11 @@ export function Login({
             <LoginFields mode={mode} invite={invite} />
             {error ? <ErrorPanel message={error} /> : null}
             <Button type="submit" fullWidth loading={pending}>
-              {pending ? "Joining the hive" : modes[mode].action}
+              {pending
+                ? mode === "session"
+                  ? "Signing in"
+                  : "Sending a code"
+                : modes[mode].action}
             </Button>
           </form>
         )}
@@ -160,9 +161,8 @@ function CreatedLogin({
     <div className="install-page stack">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">A place in the comb</span>
           <h1>You're in the hive.</h1>
-          <p className="muted">Save your key. Then bring your first forager.</p>
+          <p className="muted">Save your key, then connect your agent.</p>
         </div>
         <Sprite name="bee-carry" scale={4} />
       </div>
@@ -171,7 +171,7 @@ function CreatedLogin({
         <Card>
           <h2>Invite your team</h2>
           <p className="muted">
-            Share this code so their learnings join the same comb.
+            Share this code so teammates can join your hive.
           </p>
           <div className="row wrap">
             <code>{created.inviteCode}</code>
@@ -228,7 +228,7 @@ function LoginFields({ mode, invite }: { mode: Mode; invite: string }) {
           autoComplete="name"
           maxLength={80}
           required
-          placeholder="How the hive knows you"
+          placeholder="Your name"
         />
       ) : (
         <Input
@@ -238,7 +238,7 @@ function LoginFields({ mode, invite }: { mode: Mode; invite: string }) {
           autoComplete="off"
           required
           placeholder="hm_..."
-          hint="Your key stays private. It opens your team's hive."
+          hint="Use your saved API key to sign in. Keep it private."
         />
       )}
     </>

@@ -61,14 +61,12 @@ function SearchResults({
   }, [query, repo, kind]);
   if (result.error) return <ErrorPanel message={result.error} />;
   if (!result.hits)
-    return (
-      <LoadingPanel>A forager is looking for matching cells.</LoadingPanel>
-    );
+    return <LoadingPanel>Searching for matching cells.</LoadingPanel>;
   return (
     <div className="stack">
       <p className="small muted" role="status">
         {result.hits.length} {result.hits.length === 1 ? "cell" : "cells"}{" "}
-        found. Every ranking signal is shown below.
+        found.
       </p>
       {result.hits.length ? (
         <div className="search-results">
@@ -80,7 +78,7 @@ function SearchResults({
         <Card>
           <h2>The hive has no cell for that yet.</h2>
           <p className="muted">
-            Try a shorter ask. Or bring the first learning back.
+            Try a shorter search or save a learning with your agent.
           </p>
         </Card>
       )}
@@ -197,10 +195,9 @@ export function Feed() {
     <div className="stack dashboard">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Shared memory for coding agents</span>
-          <h1>Your hive, together.</h1>
+          <h1>Your hive</h1>
           <p className="muted">
-            One agent figures it out. The whole team remembers.
+            Open a cell to read the learning and see who saved it.
           </p>
         </div>
         <div className="row wrap">
@@ -219,10 +216,8 @@ export function Feed() {
       <section className="stack" aria-label="The comb">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">What the foragers brought back</span>
             <h2>The comb</h2>
           </div>
-          <span className="small muted">Fresh nectar. Shared learnings.</span>
         </div>
         <form className="search-form" onSubmit={search}>
           <Input
@@ -230,13 +225,13 @@ export function Feed() {
             label="Search the hive"
             type="search"
             iconLeft="icon-search"
-            placeholder="A task, an error, a decision"
+            placeholder="Search by an error message or topic"
             value={query}
             maxLength={500}
             onChange={(event) => setQuery(event.target.value)}
           />
           <Select
-            label={query.trim() ? "Boost a repo" : "Choose a repo"}
+            label={query.trim() ? "Prioritise a repo" : "Choose a repo"}
             aria-label="Choose a repo"
             value={repo}
             onChange={(event) => setRepo(event.target.value)}
@@ -299,13 +294,12 @@ export function Feed() {
       <section className="stack" aria-label="Hive activity">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Arrivals at the hive</span>
             <h2>Fresh nectar</h2>
           </div>
           <Sprite name="bee-carry" scale={2} />
         </div>
         {!state.loaded ? (
-          <LoadingPanel>A forager is finding the latest arrivals.</LoadingPanel>
+          <LoadingPanel>Loading recent learnings.</LoadingPanel>
         ) : state.learnings.length ? (
           <ActivityFeed
             items={state.learnings.slice(0, 5).map((item) => ({
@@ -323,7 +317,7 @@ export function Feed() {
         ) : (
           <Card>
             <p className="muted">
-              No nectar has arrived yet. Your first forager starts the comb.
+              Your agents have not saved any learnings yet.
             </p>
           </Card>
         )}
@@ -356,17 +350,13 @@ function CombPanel({
   return (
     <>
       {state.error ? <ErrorPanel message={state.error} /> : null}
-      {!state.loaded ? (
-        <LoadingPanel>A forager is gathering the comb.</LoadingPanel>
-      ) : null}
+      {!state.loaded ? <LoadingPanel>Loading cells.</LoadingPanel> : null}
       {state.loaded && !state.error && !visible.length ? (
         <Card className="empty-state">
           <Sprite name="cell-empty" scale={4} />
-          <h2>
-            {repo ? "No cells in this repo yet." : "Your hive starts here."}
-          </h2>
+          <h2>No cells match these filters.</h2>
           <p className="muted">
-            Add your agent. Bring the first learning back.
+            Change the filters or connect your agent to save a learning.
           </p>
           <Link href="/app/install" className="hm-btn hm-btn-primary hm-btn-md">
             Add your agent

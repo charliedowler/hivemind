@@ -12,7 +12,7 @@ const instructions = [
   "## Hive (team memory)",
   "- When you start work in a repo, call `hive_search` with the task in a few words and the repo as `owner/name`.",
   "- When you hit an error you do not understand, call `hive_search` with the error text before you investigate.",
-  "- When you learn something non-obvious that would help a teammate (a gotcha, a fix, a decision, an insight about how the team works, or friction: what slowed you down, how long, was there a workaround), call `hive_push`. Give a title that states the fact, the repo, 3 to 5 tags and the paths. Never include secrets or customer names.",
+  "- Call `hive_push` when you learn something a teammate would otherwise need to rediscover. This includes gotchas, fixes, decisions and insights about how the team works. For friction, describe what slowed you down, how long it took and any workaround. Use a title that states the fact. Include the repo, 3 to 5 tags and relevant paths. Keep secrets and customer names out.",
   "- When a result helped, call `hive_feedback` with `up`. When it is wrong or stale, vote `down` or `outdated` and say why.",
   "- Use `hive_ask` for a question that needs several learnings joined into one answer.",
 ].join("\n");
@@ -43,7 +43,7 @@ export function buildInstallSnippets({
     {
       id: "instructions",
       title: "Agent instructions",
-      description: "Add to CLAUDE.md or AGENTS.md in your repo.",
+      description: "Add these instructions to CLAUDE.md or AGENTS.md in your repo.",
       language: "markdown",
       code: instructions,
     },
@@ -59,14 +59,14 @@ export function buildInstallSnippets({
       id: "stop-settings",
       title: "Claude Code Stop hook · settings",
       description:
-        "Merge into ~/.claude/settings.json. Quiet sessions skip capture. The hook asks at most once per session.",
+        "Add these settings to ~/.claude/settings.json. The hook skips quiet sessions and asks at most once per session.",
       language: "json",
       code: '{\n  "hooks": {\n    "Stop": [\n      { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/hive-stop.sh" } ] }\n    ]\n  }\n}',
     },
     {
       id: "check",
       title: "Check the connection",
-      description: "hive should appear as connected.",
+      description: "Check that hive appears as connected.",
       language: "bash",
       code: "claude mcp list",
     },

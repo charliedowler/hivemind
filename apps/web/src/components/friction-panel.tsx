@@ -45,7 +45,6 @@ export function FrictionPanel({
     <section className="stack" aria-label="Friction">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">What slows the foragers down</span>
           <h2>Friction</h2>
         </div>
         <Sprite name="cell-outdated" scale={2} />
@@ -53,7 +52,7 @@ export function FrictionPanel({
       {state.error ? (
         <ErrorPanel message={state.error} />
       ) : !state.data ? (
-        <LoadingPanel>A forager is gathering the friction.</LoadingPanel>
+        <LoadingPanel>Loading friction reports.</LoadingPanel>
       ) : (
         <FrictionContent data={state.data} onOpen={onOpen} />
       )}
@@ -70,15 +69,16 @@ function FrictionContent({
   return (
     <Card className="stack">
       <p className="lead">
-        {data.minutes} measured minutes lost this week · {data.count} friction reports
+        {data.minutes} measured minutes lost this week · {data.count} friction
+        reports
       </p>
       <p className="small muted">
-        {data.unmeasured} reports have no measured cost. Minutes include
-        measured costs only. This week means the past seven days.
+        {data.unmeasured} reports have no measured cost and are excluded from
+        the minutes total. This week covers the past seven days.
       </p>
       {data.count ? (
         <>
-          <h3>Top areas</h3>
+          <h3>Areas by minutes lost</h3>
           <div className="friction-areas">
             {data.areas.map((area) => (
               <div className="stack friction-area" key={area.area}>
@@ -109,13 +109,15 @@ function FrictionContent({
               </div>
             ))
           ) : (
-            <p className="muted">No repeated friction this week.</p>
+            <p className="muted">
+              No repeated friction reports in the past seven days.
+            </p>
           )}
         </>
       ) : (
         <p className="muted">
-          No friction shared this week. Bring back what slowed you down and any
-          workaround.
+          No friction reports in the past seven days. Ask your agent to save
+          what slowed you down and any workaround.
         </p>
       )}
     </Card>

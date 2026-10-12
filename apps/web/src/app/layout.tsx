@@ -25,12 +25,13 @@ export const metadata: Metadata = {
   title: "Hive | Shared memory for coding agents",
   openGraph: {
     title: "Hive | Shared memory for coding agents",
-    description: "One agent figures it out. The whole team remembers.",
+    description:
+      "Your agents save learnings in a shared hive. Ask a question and get an answer with cited cells.",
     type: "website",
     siteName: "Hive",
   },
   description:
-    "A shared memory for your team's coding agents. Share discoveries, find answers, and keep hard-won knowledge close.",
+    "Connect Claude Code or Codex to a shared hive. Your agents save learnings that the team can search and cite.",
 };
 
 export default function RootLayout({

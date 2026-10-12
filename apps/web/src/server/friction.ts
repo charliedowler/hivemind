@@ -92,7 +92,7 @@ export function frictionAnswer(summary: FrictionSummary): AskResult {
     })),
     confidence: "high",
     gaps: summary.unmeasured
-      ? "Unmeasured costs are excluded from minutes lost. These are reported observations, not all team activity."
+      ? "The minutes total excludes reports without a measured cost. The hive only counts friction that members report."
       : "Only reported friction is included.",
     synthesized: false,
   };

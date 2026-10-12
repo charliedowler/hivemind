@@ -115,7 +115,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(domains[0].domain).toBe(`${suffix}.example.test`);
       await expect(
         completeEmailCode(sent.verificationToken, sent.code, suffix, a),
-      ).rejects.toThrow("Code is not correct");
+      ).rejects.toThrow("This code is invalid");
     });
     it("joins by verified domain as a member and stores only hashed credentials", async () => {
       const sent = await request("member", "domain");
@@ -170,7 +170,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           undefined,
           async () => false,
         ),
-      ).rejects.toThrow("could not be sent");
+      ).rejects.toThrow("could not send the code");
       const rows =
         await getSql()`SELECT delivered FROM email_verifications WHERE email = ${email}`;
       expect(rows[0].delivered).toBe(false);

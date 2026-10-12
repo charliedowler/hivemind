@@ -71,7 +71,7 @@ export function LearningDetail({
       </div>
       {learning.adminOutdated || votes.outdated > votes.up ? (
         <p className="cell-warning">
-          This cell needs a fresh source. Check the learning before you cite it.
+          This cell is marked outdated. Check the learning before you cite it.
         </p>
       ) : null}
       <FrictionDetails learning={learning} />
@@ -157,8 +157,7 @@ export function LearningDialog({
   }, [id]);
   return (
     <Dialog
-      title={result.learning?.title ?? "From the hive"}
-      eyebrow="Inside the cell"
+      title={result.learning?.title ?? "Loading cell"}
       width={760}
       onClose={onClose}
     >
@@ -172,7 +171,7 @@ export function LearningDialog({
           onModerated={onClose}
         />
       ) : (
-        <LoadingPanel>A forager is finding this cell.</LoadingPanel>
+        <LoadingPanel>Loading the learning.</LoadingPanel>
       )}
     </Dialog>
   );
