@@ -48,6 +48,7 @@ export function Navigation({
             ["/app/members", "Members"],
             ["/app/install", "Install"],
             ["/app/account", "Account"],
+            ["/app/settings/digests", "Digests"],
             ...(isAdmin ? [["/app/admin/analytics", "Analytics"]] : []),
           ].map(([href, label]) => (
             <Link

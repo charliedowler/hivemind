@@ -10,6 +10,10 @@ const count = z.number().int().nonnegative();
 const probability = z.number().finite().min(0).max(1);
 export const eventNames = [
   "access.changed",
+  "digest_scheduled",
+  "digest_posted",
+  "digest_skipped_empty",
+  "digest_failed",
   "learning.pushed",
   "learning.superseded",
   "learning.lifecycle_changed",
@@ -102,6 +106,14 @@ export function reportedModel(value: unknown) {
   return result.success ? result.data : null;
 }
 export const propertiesSchema = z.object({
+  digestScheduleId: nullable(z.string().regex(/^dgs_[a-z2-7]{12}$/)),
+  digestPostId: nullable(z.string().regex(/^dgp_[a-z2-7]{12}$/)),
+  cadence: nullable(z.enum(["daily", "weekdays", "weekly", "fortnightly", "monthly"])),
+  digestTrigger: nullable(z.enum(["scheduled", "manual"])),
+  learningCount: nullable(count),
+  insightCount: nullable(count),
+  frictionCount: nullable(count),
+  decisionCount: nullable(count),
   actorKind: nullable(z.enum(["member", "anonymous", "system"])),
   role: nullable(z.enum(["admin", "member"])),
   earlyAccessId: nullable(z.string().regex(/^ea_[a-z2-7]{12}$/)),
