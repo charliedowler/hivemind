@@ -25,12 +25,11 @@ export const teams = pgTable("teams", {
 
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
-  teamId: text("team_id").references(() => teams.id),
+  teamId: text("team_id")
+    .references(() => teams.id),
   name: text("name").notNull(),
   createdAt: createdAt(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   image: text("image"),
   hiveRegistration: text("hive_registration"),
   email: text("email").unique(),
@@ -61,12 +60,11 @@ export const webSessions = pgTable("web_sessions", {
   memberId: text("member_id")
     .notNull()
     .references(() => members.id),
-  teamId: text("team_id").references(() => teams.id),
+  teamId: text("team_id")
+    .references(() => teams.id),
   tokenHash: text("token_hash").notNull().unique(),
   token: text("token").unique(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   createdAt: createdAt(),
