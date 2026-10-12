@@ -44,8 +44,8 @@ Use whole multiples only. Hero bee: 12× (192px). Supporting bees: 6× or 8×. C
 - Canvas: wax or hive dark, 1080×1080.
 - `speech-cite` at 10× top left as the quote mark. Do not use typographic quotation marks at display size.
 - Quote in Lilita One, 64–80px, max 5 lines, sentence case, no exclamation mark.
-- Attribution row at the bottom: `bee-face` at 6× in an octagon tile (the MemberBee recipe: 2px→4px ink border, `--radius-round`, agent-soft background), name in Nunito 800 32px, role in Silkscreen 20px.
-- One `cell-full` at 4× before a small "The hive knows." in Silkscreen 20px, bottom right.
+- Attribution row at the bottom: `bee-face` at 6× in an octagon tile (the MemberBee recipe: 4px ink border, `--radius-round`, agent-soft background), name in Nunito 800 32px, role in Silkscreen 24px.
+- One `cell-full` at 4× before a small "The hive knows." in Silkscreen 24px, bottom right.
 
 ### 4. A terminal hero with a bee
 - Canvas: terminal, 1200×630.
@@ -64,13 +64,13 @@ Use whole multiples only. Hero bee: 12× (192px). Supporting bees: 6× or 8×. C
 All pills: Silkscreen, uppercase, letter-spacing .04em, `-webkit-font-smoothing: none`, 4px ink border, 10px chamfer, no blur.
 | Pill | Fill | Text | Height / type | Shadow |
 |---|---|---|---|---|
-| Eyebrow | `--ink` | `--pollen-500` | 44px / 20px | none |
-| Status fresh | `--pollen-500` | `--ink` | 44px / 20px | `4px 4px 0 var(--ink)` |
-| Status confirmed | `--clover-700` | white | 44px / 20px | `4px 4px 0 var(--ink)` |
-| Status asked | `--teal-600` | white | 44px / 20px | `4px 4px 0 var(--ink)` |
-| Status outdated | `--wax-200` | `--wax-700` | 44px / 20px | none |
-| Repo | `--ink` | `--wax`, Space Mono 20px, not uppercase | 40px | none |
-| Agent | `--clay-500` (Claude) or `--teal-500` (Codex) | `--ink` | 44px / 20px, `icon-terminal` at 2× first | `4px 4px 0 var(--ink)` |
+| Eyebrow | `--ink` | `--pollen-500` | 48px / 24px | none |
+| Status fresh | `--pollen-500` | `--ink` | 48px / 24px | `4px 4px 0 var(--ink)` |
+| Status confirmed | `--clover-700` | white | 48px / 24px | `4px 4px 0 var(--ink)` |
+| Status asked | `--teal-600` | white | 48px / 24px | `4px 4px 0 var(--ink)` |
+| Status outdated | `--wax-200` | `--wax-700` | 48px / 24px | none |
+| Repo | `--ink` | `--wax`, Space Mono 24px, not uppercase | 48px | none |
+| Agent | `--clay-500` (Claude) or `--teal-500` (Codex) | `--ink` | 48px / 24px, `icon-terminal` at 2× first | `4px 4px 0 var(--ink)` |
 | Call to action | `--honey-500` | `--ink`, Lilita One 28px, sentence case | 64px | `6px 6px 0 var(--ink)` |
 Leave 16px inside padding at the sides, 12px between an icon and its label, and never put two shadowed pills closer than 16px.
 
@@ -87,10 +87,10 @@ Stamps are the loud, tilted marks. One per image at most.
 | Headline, Lilita One | 64px (max 96) | 80px (max 120) | 96px (max 140) |
 | Lead, Nunito 700 | 28px | 32px | 36px |
 | Body, Nunito 600 | 24px | 28px | 32px |
-| Eyebrow and pills, Silkscreen | 20px | 22px | 24px |
+| Eyebrow and pills, Silkscreen | 24px | 24px | 32px |
 | Code, Space Mono | 24px | 26px | 28px |
-| Attribution and footnote | 20px | 22px | 24px |
-Silkscreen must sit on a multiple of its 8px design grid to stay crisp: use 16, 24, 32 or 40px when the size is flexible, and never below 20px on a social canvas. Headlines stay in sentence case, max 3 lines on wide canvases and 5 on square. Contrast: ink on honey, wax or pollen; wax on hive dark or teal; never honey text on wax.
+| Attribution and footnote, Nunito 700 | 20px | 22px | 24px |
+Silkscreen is drawn on an 8px grid, so set it only at 24, 32 or 40px on a social canvas to keep it crisp, and never below 24px. Headlines stay in sentence case, max 3 lines on wide canvases and 5 on square. Contrast: ink on honey, wax or pollen; wax on hive dark or teal; never honey text on wax.
 
 ## Copy rules for images
 Sentence case. No exclamation marks. No emoji. Use the vocabulary: hive, cell, learning, forager, nectar, ask, cite. Name agents as "Priya's Claude" and "Sam's Codex"; never show a vendor logo. No queen, no ranks. Sign off with "The hive knows." at most once per image.
