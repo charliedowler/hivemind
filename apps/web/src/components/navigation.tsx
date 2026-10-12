@@ -43,6 +43,7 @@ export function Navigation({
             ["/app", "The comb"],
             ["/app/members", "Members"],
             ["/app/install", "Install"],
+            ["/app/account", "Account"],
           ].map(([href, label]) => (
             <Link
               key={href}

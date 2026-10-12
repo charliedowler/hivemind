@@ -19,8 +19,12 @@ import { Markdown } from "./markdown";
 export function LearningDetail({
   learning,
   onFeedback,
+  canModerate,
+  onModerated,
 }: {
   learning: LearningView;
+  canModerate?: boolean;
+  onModerated?: () => void;
   onFeedback?: (id: string, votes: LearningView["votes"]) => void;
 }) {
   const [feedback, setFeedback] = useState<{
@@ -65,7 +69,7 @@ export function LearningDetail({
         />
         <code className="repo">{learning.repo ?? "Across the hive"}</code>
       </div>
-      {votes.outdated > votes.up ? (
+      {learning.adminOutdated || votes.outdated > votes.up ? (
         <p className="cell-warning">
           This cell needs a fresh source. Check the learning before you cite it.
         </p>
@@ -115,6 +119,9 @@ export function LearningDetail({
           <CopyButton text={learning.id} label="Copy id" />
         </div>
       </div>
+      {canModerate ? (
+        <Moderation id={learning.id} onDone={onModerated} />
+      ) : null}
       {error ? <ErrorPanel message={error} /> : null}
     </div>
   );
@@ -130,7 +137,7 @@ export function LearningDialog({
   onFeedback?: (id: string, votes: LearningView["votes"]) => void;
 }) {
   const [result, setResult] = useState<{
-    learning?: LearningView;
+    learning?: LearningView & { canModerate?: boolean };
     error?: string;
   }>({});
   useEffect(() => {
@@ -157,10 +164,60 @@ export function LearningDialog({
       {result.error ? (
         <ErrorPanel message={result.error} />
       ) : result.learning ? (
-        <LearningDetail learning={result.learning} onFeedback={onFeedback} />
+        <LearningDetail
+          learning={result.learning}
+          onFeedback={onFeedback}
+          canModerate={result.learning.canModerate}
+          onModerated={onClose}
+        />
       ) : (
         <LoadingPanel>A forager is finding this cell.</LoadingPanel>
       )}
     </Dialog>
+  );
+}
+
+function Moderation({ id, onDone }: { id: string; onDone?: () => void }) {
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  async function act(action: "outdated" | "delete") {
+    setPending(true);
+    setError("");
+    try {
+      await requestJson("/api/app/admin", { action, id });
+      onDone?.();
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <div className="stack">
+      <span className="eyebrow">Team admin</span>
+      <div className="row wrap">
+        <Button
+          variant="secondary"
+          disabled={pending}
+          onClick={() => void act("outdated")}
+        >
+          Mark outdated
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={pending}
+          onClick={() => (confirm ? void act("delete") : setConfirm(true))}
+        >
+          {confirm ? "Confirm deletion" : "Delete cell"}
+        </Button>
+        {confirm ? (
+          <Button variant="ghost" onClick={() => setConfirm(false)}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+      {error ? <ErrorPanel message={error} /> : null}
+    </div>
   );
 }

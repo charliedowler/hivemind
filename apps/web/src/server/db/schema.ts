@@ -15,6 +15,9 @@ export const teams = pgTable("teams", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   inviteCode: text("invite_code").notNull().unique(),
+  inviteExpiresAt: timestamp("invite_expires_at", {
+    withTimezone: true,
+  }).notNull(),
   createdAt: createdAt(),
 });
 
@@ -25,6 +28,10 @@ export const members = pgTable("members", {
     .references(() => teams.id),
   name: text("name").notNull(),
   createdAt: createdAt(),
+  email: text("email").unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  role: text("role").notNull().default("member"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 });
 
@@ -77,6 +84,7 @@ export const learnings = pgTable("learnings", {
   pushCount: integer("push_count").notNull().default(1),
   upVotes: integer("up_votes").notNull().default(0),
   downVotes: integer("down_votes").notNull().default(0),
+  adminOutdated: boolean("admin_outdated").notNull().default(false),
   outdatedVotes: integer("outdated_votes").notNull().default(0),
   createdAt: createdAt(),
   updatedAt: timestamp("updated_at", { withTimezone: true })

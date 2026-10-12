@@ -7,9 +7,10 @@ import { createTeamInput, joinTeamInput, signInInput } from "@hivemind/core";
 import { Button, Card, Input, Sprite, Tabs } from "@hivemind/design-system";
 import { requestJson, errorMessage } from "@/lib/client";
 import { CopyButton, ErrorPanel } from "./primitives";
+import { EmailCode } from "./email-code";
 import { InstallSnippets, KeyBox } from "./install";
 
-type Mode = "teams" | "join" | "session";
+type Mode = "teams" | "join" | "domain" | "session";
 type Created = { apiKey: string; inviteCode?: string };
 
 const modes = {
@@ -26,6 +27,13 @@ const modes = {
     label: "Join a team",
     action: "Join the team",
     schema: joinTeamInput,
+  },
+  domain: {
+    title: "Join with your work email",
+    description: "A verified work domain can bring you into its hive.",
+    label: "Join by domain",
+    action: "Send a code",
+    schema: joinTeamInput.omit({ inviteCode: true }),
   },
   session: {
     title: "Welcome back",
@@ -44,6 +52,7 @@ export function Login({
   invite: string;
 }) {
   const [mode, setMode] = useState<Mode>(invite ? "join" : "teams");
+  const [token, setToken] = useState("");
   const [created, setCreated] = useState<Created>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -52,23 +61,25 @@ export function Login({
     event.preventDefault();
     setError("");
     const schema = modes[mode].schema;
-    const parsed = schema.safeParse(
-      Object.fromEntries(new FormData(event.currentTarget)),
-    );
+    const fields = Object.fromEntries(new FormData(event.currentTarget));
+    const parsed = schema.safeParse(fields);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Check the form.");
       return;
     }
     setPending(true);
     try {
-      const result = await requestJson<Created>(
-        `/api/app/${mode}`,
-        parsed.data,
+      const result = await requestJson<Created & { verificationToken: string }>(
+        mode === "domain" ? "/api/app/email" : `/api/app/${mode}`,
+        {
+          ...parsed.data,
+          ...(mode !== "session" ? { email: fields.email, intent: mode } : {}),
+        },
       );
       if (mode === "session") {
         router.push("/app");
         router.refresh();
-      } else setCreated(result);
+      } else setToken(result.verificationToken);
     } catch (error) {
       setError(errorMessage(error));
     } finally {
@@ -101,28 +112,38 @@ export function Login({
           tabs={[
             { id: "teams", label: "Create a team" },
             { id: "join", label: "Join a team" },
+            { id: "domain", label: "Work domain" },
             { id: "session", label: "Sign in" },
           ]}
           value={mode}
           onChange={(value) => {
             if (!pending) {
               setMode(value as Mode);
+              setToken("");
               setError("");
             }
           }}
         />
-        <form
-          key={mode}
-          className="stack"
-          onSubmit={submit}
-          aria-label={modes[mode].label}
-        >
-          <LoginFields mode={mode} invite={invite} />
-          {error ? <ErrorPanel message={error} /> : null}
-          <Button type="submit" fullWidth loading={pending}>
-            {pending ? "Joining the hive" : modes[mode].action}
-          </Button>
-        </form>
+        {token ? (
+          <EmailCode
+            token={token}
+            onVerified={setCreated}
+            onBack={() => setToken("")}
+          />
+        ) : (
+          <form
+            key={mode}
+            className="stack"
+            onSubmit={submit}
+            aria-label={modes[mode].label}
+          >
+            <LoginFields mode={mode} invite={invite} />
+            {error ? <ErrorPanel message={error} /> : null}
+            <Button type="submit" fullWidth loading={pending}>
+              {pending ? "Joining the hive" : modes[mode].action}
+            </Button>
+          </form>
+        )}
       </Card>
     </div>
   );
@@ -187,6 +208,17 @@ function LoginFields({ mode, invite }: { mode: Mode; invite: string }) {
           required
           maxLength={64}
           placeholder="hive-..."
+        />
+      ) : null}
+      {mode !== "session" ? (
+        <Input
+          label="Work email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          maxLength={200}
+          required
+          placeholder="you@company.com"
         />
       ) : null}
       {mode !== "session" ? (

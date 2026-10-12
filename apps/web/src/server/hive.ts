@@ -70,6 +70,7 @@ function view(row: Record<string, unknown>): LearningView {
       down: Number(row.down_votes),
       outdated: Number(row.outdated_votes),
     },
+    adminOutdated: Boolean(row.admin_outdated),
     createdAt: date(row.created_at),
     updatedAt: date(row.updated_at),
     lastPushedAt: date(row.last_pushed_at),
@@ -284,26 +285,35 @@ export async function getLearning(
 
 export async function listMembers(ctx: HiveContext): Promise<MemberView[]> {
   const rows =
-    await getSql()`SELECT m.*, count(l.id)::int AS learning_count FROM members m LEFT JOIN learnings l ON l.member_id = m.id AND l.team_id = ${ctx.teamId} WHERE m.team_id = ${ctx.teamId} GROUP BY m.id ORDER BY m.created_at`;
+    await getSql()`SELECT m.*, count(l.id)::int AS learning_count FROM members m LEFT JOIN learnings l ON l.member_id = m.id AND l.team_id = ${ctx.teamId} WHERE m.team_id = ${ctx.teamId} AND m.removed_at IS NULL GROUP BY m.id ORDER BY m.created_at`;
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
     joinedAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
     learningCount: Number(row.learning_count),
+    email: row.email,
+    emailVerified: row.email_verified,
+    role: row.role,
   }));
 }
 
 export async function teamOverview(ctx: HiveContext): Promise<TeamOverview> {
   const sql = getSql();
   const rows =
-    await sql`SELECT name, invite_code, (SELECT count(*)::int FROM learnings WHERE team_id = ${ctx.teamId}) AS learning_count, (SELECT count(*)::int FROM members WHERE team_id = ${ctx.teamId}) AS member_count FROM teams WHERE id = ${ctx.teamId}`;
+    await sql`SELECT name, invite_expires_at, (SELECT count(*)::int FROM learnings WHERE team_id = ${ctx.teamId}) AS learning_count, (SELECT count(*)::int FROM members WHERE team_id = ${ctx.teamId} AND removed_at IS NULL) AS member_count FROM teams WHERE id = ${ctx.teamId}`;
   if (!rows[0]) throw new HiveNotFoundError("Team not found.");
   const repos =
     await sql`SELECT DISTINCT repo FROM learnings WHERE team_id = ${ctx.teamId} AND repo IS NOT NULL ORDER BY repo`;
   return {
     teamName: rows[0].name,
-    inviteCode: rows[0].invite_code,
+    role: (
+      await sql`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`
+    )[0].role,
+    domains: (
+      await sql`SELECT domain FROM team_domains WHERE team_id = ${ctx.teamId} ORDER BY domain`
+    ).map((row) => row.domain),
+    inviteExpiresAt: rows[0].invite_expires_at.toISOString(),
     learningCount: Number(rows[0].learning_count),
     memberCount: Number(rows[0].member_count),
     repos: repos.map((row) => row.repo),

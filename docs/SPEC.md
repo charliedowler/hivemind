@@ -32,12 +32,12 @@ design/system                @hivemind/design-system: tokens, pixel sprites and 
 
 ## Environment
 
-| Name | Used for | Absent means |
-| --- | --- | --- |
-| `DATABASE_URL` | Postgres (Neon pooled URL in production) | routes that need the database return 503 with a clear message |
-| `OPENAI_API_KEY` | `text-embedding-3-small` embeddings (1536 dims) | full-text search only, dedupe by normalized title |
-| `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` synthesis, `claude-haiku-5-5` tagging | `hive_ask` returns an extractive answer, no auto tags |
-| `PUBLIC_URL` | canonical URL in metadata, install snippets and invite links | falls back to the request origin |
+| Name                | Used for                                                     | Absent means                                                  |
+| ------------------- | ------------------------------------------------------------ | ------------------------------------------------------------- |
+| `DATABASE_URL`      | Postgres (Neon pooled URL in production)                     | routes that need the database return 503 with a clear message |
+| `OPENAI_API_KEY`    | `text-embedding-3-small` embeddings (1536 dims)              | full-text search only, dedupe by normalized title             |
+| `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` synthesis, `claude-haiku-5-5` tagging    | `hive_ask` returns an extractive answer, no auto tags         |
+| `PUBLIC_URL`        | canonical URL in metadata, install snippets and invite links | falls back to the request origin                              |
 
 Local Postgres for development: `postgres://hivemind:hivemind@127.0.0.1:54329/<database>` (Docker container `hivemind-pg`, image `pgvector/pgvector:pg18`, extension `vector` 0.8).
 
@@ -70,31 +70,67 @@ The migration runner keeps a `_migrations` table. It applies the pgvector migrat
 ## Contracts (`@hivemind/core`)
 
 ```ts
-type HiveContext = { teamId: string; teamName: string; memberId: string; memberName: string };
+type HiveContext = {
+  teamId: string;
+  teamName: string;
+  memberId: string;
+  memberName: string;
+};
 
 type LearningView = {
-  id: string; title: string; body: string; kind: LearningKind; tags: string[];
-  repo: string | null; paths: string[]; confidence: number; source: LearningSource;
+  id: string;
+  title: string;
+  body: string;
+  kind: LearningKind;
+  tags: string[];
+  repo: string | null;
+  paths: string[];
+  confidence: number;
+  source: LearningSource;
   author: { id: string; name: string };
-  pushCount: number; votes: { up: number; down: number; outdated: number };
-  createdAt: string; updatedAt: string; lastPushedAt: string;
+  pushCount: number;
+  votes: { up: number; down: number; outdated: number };
+  createdAt: string;
+  updatedAt: string;
+  lastPushedAt: string;
 };
 
 type SearchHit = LearningView & {
   score: number;
-  signals: { vector: number | null; fts: number; recency: number; votes: number; repoMatch: boolean };
+  signals: {
+    vector: number | null;
+    fts: number;
+    recency: number;
+    votes: number;
+    repoMatch: boolean;
+  };
 };
 
-type PushResult = { id: string; merged: boolean; pushCount: number; redactions: number; learning: LearningView };
+type PushResult = {
+  id: string;
+  merged: boolean;
+  pushCount: number;
+  redactions: number;
+  learning: LearningView;
+};
 type AskResult = {
-  answer: string;                      // markdown, cites inline as [lrn_xxx]
+  answer: string; // markdown, cites inline as [lrn_xxx]
   citations: { id: string; title: string; why: string }[];
   confidence: "high" | "medium" | "low";
   gaps: string | null;
-  synthesized: boolean;                // false = extractive fallback
+  synthesized: boolean; // false = extractive fallback
 };
-type FeedbackResult = { id: string; votes: { up: number; down: number; outdated: number } };
-type MemberView = { id: string; name: string; joinedAt: string; lastSeenAt: string | null; learningCount: number };
+type FeedbackResult = {
+  id: string;
+  votes: { up: number; down: number; outdated: number };
+};
+type MemberView = {
+  id: string;
+  name: string;
+  joinedAt: string;
+  lastSeenAt: string | null;
+  learningCount: number;
+};
 ```
 
 ## Service (`apps/web/src/server/hive.ts`)
@@ -126,6 +162,7 @@ endWebSession(): Promise<void>
 ## Behaviour
 
 ### Push
+
 1. Validate with `hivePushInput`. Normalize repo to lower case `owner/name` (strip `https://github.com/`, `.git`). Normalize tags to lower case kebab, deduped.
 2. Redact secrets in title and body with `redactSecrets` from core (API key shapes such as `sk-`, `sk-ant-`, `ghp_`, `github_pat_`, `xox[bap]-`, `AKIA…`, `hm_…`, JWTs, `-----BEGIN … PRIVATE KEY-----` blocks, `postgres://user:pass@` passwords). Replace with `[redacted]`. Return the count.
 3. Embed `title + "\n\n" + body` (truncate to 8000 characters) when `OPENAI_API_KEY` exists. The call has a 6 second timeout and two retries. An embedding failure never fails the push.
@@ -134,6 +171,7 @@ endWebSession(): Promise<void>
 6. When tags are empty and `ANTHROPIC_API_KEY` exists, schedule `suggestTags` with `after()` from `next/server` and store up to 5 tags. This never delays or fails the push.
 
 ### Search
+
 1. Candidate set = the 40 nearest learnings by cosine similarity (when the query embeds and the column exists), kept when the similarity is at least 0.30 or the row is also a text candidate, union the top 40 text candidates. A text candidate matches any query lexeme (`plainto_tsquery` with OR) and covers at least half of the distinct query lexemes; it is ordered by `ts_rank_cd`. When both sets are empty, fall back to a prefix `to_tsquery` on the query words. All inside `team_id = ctx.teamId`. `tags` is a hard filter (array overlap). `repo` is a boost, not a filter.
 2. Rank with `rankCandidates` from core (pure, unit tested):
    - `vector` = cosine similarity clamped to 0..1
@@ -145,6 +183,7 @@ endWebSession(): Promise<void>
 3. Return the top `limit` hits with signals.
 
 ### Ask
+
 1. `searchLearnings` with the question, limit 8.
 2. No hits: return a fixed answer that says the hive has nothing on this yet, `synthesized: false`, `confidence: "low"`.
 3. Call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
@@ -152,9 +191,11 @@ endWebSession(): Promise<void>
 5. Write an `ask_log` row.
 
 ### Recent
+
 `since` accepts an ISO datetime or `<n>h` / `<n>d`. Order by `last_pushed_at desc`.
 
 ### Feedback
+
 Upsert the member's vote. Recompute the three counters. Unknown id in this team: a not-found error, never another team's row.
 
 ## MCP endpoint
@@ -175,19 +216,19 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 
 All bodies are JSON. Errors are `{ "error": "<one line>" }` with a 4xx or 5xx status. Routes under `/api/app/*` other than `teams`, `join` and `session` need the session cookie and return 401 without it. Every body is validated with the zod schema from core.
 
-| Route | Body | Success |
-| --- | --- | --- |
-| `POST /api/early-access` | `EarlyAccessInput` | 201 `{ ok: true }` |
-| `POST /api/app/teams` | `{ teamName, memberName }` | 201 `{ apiKey, inviteCode, team: { id, name }, member: { id, name } }`, sets the cookie |
-| `POST /api/app/join` | `{ inviteCode, memberName }` | 201 `{ apiKey, team, member }`, sets the cookie. 404 for an unknown code |
-| `POST /api/app/session` | `{ apiKey }` | 200 `{ team, member }`, sets the cookie. 401 for an unknown key |
-| `DELETE /api/app/session` | none | 204, clears the cookie |
-| `GET /api/app/feed?since=7d&repo=&limit=50` | none | 200 `{ learnings: LearningView[] }` |
-| `POST /api/app/search` | `HiveSearchInput` | 200 `{ hits: SearchHit[] }` |
-| `POST /api/app/ask` | `HiveAskInput` | 200 `AskResult` |
-| `POST /api/app/feedback` | `HiveFeedbackInput` | 200 `FeedbackResult` |
-| `GET /api/app/members` | none | 200 `{ members: MemberView[], overview: TeamOverview }` |
-| `POST /api/app/keys` | `{ label? }` | 201 `{ apiKey, prefix }` |
+| Route                                       | Body                         | Success                                                                                 |
+| ------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
+| `POST /api/early-access`                    | `EarlyAccessInput`           | 201 `{ ok: true }`                                                                      |
+| `POST /api/app/teams`                       | `{ teamName, memberName }`   | 201 `{ apiKey, inviteCode, team: { id, name }, member: { id, name } }`, sets the cookie |
+| `POST /api/app/join`                        | `{ inviteCode, memberName }` | 201 `{ apiKey, team, member }`, sets the cookie. 404 for an unknown code                |
+| `POST /api/app/session`                     | `{ apiKey }`                 | 200 `{ team, member }`, sets the cookie. 401 for an unknown key                         |
+| `DELETE /api/app/session`                   | none                         | 204, clears the cookie                                                                  |
+| `GET /api/app/feed?since=7d&repo=&limit=50` | none                         | 200 `{ learnings: LearningView[] }`                                                     |
+| `POST /api/app/search`                      | `HiveSearchInput`            | 200 `{ hits: SearchHit[] }`                                                             |
+| `POST /api/app/ask`                         | `HiveAskInput`               | 200 `AskResult`                                                                         |
+| `POST /api/app/feedback`                    | `HiveFeedbackInput`          | 200 `FeedbackResult`                                                                    |
+| `GET /api/app/members`                      | none                         | 200 `{ members: MemberView[], overview: TeamOverview }`                                 |
+| `POST /api/app/keys`                        | `{ label? }`                 | 201 `{ apiKey, prefix }`                                                                |
 
 ## LLM module (`apps/web/src/server/llm/index.ts`)
 
@@ -201,3 +242,17 @@ suggestTags(learning: Pick<LearningView, "title" | "body" | "kind" | "repo">): P
 ## Seed
 
 `apps/web/scripts/seed-data.json` holds the demo learnings; each has an `author` name. `pnpm --filter web seed -- --url <base url> --key <api key of an existing member> --invite <invite code>` joins the other authors through `POST /api/app/join`, then pushes every learning through `tools/call hive_push` on `/api/mcp` with the right author's key. The script prints the ids. It never prints a key.
+
+## Round 3: email identity and access
+
+Email verification precedes public team creation and joins. POST `/api/app/teams` and `/api/app/join` return 202 with an opaque verification token. POST `/api/app/email` accepts `intent: domain` for domain joins or `intent: account` with a session to verify a legacy member. PUT `/api/app/email` consumes the token and six-digit code. Successful creation or join returns the key once and starts the existing hashed, httpOnly session. An account verification binds the email without issuing a new key.
+
+Members have nullable email for existing identities, a unique lowercase email index, email_verified, role (member/admin), and removed_at. The earliest existing member and each new creator are admins. New public joins require verified email. Domain joins use exact allowed-domain equality and reject public providers and their subdomains. Only an admin's own verified domain can be allowed; each domain belongs to one hive.
+
+Invite_code now contains SHA-256 only. Invite_expires_at defaults to seven days. Legacy invites are hashed during migration; members retain keys and sessions. A raw invite is returned only when created or rotated. Neither overview nor members reads reveal it. Pending email payloads contain only an invite hash.
+
+Verification codes use salted scrypt (N=32768, r=8, p=3), expire after 15 minutes, and accept at most five attempts. An opaque 256-bit verification token is hashed too. PostgreSQL locks serialize attempts, and consumed or undelivered codes cannot succeed. Resend delivery uses idempotency headers and hides provider error bodies. Sending allows five per email and 20 per IP per hour, with a 30-second resend pause. Verification allows 30 per token and 60 per IP per minute. Missing RESEND_API_KEY or EMAIL_FROM returns 503 and disables the feature. RESEND_EMAIL_DOMAIN identifies the sender domain for deployment checks.
+
+GET/PATCH `/api/app/account` reads and changes the current member's name. Keys include labels, prefix, created_at, last_used_at, revoked_at. POST `/api/app/admin` rotates invites, allows the verified domain, removes a member, revokes a key, deletes a cell or marks it outdated. Members can revoke their own keys; all other actions recheck admin membership. Every team mutation filters by the authenticated team. Removing a member revokes keys and sessions but preserves attribution. An admin's outdated mark survives later votes. The account and members pages expose these actions. Install commands stay unchanged.
+
+Migrations 0004_email_access.sql and 0005_moderation.sql run in the migration runner's transaction, with lock and statement timeouts. Rollback files live under drizzle/rollback and never run in the forward scan. Rollback cannot recover a hashed invite; it issues replacement codes. Production migrations run from the committed main tip before the code deploys.

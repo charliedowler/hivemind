@@ -39,6 +39,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
   let a: HiveContext;
   let b: HiveContext;
   let key: string;
+  let inviteCode: string;
   const teamIds: string[] = [];
   const earlyIds: string[] = [];
   beforeAll(async () => {
@@ -53,6 +54,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
     a = first.ctx;
     b = second.ctx;
     key = first.apiKey;
+    inviteCode = first.inviteCode;
     teamIds.push(a.teamId, b.teamId);
   });
   afterAll(async () => {
@@ -250,9 +252,9 @@ describe.skipIf(!enabled)("hive database integration", () => {
   });
 
   it("joins teams, exposes isolated overview and manages web sessions", async () => {
-    const overview = await teamOverview(a);
+    await teamOverview(a);
     const joined = await joinTeam({
-      inviteCode: overview.inviteCode,
+      inviteCode,
       memberName: "New member",
     });
     expect(joined?.ctx.teamId).toBe(a.teamId);

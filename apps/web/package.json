@@ -14,7 +14,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@hivemind/core": "workspace:*",
+    "@hivemind/design-system": "workspace:*",
     "@modelcontextprotocol/server": "^2.0.0",
+    "company-email-validator": "^1.2.7",
     "drizzle-orm": "^0.45.4",
     "mcp-handler": "^2.0.0",
     "next": "^16.4.0",
@@ -25,8 +27,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
-    "zod": "^4.2.0",
-    "@hivemind/design-system": "workspace:*"
+    "zod": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

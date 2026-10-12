@@ -2,8 +2,9 @@ import type { LearningView } from "@hivemind/core";
 import type { LearningStatus, AgentKind } from "@hivemind/design-system";
 
 export function learningStatus(
-  learning: Pick<LearningView, "votes" | "pushCount">,
+  learning: Pick<LearningView, "votes" | "pushCount" | "adminOutdated">,
 ): LearningStatus {
+  if (learning.adminOutdated) return "outdated";
   if (learning.votes.outdated > learning.votes.up) return "outdated";
   if (learning.votes.up > 0 || learning.pushCount > 1) return "confirmed";
   return "fresh";

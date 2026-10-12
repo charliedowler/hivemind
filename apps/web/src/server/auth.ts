@@ -36,8 +36,8 @@ export async function createTeam(
   const inviteCode = `hive-${randomBase32(10)}`;
   const apiKey = `hm_${newToken()}`;
   await getSql().begin(async (tx) => {
-    await tx`INSERT INTO teams (id, name, invite_code) VALUES (${ctx.teamId}, ${ctx.teamName}, ${inviteCode})`;
-    await tx`INSERT INTO members (id, team_id, name) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName})`;
+    await tx`INSERT INTO teams (id, name, invite_code) VALUES (${ctx.teamId}, ${ctx.teamName}, ${hashToken(inviteCode)})`;
+    await tx`INSERT INTO members (id, team_id, name, role) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName}, 'admin')`;
     await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${newId("key")}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
   });
   return { ctx, apiKey, inviteCode };
@@ -53,7 +53,7 @@ export async function joinTeam(
     );
   const sql = getSql();
   const teams =
-    await sql`SELECT id, name FROM teams WHERE invite_code = ${parsed.data.inviteCode}`;
+    await sql`SELECT id, name FROM teams WHERE invite_code = ${hashToken(parsed.data.inviteCode)} AND invite_expires_at > now()`;
   if (!teams[0]) return null;
   const ctx: HiveContext = {
     teamId: teams[0].id,
@@ -63,7 +63,7 @@ export async function joinTeam(
   };
   const apiKey = `hm_${newToken()}`;
   await sql.begin(async (tx) => {
-    await tx`INSERT INTO members (id, team_id, name) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName})`;
+    await tx`INSERT INTO members (id, team_id, name, role) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName}, 'member')`;
     await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${newId("key")}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
   });
   return { ctx, apiKey };
@@ -75,7 +75,7 @@ export async function authenticateApiKey(
   if (!/^hm_[A-Za-z0-9_-]{43}$/.test(rawKey)) return null;
   const sql = getSql();
   const rows =
-    await sql`SELECT k.id, k.team_id, t.name AS team_name, k.member_id, m.name AS member_name FROM api_keys k JOIN teams t ON t.id = k.team_id JOIN members m ON m.id = k.member_id AND m.team_id = k.team_id WHERE k.key_hash = ${hashToken(rawKey)} AND k.revoked_at IS NULL`;
+    await sql`SELECT k.id, k.team_id, t.name AS team_name, k.member_id, m.name AS member_name FROM api_keys k JOIN teams t ON t.id = k.team_id JOIN members m ON m.id = k.member_id AND m.team_id = k.team_id WHERE k.key_hash = ${hashToken(rawKey)} AND k.revoked_at IS NULL AND m.removed_at IS NULL`;
   if (!rows[0]) return null;
   const ctx = context(rows[0]);
   await sql`WITH touched AS (UPDATE api_keys SET last_used_at = now() WHERE id = ${rows[0].id} AND team_id = ${ctx.teamId} AND revoked_at IS NULL AND (last_used_at IS NULL OR last_used_at <= now() - interval '1 minute') RETURNING member_id) UPDATE members SET last_seen_at = now() WHERE id IN (SELECT member_id FROM touched) AND team_id = ${ctx.teamId}`;
@@ -89,7 +89,7 @@ export async function issueApiKey(
   const apiKey = `hm_${newToken()}`;
   const prefix = apiKey.slice(0, 10);
   const rows =
-    await getSql()`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix, label) SELECT ${newId("key")}, ${ctx.teamId}, id, ${hashToken(apiKey)}, ${prefix}, ${label?.trim().slice(0, 120) || "Agent key"} FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} RETURNING id`;
+    await getSql()`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix, label) SELECT ${newId("key")}, ${ctx.teamId}, id, ${hashToken(apiKey)}, ${prefix}, ${label?.trim().slice(0, 120) || "Agent key"} FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING id`;
   if (!rows.length)
     throw new HiveNotFoundError("Member not found in your team.");
   return { apiKey, prefix };
@@ -99,7 +99,7 @@ export async function startWebSession(ctx: HiveContext): Promise<void> {
   const token = newToken();
   const expires = new Date(Date.now() + 30 * 86400000);
   const rows =
-    await getSql()`INSERT INTO web_sessions (id, member_id, team_id, token_hash, expires_at) SELECT ${newId("ses")}, id, ${ctx.teamId}, ${hashToken(token)}, ${expires} FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} RETURNING id`;
+    await getSql()`INSERT INTO web_sessions (id, member_id, team_id, token_hash, expires_at) SELECT ${newId("ses")}, id, ${ctx.teamId}, ${hashToken(token)}, ${expires} FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING id`;
   if (!rows.length)
     throw new HiveNotFoundError("Member not found in your team.");
   (await cookies()).set("hm_session", token, {
@@ -115,7 +115,7 @@ export async function getWebContext(): Promise<HiveContext | null> {
   const token = (await cookies()).get("hm_session")?.value;
   if (!token) return null;
   const rows =
-    await getSql()`SELECT s.team_id, t.name AS team_name, s.member_id, m.name AS member_name FROM web_sessions s JOIN teams t ON t.id = s.team_id JOIN members m ON m.id = s.member_id AND m.team_id = s.team_id WHERE s.token_hash = ${hashToken(token)} AND s.expires_at > now()`;
+    await getSql()`SELECT s.team_id, t.name AS team_name, s.member_id, m.name AS member_name FROM web_sessions s JOIN teams t ON t.id = s.team_id JOIN members m ON m.id = s.member_id AND m.team_id = s.team_id WHERE s.token_hash = ${hashToken(token)} AND s.expires_at > now() AND m.removed_at IS NULL`;
   return rows[0] ? context(rows[0]) : null;
 }
 

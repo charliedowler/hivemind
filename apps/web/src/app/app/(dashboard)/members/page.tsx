@@ -1,11 +1,11 @@
+import { redirect } from "next/navigation";
 import { Members } from "@/components/members";
 import { publicUrl } from "@/lib/public-url";
-import { ErrorPanel } from "@/components/primitives";
-import { errorMessage } from "@/lib/client";
+import { getWebContext } from "@/server/auth";
+import { memberPage } from "@/server/identity/member-page";
 export default async function Page() {
-  try {
-    return <Members baseUrl={await publicUrl()} />;
-  } catch (error) {
-    return <ErrorPanel message={errorMessage(error)} />;
-  }
+  const ctx = await getWebContext();
+  if (!ctx) redirect("/app/login");
+  const [baseUrl, initial] = await Promise.all([publicUrl(), memberPage(ctx)]);
+  return <Members baseUrl={baseUrl} initial={initial} />;
 }

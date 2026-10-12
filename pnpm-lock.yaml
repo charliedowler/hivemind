@@ -26,6 +26,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.0.0
         version: 2.3.1
+      company-email-validator:
+        specifier: ^1.2.7
+        version: 1.2.7
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(postgres@3.4.9)
@@ -730,6 +733,10 @@ packages:
     resolution: {integrity: sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ==}
     engines: {node: '>=16'}
 
+  company-email-validator@1.2.7:
+    resolution: {integrity: sha512-XNZ1wiBOG5g5yUSV6+RuGFkMvUgI4xAulKWJDdrXqqfWSqEy7k5bimeeBcQwEjoErRKDtksDRuDa9Rb1zFAP5Q==}
+    engines: {node: '>4.0'}
+
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
@@ -853,6 +860,10 @@ packages:
         optional: true
       sqlite3:
         optional: true
+
+  email-validator@2.0.4:
+    resolution: {integrity: sha512-gYCwo7kh5S3IDyZPLZf6hSS0MnZT8QmJFqYvbqlDZSbwdZlY6QZWxJ4i/6UhITOJ4XzyI647Bm2MXKCLqnJ4nQ==}
+    engines: {node: '>4.0'}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -1904,6 +1915,10 @@ snapshots:
 
   commander@11.1.0: {}
 
+  company-email-validator@1.2.7:
+    dependencies:
+      email-validator: 2.0.4
+
   convert-source-map@2.0.0: {}
 
   csstype@3.2.3: {}
@@ -1927,6 +1942,8 @@ snapshots:
   drizzle-orm@0.45.4(postgres@3.4.9):
     optionalDependencies:
       postgres: 3.4.9
+
+  email-validator@2.0.4: {}
 
   es-module-lexer@2.3.2: {}
 

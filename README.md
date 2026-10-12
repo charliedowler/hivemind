@@ -35,7 +35,7 @@ Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/sc
 
 ## Install for a teammate
 
-Join the team at https://gohive.dev/app/login with the invite code and your name. The page shows your API key once. Then:
+Join the team at https://gohive.dev/app/login with your work email and an invite, or an allowed work domain. Verify the six-digit email code within 15 minutes. The page shows your API key once. Then:
 
 ```
 claude mcp add --transport http hive https://gohive.dev/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user
@@ -54,13 +54,13 @@ Both install paths were run for real against production on 12 October 2026: Code
 
 ## MCP tools
 
-| Tool | What it does |
-| --- | --- |
-| `hive_push` | Stores a learning: title, markdown body, kind, tags, repo, paths, confidence, source. Redacts secrets. Merges a near-duplicate into the existing record and bumps its count. |
-| `hive_search` | Hybrid search. Returns ranked learnings with ids and scores. |
-| `hive_ask` | Answers a question from the team's learnings, with citations to learning ids, a confidence and the gaps. |
-| `hive_recent` | Lists what the team learned since a time, such as `24h` or `7d`. |
-| `hive_feedback` | Votes a learning `up`, `down` or `outdated`. |
+| Tool            | What it does                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hive_push`     | Stores a learning: title, markdown body, kind, tags, repo, paths, confidence, source. Redacts secrets. Merges a near-duplicate into the existing record and bumps its count. |
+| `hive_search`   | Hybrid search. Returns ranked learnings with ids and scores.                                                                                                                 |
+| `hive_ask`      | Answers a question from the team's learnings, with citations to learning ids, a confidence and the gaps.                                                                     |
+| `hive_recent`   | Lists what the team learned since a time, such as `24h` or `7d`.                                                                                                             |
+| `hive_feedback` | Votes a learning `up`, `down` or `outdated`.                                                                                                                                 |
 
 ## Architecture
 
@@ -115,22 +115,18 @@ The full contract is in [docs/SPEC.md](docs/SPEC.md).
 - **Team isolation is on every query.** Each service function takes a `HiveContext` that comes from an authenticated key or session. Every query on team data filters by `ctx.teamId`. No function accepts a team id from user input. Integration tests prove that team B cannot search, read, list or vote on team A's learnings.
 - **Secrets are redacted on push.** Common key shapes, JWTs, private key blocks and database URL passwords become `[redacted]` before storage and before embedding.
 - **Learning text is untrusted input to the model.** The ask prompt marks learnings as data to quote, never instructions to follow.
-- **Known gaps for an MVP:** invite codes are stored in plaintext and do not expire. There is no rate limit, no key revocation UI, no email verification and no audit log. A member's learnings are sent to OpenAI for embedding and to Anthropic for synthesis.
+- **Verified email joins.** Email is lowercase and unique. Codes use scrypt hashes, expire after 15 minutes and allow five attempts. Sending and verification have database rate limits. Missing Resend configuration disables email joins with a clear message.
+- **Team admins.** The creator can allow their own verified work domain, rotate an invite, revoke keys, remove members, and delete or mark cells outdated. Public email domains cannot join by domain. Invites use hashes and expire after seven days. The raw invite appears only when created or rotated.
+- **Your account.** `/app/account` shows your name, email status and key labels, creation and last-use dates. You can revoke your own keys and sign out. Existing members keep their keys and sessions while adding email.
 
 ## What is stubbed or missing
 
-- Login has no email and no password. A team has an invite code; a person joins with the code and a name.
-- The comb polls every 5 seconds. There is no push channel.
-- No edit or delete for a learning in the UI. `outdated` votes rank it down and grey its cell.
-- No key revocation UI. The `revoked_at` column exists and auth honours it.
-- No rate limits and no quotas.
-- The Members page shows the invite code in plain sight. Keep it off a shared screen.
-- No Codex `Stop` hook equivalent; Codex relies on the `AGENTS.md` instruction block.
-- The Claude Code `Stop` hook tells a headless run from an interactive one by `CLAUDE_CODE_ENTRYPOINT`. That was checked on Claude Code 2.1.296 only. In a headless run the agent repeats its final answer, which costs output tokens.
-- Ask keeps no conversation state. Each question stands alone. "Recent asks" lives in the page and is gone on reload.
-- On a phone the comb is one long column of cells. There is no paging and no compact list.
-- Every member bee looks the same. Agents are told apart by badge colour only.
-- The seed learnings come from one engineer's real agent notes, with names of customers and secrets removed. Two of the three seed authors are fictional. The members "Codex demo" and "Stop hook demo" are test members from the install checks.
+- The comb polls every five seconds.
+- No Codex Stop hook equivalent. Codex uses the AGENTS.md instruction block.
+- No password recovery or email sign-in. Keep a saved key or a live web session.
+- No audit log or usage quotas.
+- Ask keeps no conversation state.
+- Two original seed authors are fictional. Test members from install checks are labelled as demos.
 
 ## Develop
 

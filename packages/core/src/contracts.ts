@@ -23,6 +23,7 @@ export type LearningView = {
   author: { id: string; name: string };
   pushCount: number;
   votes: VoteCounts;
+  adminOutdated?: boolean;
   createdAt: string;
   updatedAt: string;
   lastPushedAt: string;
@@ -70,11 +71,16 @@ export type MemberView = {
   joinedAt: string;
   lastSeenAt: string | null;
   learningCount: number;
+  email: string | null;
+  emailVerified: boolean;
+  role: "member" | "admin";
 };
 
 export type TeamOverview = {
   teamName: string;
-  inviteCode: string;
+  role: "member" | "admin";
+  domains: string[];
+  inviteExpiresAt: string;
   learningCount: number;
   memberCount: number;
   repos: string[];
