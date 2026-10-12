@@ -167,16 +167,34 @@ export async function queueEvidence(
   await tx`INSERT INTO learning_evidence (push_id, team_id, learning_id, payload, object_key, digest, bytes) VALUES (${pushId}, ${ctx.teamId}, ${learningId}, ${payload}::jsonb, ${key}, ${hash}, ${Buffer.byteLength(payload)})`;
 }
 
+async function withStorageWorkers<T>(
+  items: Iterable<T>,
+  operation: (item: T) => Promise<void>,
+) {
+  const iterator = items[Symbol.iterator]();
+  async function runWorker(): Promise<void> {
+    const item = iterator.next();
+    if (item.done) return;
+    await operation(item.value);
+    return runWorker();
+  }
+  const results = await Promise.allSettled(
+    Array.from({ length: 6 }, () => runWorker()),
+  );
+  for (const result of results)
+    if (result.status === "rejected") throw result.reason;
+}
+
 async function flushEvidence(ctx: HiveContext) {
   const rows =
     await getSql()`SELECT push_id, payload, object_key, digest FROM learning_evidence WHERE team_id = ${ctx.teamId} AND uploaded_at IS NULL ORDER BY created_at LIMIT 100`;
-  for (const row of rows) {
+  await withStorageWorkers(rows, async (row) => {
     const payload = Buffer.from(canonicalJson(row.payload));
     const hash = digest(payload);
     const key = `teams/${ctx.teamId}/evidence/${row.push_id}-${hash}.json`;
     await putPrivateObject(key, payload, "application/json");
     await getSql()`UPDATE learning_evidence SET payload = NULL, uploaded_at = now(), digest = ${hash}, bytes = ${payload.length}, object_key = ${key} WHERE push_id = ${row.push_id} AND team_id = ${ctx.teamId} AND uploaded_at IS NULL`;
-  }
+  });
 }
 
 export async function ensureKnowledge(
@@ -205,7 +223,7 @@ export async function ensureKnowledge(
     const files = renderKnowledgeTree(rows.map(learningView));
     const oldManifest = state.manifest as Manifest;
     const manifest: Manifest = {};
-    for (const [path, content] of files) {
+    await withStorageWorkers(files, async ([path, content]) => {
       const hash = digest(content),
         key = `teams/${ctx.teamId}/tree/${hash}.md`;
       if (force || oldManifest[path]?.digest !== hash)
@@ -215,7 +233,7 @@ export async function ensureKnowledge(
           "text/markdown; charset=utf-8",
         );
       manifest[path] = { key, digest: hash };
-    }
+    });
     const futureDates = rows
       .map((row) => row.verify_after && new Date(row.verify_after).getTime())
       .filter(
@@ -303,7 +321,7 @@ export async function snapshotKnowledge(ctx: HiveContext) {
   });
   let bytes = 0;
   try {
-    for (const [path, file] of Object.entries(manifest)) {
+    await withStorageWorkers(Object.entries(manifest), async ([path, file]) => {
       const content = await readPrivateObject(file.key);
       if (digest(content) !== file.digest)
         throw new HiveUnavailableError(
@@ -323,7 +341,7 @@ export async function snapshotKnowledge(ctx: HiveContext) {
         },
         content,
       );
-    }
+    });
     pack.finalize();
     const archive = await complete;
     const key = `teams/${ctx.teamId}/snapshots/${revision}-${digest(archive)}.tar.gz`;

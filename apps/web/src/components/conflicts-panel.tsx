@@ -160,8 +160,10 @@ export function ConflictCard({
         ))}
       </div>
       <p className="small muted">
-        {conflict.reason} · {Math.round(conflict.confidence * 100)}% comparison
-        confidence
+        {conflict.reason}
+        {conflict.status === "candidate"
+          ? ` · ${Math.round(conflict.confidence * 100)}% comparison confidence`
+          : ""}
       </p>
       {conflict.status === "candidate" ? (
         <ConflictDecision conflict={conflict} onDecision={onDecision} />
