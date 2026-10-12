@@ -1,11 +1,9 @@
 import "server-only";
 import { headers } from "next/headers";
 
-export async function getBaseUrl(): Promise<string> {
-  if (process.env.HIVEMIND_PUBLIC_URL)
-    return process.env.HIVEMIND_PUBLIC_URL.replace(/\/$/, "");
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL)
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+export async function publicUrl(): Promise<string> {
+  if (process.env.PUBLIC_URL)
+    return process.env.PUBLIC_URL.replace(/\/+$/, "");
   const requestHeaders = await headers();
   const host =
     requestHeaders.get("x-forwarded-host") ??

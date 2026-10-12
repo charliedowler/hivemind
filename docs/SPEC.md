@@ -37,7 +37,7 @@ design/system                @hivemind/design-system: tokens, pixel sprites and 
 | `DATABASE_URL` | Postgres (Neon pooled URL in production) | routes that need the database return 503 with a clear message |
 | `OPENAI_API_KEY` | `text-embedding-3-small` embeddings (1536 dims) | full-text search only, dedupe by normalized title |
 | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` synthesis, `claude-haiku-5-5` tagging | `hive_ask` returns an extractive answer, no auto tags |
-| `HIVEMIND_PUBLIC_URL` | canonical URL in install snippets | falls back to `VERCEL_PROJECT_PRODUCTION_URL`, then the request origin |
+| `PUBLIC_URL` | canonical URL in metadata, install snippets and invite links | falls back to the request origin |
 
 Local Postgres for development: `postgres://hivemind:hivemind@127.0.0.1:54329/<database>` (Docker container `hivemind-pg`, image `pgvector/pgvector:pg18`, extension `vector` 0.8).
 

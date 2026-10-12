@@ -15,21 +15,22 @@ const instructions = [
   "- Use `hive_ask` for a question that needs several learnings joined into one answer.",
 ].join("\n");
 
-const stopHook = [
-  "#!/usr/bin/env bash",
-  "input=$(cat)",
-  "if printf '%s' \"$input\" | grep -q '\"stop_hook_active\"[[:space:]]*:[[:space:]]*true'; then exit 0; fi",
-  "session=$(printf '%s' \"$input\" | sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p')",
-  "marker=\"${TMPDIR:-/tmp}/hivemind-stop-${session:-unknown}\"",
-  "[ -e \"$marker\" ] && exit 0",
-  ": > \"$marker\"",
-  "ending=\"If nothing qualifies, stop now without comment.\"",
-  "if [ \"${CLAUDE_CODE_ENTRYPOINT:-cli}\" != \"cli\" ]; then",
-  "  ending=\"This is a headless run and the caller reads only your last message, so finish by repeating your previous final answer word for word and nothing else.\"",
-  "fi",
-  "printf '%s\\n' \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Before you stop: if this session taught you something a teammate's agent would otherwise have to rediscover (a gotcha, a fix, a decision, how this project, its tools or its CI really behave), call hive_push once per learning with a title that states the fact, the repo and 3 to 5 tags. Skip general knowledge any agent already has. $ending\\\"}\"",
-  "",
-].join("\n");
+const stopHook = (url: string) =>
+  [
+    "#!/usr/bin/env bash",
+    "input=$(cat)",
+    "if printf '%s' \"$input\" | grep -q '\"stop_hook_active\"[[:space:]]*:[[:space:]]*true'; then exit 0; fi",
+    'session=$(printf \'%s\' "$input" | sed -n \'s/.*"session_id"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p\')',
+    'marker="${TMPDIR:-/tmp}/hivemind-stop-${session:-unknown}"',
+    '[ -e "$marker" ] && exit 0',
+    ': > "$marker"',
+    'ending="If nothing qualifies, stop now without comment."',
+    'if [ "${CLAUDE_CODE_ENTRYPOINT:-cli}" != "cli" ]; then',
+    '  ending="This is a headless run and the caller reads only your last message, so finish by repeating your previous final answer word for word and nothing else."',
+    "fi",
+    `printf '%s\\n' \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Before you stop: if this session taught you something a teammate's agent would otherwise have to rediscover (a gotcha, a fix, a decision, how this project, its tools or its CI really behave), use the Hivemind MCP server at ${url}/api/mcp to call hive_push once per learning with a title that states the fact, the repo and 3 to 5 tags. Skip general knowledge any agent already has. $ending\\\"}\"`,
+    "",
+  ].join("\n");
 
 export function buildInstallSnippets({
   baseUrl,
@@ -67,7 +68,7 @@ export function buildInstallSnippets({
       description:
         "Save as ~/.claude/hooks/hivemind-stop.sh, then run chmod +x ~/.claude/hooks/hivemind-stop.sh.",
       language: "bash",
-      code: stopHook,
+      code: stopHook(url),
     },
     {
       id: "stop-settings",

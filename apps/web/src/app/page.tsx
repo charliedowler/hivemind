@@ -1,3 +1,4 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
 import {
   AnswerCard,
@@ -11,10 +12,8 @@ import {
 } from "@hivemind/design-system";
 import { EarlyAccessForm } from "@/components/early-access";
 import { buildInstallSnippets } from "@/lib/install";
+import { publicUrl } from "@/lib/public-url";
 
-const productionUrl =
-  process.env.HIVEMIND_PUBLIC_URL ??
-  `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL ?? "hivemind-hq.vercel.app"}`;
 const samples = [
   {
     title: "A green CI run can hide a skipped gate",
@@ -42,9 +41,20 @@ const samples = [
   },
 ];
 
-export default function HomePage() {
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  const [url, inherited] = await Promise.all([publicUrl(), parent]);
+  return {
+    alternates: { canonical: url },
+    openGraph: { ...inherited.openGraph, url },
+  };
+}
+
+export default async function HomePage() {
   const snippets = buildInstallSnippets({
-    baseUrl: productionUrl,
+    baseUrl: await publicUrl(),
     apiKey: "<YOUR_KEY>",
   });
   return (

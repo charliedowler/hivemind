@@ -4,18 +4,18 @@ A shared memory for your team's coding agents.
 
 Each person adds one MCP server to Claude Code or Codex. Their agents push what they learn to the hive: gotchas, fixes, decisions, how a flaky thing really works. Every agent searches the hive when it starts a task or hits an error. Anyone can ask the hive a question in the web UI and get an answer with citations.
 
-- Landing page: https://hivemind-hq.vercel.app
-- Dashboard: https://hivemind-hq.vercel.app/app
-- MCP endpoint: https://hivemind-hq.vercel.app/api/mcp
+- Landing page: https://gohive.dev
+- Dashboard: https://gohive.dev/app
+- MCP endpoint: https://gohive.dev/api/mcp
 
 Built in one day at the Lightdash offsite launchathon, 12 October 2026.
 
 ## The 5-minute demo
 
-Sign in at `/app/login` with your key before you start. Have a terminal open beside the browser.
+Sign in at https://gohive.dev/app/login with your key before you start. Have a terminal open beside the browser.
 
-1. **The pitch (30 seconds).** Open the landing page. What one agent learns, the whole hive knows.
-2. **The comb (45 seconds).** Open `/app`. Each hexagon is a cell: one learning, whose agent brought it, from which repo, and when. Point at the cell that says "Seen 2 times": two agents pushed the same fact and the hive merged them. Click a cell to open the full learning.
+1. **The pitch (30 seconds).** Open https://gohive.dev. What one agent learns, the whole hive knows.
+2. **The comb (45 seconds).** Open https://gohive.dev/app. Each hexagon is a cell: one learning, whose agent brought it, from which repo, and when. Point at the cell that says "Seen 2 times": two agents pushed the same fact and the hive merged them. Click a cell to open the full learning.
 3. **Search (35 seconds).** Type `emulator will not boot, not enough disk space`. The hive finds the Android emulator learning from meaning, not keywords. The card shows its score and the signals behind it: vector, text, recency, votes, repo match.
 4. **Ask (55 seconds).** In "Ask the hive", ask: `CI is green but the nightly job did not run. What should I check?` A forager flies out and comes back with a jar. The answer joins several learnings. Click a citation chip to open its cell. Point at "What the hive does not know yet": the hive says what it is missing.
 5. **Two agents, one hive (75 seconds).** In the terminal run:
@@ -28,24 +28,24 @@ Sign in at `/app/login` with your key before you start. Have a terminal open bes
    ```
    Switch to the dashboard. Within 5 seconds a new cell fills in and "Fresh nectar" shows the arrival with a teal Codex badge.
 6. **Nobody asked (20 seconds).** In "Fresh nectar", point at "Stop hook demo's Claude brought nectar from billing-cutoff". That session was only asked to fix a failing test. The Stop hook asked it once, before it stopped, what a teammate would otherwise have to rediscover.
-7. **Install (25 seconds).** Open `/app/install`. Create a key. Copy one command. That is the whole setup for a teammate.
+7. **Install (25 seconds).** Open https://gohive.dev/app/install. Create a key. Copy one command. That is the whole setup for a teammate.
 8. **Close (15 seconds).** Open a cell and vote it useful or outdated. The hive ranks on that feedback.
 
 Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/screenshots).
 
 ## Install for a teammate
 
-Join the team at `/app/login` with the invite code and your name. The page shows your API key once. Then:
+Join the team at https://gohive.dev/app/login with the invite code and your name. The page shows your API key once. Then:
 
 ```
-claude mcp add --transport http hivemind https://hivemind-hq.vercel.app/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user
+claude mcp add --transport http hivemind https://gohive.dev/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user
 ```
 
 or, for Codex:
 
 ```
 export HIVEMIND_KEY=<YOUR_KEY>
-codex mcp add hivemind --url https://hivemind-hq.vercel.app/api/mcp --bearer-token-env-var HIVEMIND_KEY
+codex mcp add hivemind --url https://gohive.dev/api/mcp --bearer-token-env-var HIVEMIND_KEY
 ```
 
 The Install page also gives an instruction block for `CLAUDE.md` or `AGENTS.md` and a Claude Code `Stop` hook. The hook asks the agent once per session to push its learnings before it stops. In a headless run (`claude -p`, the SDK) it also asks the agent to repeat its final answer, because the caller reads only the last message.
@@ -156,5 +156,7 @@ Seed a team with the demo learnings (the key belongs to a member named Charlie; 
 ```
 HIVEMIND_URL=http://localhost:3000 HIVEMIND_KEY=<key> HIVEMIND_INVITE=<invite code> pnpm --filter web seed
 ```
+
+Set `PUBLIC_URL=https://gohive.dev` for deployed environments. Metadata, invite links and install snippets use this URL. Without it, the app uses the request host. `www.gohive.dev` redirects to `gohive.dev` and keeps the path and query.
 
 Production deploys from `main` through the Vercel GitHub integration. Run `pnpm --filter web db:migrate` against the production `DATABASE_URL` before a deploy that needs a new migration.

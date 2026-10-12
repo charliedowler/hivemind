@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Sprite } from "@hivemind/design-system";
 import { Login } from "@/components/login";
-import { getBaseUrl } from "@/lib/base-url";
+import { publicUrl } from "@/lib/public-url";
 import { ErrorPanel } from "@/components/primitives";
 import { errorMessage } from "@/lib/client";
 export default async function LoginPage({
@@ -10,7 +10,7 @@ export default async function LoginPage({
   searchParams: Promise<{ invite?: string }>;
 }) {
   try {
-    const [baseUrl, params] = await Promise.all([getBaseUrl(), searchParams]);
+    const [baseUrl, params] = await Promise.all([publicUrl(), searchParams]);
     return (
       <main className="page">
         <Link className="brand login-brand" href="/">

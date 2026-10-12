@@ -59,6 +59,7 @@ describe("install snippets", () => {
         expect(run({ session_id: "active", stop_hook_active: true })).toBe("");
         const first = JSON.parse(run({ session_id: "first" }));
         expect(first.decision).toBe("block");
+        expect(first.reason).toContain("https://hive.example/api/mcp");
         if (entrypoint === undefined || entrypoint === "cli") {
           expect(first.reason).toMatch(
             /If nothing qualifies, stop now without comment\.$/,
