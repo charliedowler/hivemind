@@ -1,3 +1,4 @@
+import { scheduleKnowledge } from "./knowledge-tree";
 import type postgres from "postgres";
 import { learningEditInput, redactSecrets, type HiveContext, type LearningConflict, type LearningVersion, type LearningKind } from "@hivemind/core";
 import type { z } from "zod";
@@ -45,7 +46,7 @@ export async function listConflicts(ctx: HiveContext, history = false): Promise<
 }
 
 export async function resolveConflict(ctx: HiveContext, id: string, action: "confirm" | "reject") {
-  return getSql().begin(async (tx) => {
+  const result = await getSql().begin(async (tx) => {
     await lockLearningWrites(tx, ctx);
     const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
     if (!members.length) throw new HiveNotFoundError("Member not found.");
@@ -66,6 +67,8 @@ export async function resolveConflict(ctx: HiveContext, id: string, action: "con
     }
     return { status: "candidate" };
   });
+  scheduleKnowledge(ctx);
+  return result;
 }
 
 export async function learningVersions(ctx: HiveContext, id: string): Promise<LearningVersion[]> {
@@ -76,7 +79,7 @@ export async function learningVersions(ctx: HiveContext, id: string): Promise<Le
 
 export async function editLearning(ctx: HiveContext, id: string, input: z.infer<typeof learningEditInput>) {
   const data = learningEditInput.parse(input);
-  return getSql().begin(async (tx) => {
+  const result = await getSql().begin(async (tx) => {
     await lockLearningWrites(tx, ctx);
     const rows = await tx`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} FOR UPDATE`;
     const row = rows[0];
@@ -94,6 +97,8 @@ export async function editLearning(ctx: HiveContext, id: string, input: z.infer<
     const updated = await tx`SELECT revision FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`;
     return { revision: updated[0].revision };
   });
+  scheduleKnowledge(ctx);
+  return result;
 }
 
 export async function answerLifecycleContext(ctx: HiveContext, hits: import("@hivemind/core").LearningView[]) {

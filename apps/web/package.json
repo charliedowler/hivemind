@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "db:migrate": "tsx scripts/migrate.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "knowledge:rebuild": "tsx scripts/rebuild-knowledge.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
@@ -17,6 +18,7 @@
     "@hivemind/design-system": "workspace:*",
     "@modelcontextprotocol/server": "^2.0.0",
     "@typesafe-ai/sdk": "0.6.0",
+    "@vercel/blob": "^2.8.1",
     "company-email-validator": "^1.2.7",
     "drizzle-orm": "^0.45.4",
     "mcp-handler": "^2.0.0",
@@ -28,12 +30,14 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
+    "tar-stream": "^3.2.2",
     "zod": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/tar-stream": "^3.1.5",
     "tsx": "^4.23.15",
     "vitest": "^4.1.11"
   }

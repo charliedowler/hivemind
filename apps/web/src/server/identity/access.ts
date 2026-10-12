@@ -1,3 +1,4 @@
+import { scheduleKnowledge } from "../knowledge-tree";
 import type { HiveContext } from "@hivemind/core";
 import { lockLearningWrites } from "../lifecycle";
 import { getSql } from "../db/client";
@@ -91,4 +92,5 @@ export async function moderateLearning(ctx: HiveContext, id: string, action: "de
     if (rows[0].lifecycle === "superseded") throw new HiveError("Moderate the current cell in the chain instead.", 409);
     await tx`UPDATE learnings SET lifecycle = ${action === "delete" ? "retracted" : "outdated"}, admin_outdated = true, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
   });
+  scheduleKnowledge(ctx);
 }

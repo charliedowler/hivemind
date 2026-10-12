@@ -30,6 +30,7 @@ import { classifyPush, classifyAsk, classificationJson } from "./classify";
 import { learningView as view } from "./learning-view";
 import { lockLearningWrites, acceptSupersession, verificationHorizon, answerLifecycleContext, appendLifecycleContext } from "./lifecycle";
 import { judgeMemory, rerankMemory } from "./memory-judgments";
+import { queueEvidence, scheduleKnowledge, ensureKnowledge } from "./knowledge-tree";
 import { after } from "next/server";
 import { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
@@ -62,8 +63,10 @@ function scheduleTags(ctx: HiveContext, learning: LearningView) {
     after(async () => {
       try {
         const tags = normalizeTags(await suggestTags(learning)).slice(0, 5);
-        if (tags.length)
+        if (tags.length) {
           await getSql()`UPDATE learnings SET tags = ${tags}, updated_at = now() WHERE id = ${learning.id} AND team_id = ${ctx.teamId} AND cardinality(tags) = 0`;
+          await ensureKnowledge(ctx);
+        }
       } catch {}
     });
   } catch {}
@@ -134,6 +137,7 @@ export async function pushLearning(
     }
     const pushId = newId("psh");
     await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged, area, cost, blocked, classification) VALUES (${pushId}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${merged}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${classification ? tx.json(classificationJson(classification)) : null})`;
+    await queueEvidence(tx, ctx, id, pushId, data);
     if (!merged) {
       const proposals = data.supersedes
         ? [{ id: data.supersedes, relation: "update" as const, confidence: 1 }]
@@ -161,6 +165,7 @@ export async function pushLearning(
     };
   });
   if (!classification) scheduleTags(ctx, result.learning);
+  scheduleKnowledge(ctx);
   return result;
 }
 
@@ -290,7 +295,7 @@ export async function recordFeedback(
   input: HiveFeedbackInput,
 ): Promise<FeedbackResult> {
   const data = validate(hiveFeedbackInput, input);
-  return getSql().begin(async (tx) => {
+  const result = await getSql().begin(async (tx) => {
     await lockLearningWrites(tx, ctx);
     const rows =
       await tx`SELECT id FROM learnings WHERE id = ${data.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
@@ -306,6 +311,8 @@ export async function recordFeedback(
     await tx`UPDATE learnings SET up_votes = ${votes.up}, down_votes = ${votes.down}, outdated_votes = ${votes.outdated}, lifecycle = CASE WHEN lifecycle IN ('superseded','retracted') THEN lifecycle WHEN admin_outdated OR ${votes.outdated} > ${votes.up} THEN 'outdated' WHEN ${votes.up} > 0 OR push_count > 1 THEN 'confirmed' ELSE 'fresh' END, updated_at = now() WHERE id = ${data.id} AND team_id = ${ctx.teamId}`;
     return { id: data.id, votes };
   });
+  scheduleKnowledge(ctx);
+  return result;
 }
 
 export async function getLearning(

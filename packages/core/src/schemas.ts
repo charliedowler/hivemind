@@ -34,6 +34,7 @@ export type LearningSource = z.infer<typeof learningSourceSchema>;
 export type FeedbackVote = z.infer<typeof feedbackVoteSchema>;
 
 export const hivePushInput = z.object({
+  evidence: z.object({ session_excerpt: z.string().max(50000).optional(), diff: z.string().max(50000).optional() }).optional(),
   supersedes: z.string().regex(/^lrn_[a-z2-7]{12}$/).optional().describe("The current cell this learning replaces. The old cell stays readable."),
   verify_after: z.iso.datetime({ offset: true }).optional().describe("An ISO timestamp after which this fact needs verification."),
   title: z

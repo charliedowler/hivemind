@@ -1,6 +1,7 @@
 import {
   pgTable,
   jsonb,
+  bigint,
   text,
   timestamp,
   integer,
@@ -206,3 +207,13 @@ export const learningConflictVotes = pgTable("learning_conflict_votes", {
   memberId: text("member_id").notNull(),
   createdAt: createdAt(),
 }, (table) => [primaryKey({ columns: [table.edgeId, table.teamId, table.memberId] })]);
+
+export const learningEvidence = pgTable("learning_evidence", {
+  pushId: text("push_id").primaryKey(), teamId: text("team_id").notNull(), learningId: text("learning_id").notNull(), payload: jsonb("payload"), objectKey: text("object_key").notNull(), digest: text("digest").notNull(), bytes: integer("bytes").notNull(), uploadedAt: timestamp("uploaded_at", { withTimezone: true }), createdAt: createdAt(),
+});
+export const knowledgeState = pgTable("knowledge_state", {
+  teamId: text("team_id").primaryKey(), revision: bigint("revision", { mode: "number" }).notNull(), publishedRevision: bigint("published_revision", { mode: "number" }).notNull(), manifest: jsonb("manifest").notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(), nextVerifyAt: timestamp("next_verify_at", { withTimezone: true }),
+});
+export const knowledgeSnapshots = pgTable("knowledge_snapshots", {
+  tokenHash: text("token_hash").primaryKey(), teamId: text("team_id").notNull(), memberId: text("member_id").notNull(), revision: bigint("revision", { mode: "number" }).notNull(), objectKey: text("object_key").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), createdAt: createdAt(),
+});
