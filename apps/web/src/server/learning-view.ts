@@ -23,7 +23,10 @@ export function learningView(row: Record<string, unknown>): LearningView {
     lifecycle: row.lifecycle as LearningView["lifecycle"],
     revision: Number(row.revision),
     verifyAfter: row.verify_after ? date(row.verify_after) : null,
-    verifyBeforeUse: Boolean(row.verify_after && new Date(row.verify_after as string).getTime() <= Date.now()),
+    verifyBeforeUse: Boolean(
+      row.verify_after &&
+      new Date(row.verify_after as string).getTime() <= Date.now(),
+    ),
     supersededBy: row.superseded_by as string | null,
     sessionRef: row.session_ref as string | null,
     classification: row.classification as LearningView["classification"],

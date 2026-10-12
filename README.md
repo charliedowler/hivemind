@@ -56,10 +56,13 @@ Both install paths were run for real against production on 12 October 2026: Code
 
 | Tool            | What it does                                                                                                                                                                                                                                                 |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `hive_push`     | Stores a learning, insight or friction point: title, markdown body, kind, tags, repo, paths, confidence, source, area, measured minutes lost, blocked and workaround. Redacts secrets. Merges a near-duplicate into the existing record and bumps its count. |
-| `hive_search`   | Hybrid search with a kind filter. Returns ranked learnings with ids and scores.                                                                                                                                                                              |
+| `hive_push`     | Stores a learning, insight or friction point: title, markdown body, kind, tags, repo, paths, confidence, source, area, measured minutes lost, blocked and workaround. Redacts secrets. Merges confirmed duplicates. Accepts `supersedes`, `verify_after` and optional redacted evidence. |
+| `hive_search`   | Hybrid search of current cells with kind and tag filters; `include_history` opts into past guidance. Returns ranked learnings with ids and scores.                                                                                                                                                                              |
 | `hive_ask`      | Answers a question from the team's learnings, with citations to learning ids, a confidence and the gaps.                                                                                                                                                     |
 | `hive_recent`   | Lists what the team learned since a time, such as `24h` or `7d`, with a kind filter.                                                                                                                                                                         |
+| `hive_browse` | Lists files and folders in the team’s generated knowledge tree. |
+| `hive_read` | Reads one relative Markdown path from the tree. |
+| `hive_snapshot` | Returns a private read-only tarball link that expires after 15 minutes. |
 | `hive_feedback` | Votes a learning `up`, `down` or `outdated`.                                                                                                                                                                                                                 |
 
 ## Architecture
@@ -93,21 +96,34 @@ Both install paths were run for real against production on 12 October 2026: Code
   design/system: @hivemind/design-system, the pixel-art tokens, sprites and components
 ```
 
-**Push.** Validate, normalize the repo and tags, redact secrets, embed, then look for a duplicate in the same team and repo (cosine similarity of 0.90 or more). A duplicate merges into the existing learning. Jev classifies kind, sharing value, sensitive data, repository topic and friction severity in one request. Its probabilities and latency are stored on the cell and each push. A high sensitive-data probability refuses the push before embedding or storage. Caller-supplied kinds take priority. Haiku tags an untagged learning after the response only when Jev is unavailable.
+**Push.** Validate and redact, classify sharing and kind, embed, then compare up to four nearby current cells in the same team, repo and kind. Jev judges whether each candidate repeats, updates or contradicts the incoming fact. Exact matching facts and confident duplicate judgments merge counts and metadata without replacing the body. Corrections create a separate cell and a proposed supersession. Explicit `supersedes` accepts the replacement atomically; same-author corrections and very confident environment updates can also accept it. Otherwise an admin or two distinct members decide in Conflicts. A Jev outage never authorises an automatic correction. Repeated friction reports retain their measured costs.
 
 **Search.** Candidates come from the nearest vectors and from Postgres full-text search. `rankCandidates` in `packages/core` scores them:
 
 ```
 score = 0.55 * vector + 0.25 * text + 0.10 * recency + 0.10 * votes
         + 0.08 when the repo matches
-        scaled by confidence, and by 0.4 when outdated votes outnumber up votes
+        scaled by confidence, lifecycle and verification age
+        and by 0.4 when outdated votes outnumber up votes
 ```
 
 Without embeddings the text signal takes the vector weight, so the hive still works with only Postgres.
 
-**Ask.** Jev checks whether the top 8 search hits directly answer the question before they go to Claude Sonnet with a structured output schema. Weak evidence returns an honest gap. When Jev is unavailable, a conservative vector or lexical coverage check gates synthesis. Friction summaries use counted reports directly. The model answers only from those learnings and cites ids inline. The server drops any citation that is not in the retrieved set. If the model call fails or refuses, the hive returns the top hits as a plain list.
+**Ask.** Jev first reranks current results for direct relevance, then checks whether the top 8 search hits directly answer the question before they go to Claude Sonnet with a structured output schema. Weak evidence returns an honest gap. When Jev is unavailable, a conservative vector or lexical coverage check gates synthesis. Friction summaries use counted reports directly. The model answers only from those learnings and cites ids inline. The server drops any citation that is not in the retrieved set. If the model call fails or refuses, the hive returns the top hits as a plain list. The server adds the accepted replacement chain, an as-of date and verification warnings with historical citations.
 
-TypeSafe Jev 1.13.0 supplies typed judgments for push, capture and ask. The server pins the version, sets a 500 ms timeout and makes no retries. Decision logs contain no cell text. The current [TypeSafe API](https://docs.typesafe.ai/api) and [JavaScript SDK](https://docs.typesafe.ai/sdk/javascript) define the request and probability contracts. The full Hive contract is in [docs/SPEC.md](docs/SPEC.md).
+TypeSafe Jev 1.13.0 supplies typed judgments for push, capture and ask. The server pins the version and makes no retries. Push/capture/ask gates use 500 ms; relation, topic and relevance batches use 2 seconds. Decision logs contain no cell text. The current [TypeSafe API](https://docs.typesafe.ai/api) and [JavaScript SDK](https://docs.typesafe.ai/sdk/javascript) define the request and probability contracts. The full Hive contract is in [docs/SPEC.md](docs/SPEC.md).
+
+## Learning storage and lifecycle
+
+Postgres is the source of truth: typed metadata, a Markdown body, explicit lifecycle and immutable content versions with field diffs. Private Vercel Blob holds redacted push evidence and the generated Markdown tree. A durable database queue retries failed uploads. Blob failure does not roll back an accepted learning. The [decision document](docs/learnings-backend.md) sets the boundaries.
+
+Cells are fresh, confirmed, superseded, outdated or retracted. Superseded and retracted cells remain readable, but default search and ask use fresh and confirmed cells. Verification horizons range from 14 days for environment facts to 180 days for decisions. Expired cells say “Verify before use” and receive less weight. Authors and admins can edit through the revision-checked API; edits preserve versions. New facts replace old ones through `hive_push({ ..., supersedes: "lrn_existing" })`.
+
+The [Conflicts panel](https://gohive.dev/app/conflicts) compares both sources. The [tree browser](https://gohive.dev/app/tree) exposes repos, topics, people, friction and INDEX.md. Citation chips show titles; IDs are available in tooltips and cell details. Local archives are read-only views, so edits must return through `hive_push`.
+
+Connect a private Vercel Blob store and set `BLOB_READ_WRITE_TOKEN` on the server. Run `pnpm --filter web knowledge:rebuild` with database and Blob credentials to rebuild every team and drain pending evidence. Changed files use content-addressed object keys. A database revision check prevents an older worker from publishing over a newer tree. Reads retry pending publication, and verification deadlines invalidate the tree even without another push.
+
+Snapshots are limited to 10,000 cells and 50 MB of source Markdown. The download URL is a bearer capability; keep it private. It expires after 15 minutes and stops working if its member is removed. There is no automatic Blob garbage collection or scheduled worker yet; the rebuild command is the recovery path. Evidence collection starts with migration 0010; older raw pushes cannot be reconstructed.
 
 ## Security notes
 
@@ -116,7 +132,7 @@ TypeSafe Jev 1.13.0 supplies typed judgments for push, capture and ask. The serv
 - **Secrets are redacted on push.** Common key shapes, JWTs, private key blocks and database URL passwords become `[redacted]` before storage and before embedding.
 - **Learning text is untrusted input to the model.** The ask prompt marks learnings as data to quote, never instructions to follow.
 - **Verified email joins.** Email is lowercase and unique. Codes use scrypt hashes, expire after 15 minutes and allow five attempts. Sending and verification have database rate limits. Missing Resend configuration disables email joins with a clear message.
-- **Team admins.** The creator can allow their own verified work domain, rotate an invite, revoke keys, remove members, and delete or mark cells outdated. Public email domains cannot join by domain. Invites use hashes and expire after seven days. The raw invite appears only when created or rotated.
+- **Team admins.** The creator can allow their own verified work domain, rotate an invite, revoke keys, remove members, and retract or mark cells outdated. Public email domains cannot join by domain. Invites use hashes and expire after seven days. The raw invite appears only when created or rotated.
 - **Your account.** `/app/account` shows your name, email status and key labels, creation and last-use dates. You can revoke your own keys and sign out. Existing members keep their keys and sessions while adding email.
 
 ## What is stubbed or missing

@@ -364,18 +364,16 @@ describe.skipIf(!enabled)("hive database integration", () => {
   it("refuses sensitive pushes before writing a learning or embedding", async () => {
     const before =
       await getSql()`SELECT count(*)::int AS count FROM learnings WHERE team_id = ${a.teamId}`;
-    const spy = vi
-      .spyOn(classifier, "classifyPush")
-      .mockResolvedValueOnce({
-        classification: null,
-        decision: {
-          action: "refuse",
-          kind: "learning",
-          tags: [],
-          worthSharing: true,
-          severity: null,
-        },
-      });
+    const spy = vi.spyOn(classifier, "classifyPush").mockResolvedValueOnce({
+      classification: null,
+      decision: {
+        action: "refuse",
+        kind: "learning",
+        tags: [],
+        worthSharing: true,
+        severity: null,
+      },
+    });
     try {
       await expect(
         pushLearning(
@@ -395,18 +393,16 @@ describe.skipIf(!enabled)("hive database integration", () => {
   });
 
   it("stores classifier evidence and refuses an unsupported ask before synthesis", async () => {
-    const pushSpy = vi
-      .spyOn(classifier, "classifyPush")
-      .mockResolvedValueOnce({
-        classification: null,
-        decision: {
-          action: "accept",
-          kind: "insight",
-          tags: ["process"],
-          worthSharing: true,
-          severity: null,
-        },
-      });
+    const pushSpy = vi.spyOn(classifier, "classifyPush").mockResolvedValueOnce({
+      classification: null,
+      decision: {
+        action: "accept",
+        kind: "insight",
+        tags: ["process"],
+        worthSharing: true,
+        severity: null,
+      },
+    });
     const learning = await pushLearning(
       a,
       hivePushInput.parse({

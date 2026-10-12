@@ -38,7 +38,9 @@ const toolContext: ServerContext = {
     elicitInput: vi.fn(),
     requestSampling: vi.fn(),
   },
-  http: { authInfo: { token: "test", clientId: "test", scopes: [], extra: context } },
+  http: {
+    authInfo: { token: "test", clientId: "test", scopes: [], extra: context },
+  },
 };
 
 afterEach(() => {
@@ -72,7 +74,13 @@ describe("MCP learning text", () => {
         {
           ...learning,
           score: 0.75,
-          signals: { vector: null, fts: 1, recency: 1, votes: 0, repoMatch: false },
+          signals: {
+            vector: null,
+            fts: 1,
+            recency: 1,
+            votes: 0,
+            repoMatch: false,
+          },
         },
       ]);
       const server = new McpServer({ name: "test", version: "1.0.0" });

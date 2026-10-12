@@ -37,6 +37,11 @@ export function LearningCard({
       onClick={() => onOpen(learning.id)}
       footer={
         <>
+          {learning.lifecycle === "superseded" ||
+          learning.lifecycle === "retracted" ? (
+            <span>{learning.lifecycle}</span>
+          ) : null}
+          {learning.verifyBeforeUse ? <span>Verify before use</span> : null}
           {learning.kind === "friction" || learning.kind === "insight" ? (
             <span className={`kind-mark kind-mark-${learning.kind}`}>
               <Sprite
@@ -69,7 +74,12 @@ export function SearchHitCard({
   return (
     <Card className="search-hit" id={hit.id}>
       <div className="row between wrap">
-        <Badge tone={learningStatus(hit)}>{learningStatus(hit)}</Badge>
+        <Badge tone={learningStatus(hit)}>
+          {hit.lifecycle ?? learningStatus(hit)}
+        </Badge>
+        {hit.verifyBeforeUse ? (
+          <span className="small">Verify before use</span>
+        ) : null}
         <span className="score">Score {hit.score.toFixed(2)}</span>
       </div>
       <button className="cell-title-link" onClick={() => onOpen(hit.id)}>
