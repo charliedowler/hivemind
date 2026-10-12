@@ -112,7 +112,7 @@ export default async function HomePage() {
             },
             {
               title: "Ask the hive",
-              body: "Ask a question about your work. The answer cites the cells it uses.",
+              body: "Ask through your agent. The answer cites the cells it uses.",
               sprite: "jar" as const,
             },
           ].map((step, index) => (

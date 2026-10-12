@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { SearchHit } from "@hivemind/core";
-import { AnswerCard, CombGrid } from "@hivemind/design-system";
+import { CombGrid } from "@hivemind/design-system";
 import { InstallSnippets, KeyBox } from "./install";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
@@ -121,28 +121,6 @@ describe("dashboard components", () => {
     expect(html).toContain("lrn_abcdefghijkl");
   });
 
-  it("renders clickable cited cells with attribution", () => {
-    const html = renderToStaticMarkup(
-      <AnswerCard
-        question="How do worktrees share a stash?"
-        citations={[
-          {
-            id: hit.id,
-            title: hit.title,
-            learnedBy: "Maya's Claude",
-            repo: hit.repo!,
-            onClick: () => {},
-          },
-        ]}
-      >
-        <Markdown text="Use an exact stash ref." />
-      </AnswerCard>,
-    );
-    expect(html).toContain('class="hm-cite"');
-    expect(html).toContain("Cited cells");
-    expect(html).toContain("Maya&#x27;s Claude");
-  });
-
   it("turns inline learning ids into citation buttons and leaves other links alone", () => {
     const html = renderToStaticMarkup(
       <Markdown
@@ -152,18 +130,6 @@ describe("dashboard components", () => {
     );
     expect(html).toContain('href="/app/cells/lrn_abcdefghijkl"');
     expect(html).toContain('href="https://example.com"');
-  });
-
-  it("shows titles in inline citations when answer sources are available", () => {
-    const html = renderToStaticMarkup(
-      <Markdown
-        text="Check the gate [lrn_abcdefghijkl]."
-        onCitation={() => {}}
-        citations={[{ id: hit.id, title: hit.title }]}
-      />,
-    );
-    expect(html).toContain(`>${hit.title}</a>`);
-    expect(html).not.toContain(">lrn_abcdefghijkl</button>");
   });
 
   it("links unresolved cell citations without exposing ids as chip text", () => {
