@@ -45,13 +45,13 @@ export function knowledgePath(path: string): string {
     /[\x00-\x1f\x7f]/.test(path) ||
     path.length > 500
   )
-    throw new HiveInputError("Use a relative hive path without traversal.");
+    throw new HiveInputError("Use a path relative to the hive root. Leave out . and .. segments.");
   const normalized = path.replace(/\/$/, "");
   if (
     normalized &&
     normalized.split("/").some((part) => !part || part === "." || part === "..")
   )
-    throw new HiveInputError("Use a relative hive path without traversal.");
+    throw new HiveInputError("Use a path relative to the hive root. Leave out . and .. segments.");
   return normalized;
 }
 
@@ -131,7 +131,7 @@ export function renderKnowledgeTree(
   const currentIds = new Set(current.map((cell) => cell.id));
   files.set(
     "INDEX.md",
-    `# The hive\n\nGenerated from the team's cells. This view is read-only. Use hive_push to add or correct a learning. Verification dates must be checked against today's date even in an older snapshot.\n\n## Current cells\n\n${links(current) || "No current cells."}\n\n## History\n\n${links(cells.filter((cell) => !currentIds.has(cell.id))) || "No historical cells."}\n`,
+    `# The hive\n\nThis tree contains your team's cells. Use hive_push to add or correct a learning. You cannot edit the tree directly. Check verification dates against today's date, including in older snapshots.\n\n## Current cells\n\n${links(current) || "No current cells."}\n\n## History\n\n${links(cells.filter((cell) => !currentIds.has(cell.id))) || "No historical cells."}\n`,
   );
   return files;
 }
@@ -170,19 +170,37 @@ export async function queueEvidence(
   const payload = canonicalJson(redactEvidence(input));
   const hash = digest(payload);
   const key = `teams/${ctx.teamId}/evidence/${pushId}-${hash}.json`;
-  await tx`INSERT INTO learning_evidence (push_id, team_id, learning_id, payload, object_key, digest, bytes) VALUES (${pushId}, ${ctx.teamId}, ${learningId}, ${payload}::jsonb, ${key}, ${hash}, ${Buffer.byteLength(payload)})`;
+  await tx`INSERT INTO learning_evidence (push_id, team_id, learning_id, payload, object_key, digest, bytes) VALUES (${pushId}, ${ctx.teamId}, ${learningId}, ${tx.json(JSON.parse(payload))}, ${key}, ${hash}, ${Buffer.byteLength(payload)})`;
+}
+
+async function withStorageWorkers<T>(
+  items: Iterable<T>,
+  operation: (item: T) => Promise<void>,
+) {
+  const iterator = items[Symbol.iterator]();
+  async function runWorker(): Promise<void> {
+    const item = iterator.next();
+    if (item.done) return;
+    await operation(item.value);
+    return runWorker();
+  }
+  const results = await Promise.allSettled(
+    Array.from({ length: 6 }, () => runWorker()),
+  );
+  for (const result of results)
+    if (result.status === "rejected") throw result.reason;
 }
 
 async function flushEvidence(ctx: HiveContext) {
   const rows =
     await getSql()`SELECT push_id, payload, object_key, digest FROM learning_evidence WHERE team_id = ${ctx.teamId} AND uploaded_at IS NULL ORDER BY created_at LIMIT 100`;
-  for (const row of rows) {
+  await withStorageWorkers(rows, async (row) => {
     const payload = Buffer.from(canonicalJson(row.payload));
     const hash = digest(payload);
     const key = `teams/${ctx.teamId}/evidence/${row.push_id}-${hash}.json`;
     await putPrivateObject(key, payload, "application/json");
     await getSql()`UPDATE learning_evidence SET payload = NULL, uploaded_at = now(), digest = ${hash}, bytes = ${payload.length}, object_key = ${key} WHERE push_id = ${row.push_id} AND team_id = ${ctx.teamId} AND uploaded_at IS NULL`;
-  }
+  });
 }
 
 export async function ensureKnowledge(
@@ -211,7 +229,7 @@ export async function ensureKnowledge(
     const files = renderKnowledgeTree(rows.map(learningView));
     const oldManifest = state.manifest as Manifest;
     const manifest: Manifest = {};
-    for (const [path, content] of files) {
+    await withStorageWorkers(files, async ([path, content]) => {
       const hash = digest(content),
         key = `teams/${ctx.teamId}/tree/${hash}.md`;
       if (force || oldManifest[path]?.digest !== hash)
@@ -221,7 +239,7 @@ export async function ensureKnowledge(
           "text/markdown; charset=utf-8",
         );
       manifest[path] = { key, digest: hash };
-    }
+    });
     const futureDates = rows
       .map((row) => row.verify_after && new Date(row.verify_after).getTime())
       .filter(
@@ -340,7 +358,7 @@ async function snapshotKnowledgeAction(ctx: HiveContext) {
   });
   let bytes = 0;
   try {
-    for (const [path, file] of Object.entries(manifest)) {
+    await withStorageWorkers(Object.entries(manifest), async ([path, file]) => {
       const content = await readPrivateObject(file.key);
       if (digest(content) !== file.digest)
         throw new HiveUnavailableError(
@@ -360,7 +378,7 @@ async function snapshotKnowledgeAction(ctx: HiveContext) {
         },
         content,
       );
-    }
+    });
     pack.finalize();
     const archive = await complete;
     const key = `teams/${ctx.teamId}/snapshots/${revision}-${digest(archive)}.tar.gz`;

@@ -20,7 +20,6 @@ export default async function Page({
       </Link>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Inside the cell</span>
           <h1>{learning.title}</h1>
         </div>
       </div>

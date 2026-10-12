@@ -16,6 +16,12 @@ vi.mock("../auth", () => ({
   getWebContext: auth.web,
   authenticateApiKey: auth.key,
 }));
+vi.mock("../bearer-auth", () => ({
+  withHiveBearerAuth: async (request: Request, handler: Function) => {
+    const ctx = await auth.key();
+    return ctx ? handler(request, ctx) : new Response(null, { status: 401 });
+  },
+}));
 vi.mock("../hive", () => ({ getLearning: auth.learning }));
 vi.mock("../identity/rate-limit", () => ({ rateLimit: vi.fn() }));
 afterEach(() => vi.resetAllMocks());

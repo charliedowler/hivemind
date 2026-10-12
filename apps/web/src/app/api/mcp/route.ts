@@ -1,50 +1,25 @@
-import { apiKeyId } from "@/server/analytics/events";
+import { apiKeyId, memberRole } from "@/server/analytics/events";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
-import type { AuthInfo } from "@modelcontextprotocol/server";
 import { registerHiveTools } from "@/mcp/server";
-import { authenticateApiKey } from "@/server/auth";
+import { withHiveBearerAuth } from "@/server/bearer-auth";
 import { HiveError } from "@/server/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const handler = createMcpHandler(registerHiveTools, {
-  serverInfo: { name: "hive", version: "0.1.0" },
-});
+const handler = createMcpHandler(registerHiveTools, { serverInfo: { name: "hive", version: "0.1.0" } });
 
-async function verifyToken(
-  req: Request,
-  bearerToken?: string,
-): Promise<AuthInfo | undefined> {
-  if (!bearerToken) return undefined;
-  const ctx = await authenticateApiKey(bearerToken);
-  return ctx
-    ? {
-        token: bearerToken,
-        clientId: ctx.memberId,
-        scopes: ["hive"],
-        extra: { ...ctx, apiKeyId: apiKeyId(ctx) },
-      }
-    : undefined;
-}
-
-const authenticatedHandler = withMcpAuth(handler, verifyToken, {
-  required: true,
-});
-
-async function route(req: Request): Promise<Response> {
+async function route(request: Request): Promise<Response> {
   try {
-    return await authenticatedHandler(req);
+    return await withHiveBearerAuth(request, async (req, ctx, claims) => withMcpAuth(handler, async () => ({
+      token: req.headers.get("authorization")?.split(" ")[1] ?? "",
+      clientId: typeof claims?.client_id === "string" ? claims.client_id : ctx.memberId,
+      scopes: typeof claims?.scope === "string" ? claims.scope.split(" ") : ["hive"],
+      ...(typeof claims?.exp === "number" ? { expiresAt: claims.exp } : {}),
+      extra: { ...ctx, apiKeyId: apiKeyId(ctx), role: memberRole(ctx), sessionKind: claims ? "oauth" : "api_key" },
+    }), { required: true })(req));
   } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof HiveError
-            ? error.message
-            : "The hive could not complete this request.",
-      },
-      { status: error instanceof HiveError ? error.status : 500 },
-    );
+    return Response.json({ error: error instanceof HiveError ? error.message : "The hive could not complete this request." }, { status: error instanceof HiveError ? error.status : 500 });
   }
 }
 

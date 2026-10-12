@@ -1,39 +1,13 @@
-import { recordEvent, originFor, withOrigin } from "@/server/analytics/events";
-import { signInInput } from "@hivemind/core";
-import {
-  authenticateApiKey,
-  startWebSession,
-  endWebSession,
-} from "@/server/auth";
-import { httpError, identity, readJson } from "@/lib/http";
+import { endWebSession } from "@/server/auth";
+import { getAuth } from "@/server/better-auth";
+import { httpError } from "@/lib/http";
 export const runtime = "nodejs";
-export async function POST(request: Request) {
-  try {
-    const input = signInInput.parse(await readJson(request));
-    const ctx = await authenticateApiKey(input.apiKey);
-    if (!ctx) {
-      await recordEvent({
-        name: "access.changed",
-        outcome: "login_failed",
-        reasonCode: "invalid_credentials",
-        origin: originFor(),
-        properties: { actorKind: "anonymous" },
-      });
-      return Response.json({ error: "API key not found." }, { status: 401 });
-    }
-    await withOrigin(originFor(ctx, "web", "api_key"), () =>
-      startWebSession(ctx),
-    );
-    return Response.json(identity(ctx));
-  } catch (error) {
-    return httpError(error);
-  }
+export async function POST() {
+  return Response.json({ error: "Sign in with email and password, Google or Slack." }, { status: 410 });
 }
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
     await endWebSession();
-    return new Response(null, { status: 204 });
-  } catch (error) {
-    return httpError(error);
-  }
+    return (await getAuth()).api.signOut({ headers: request.headers, asResponse: true });
+  } catch (error) { return httpError(error); }
 }

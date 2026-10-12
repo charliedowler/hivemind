@@ -6,6 +6,7 @@ import { requestJson, errorMessage } from "@/lib/client";
 import { EmailCode } from "./email-code";
 import { ErrorPanel } from "./primitives";
 import { KeyBox } from "./install";
+import { PasswordReset } from "./password-reset";
 type AccountData = {
   member: {
     name: string;
@@ -64,7 +65,6 @@ export function Account({ initial }: { initial: AccountData }) {
     <div className="stack narrow">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Your place in the hive</span>
           <h1>Your account</h1>
         </div>
       </div>
@@ -117,8 +117,8 @@ export function Account({ initial }: { initial: AccountData }) {
       <Card className="stack">
         <h2>Your keys</h2>
         <p className="muted">
-          Keys are shown once. Revoke a key when its forager no longer needs
-          access.
+          Keys are for headless and CI access. Your forager normally signs in
+          through the browser. Revoke keys that no longer need access.
         </p>
         {data.keys.map((item) => (
           <div className="key-row stack" key={item.id}>
@@ -180,6 +180,7 @@ export function Account({ initial }: { initial: AccountData }) {
         </form>
         {key ? <KeyBox apiKey={key} /> : null}
       </Card>
+      {data.member.email && data.member.email_verified ? <Card><PasswordReset email={data.member.email} /></Card> : null}
       <Button
         variant="ghost"
         loading={pending}

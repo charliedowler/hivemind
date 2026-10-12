@@ -16,7 +16,6 @@ export function ConflictsPanel() {
     <section className="stack dashboard" aria-label="Conflicts">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Keep the hive current</span>
           <h1>Conflicts</h1>
           <p className="muted">
             Compare both sources before replacing a learning.
@@ -91,7 +90,7 @@ function ConflictList({
   }, [history]);
   if (state.error) return <ErrorPanel message={state.error} />;
   if (!state.conflicts)
-    return <LoadingPanel>Finding the cells that need a decision.</LoadingPanel>;
+    return <LoadingPanel>Loading conflicts.</LoadingPanel>;
   return state.conflicts.length ? (
     <div className="stack">
       {state.conflicts.map((conflict) => (
@@ -160,8 +159,10 @@ export function ConflictCard({
         ))}
       </div>
       <p className="small muted">
-        {conflict.reason} · {Math.round(conflict.confidence * 100)}% comparison
-        confidence
+        {conflict.reason}
+        {conflict.status === "candidate"
+          ? ` · ${Math.round(conflict.confidence * 100)}% comparison confidence`
+          : ""}
       </p>
       {conflict.status === "candidate" ? (
         <ConflictDecision conflict={conflict} onDecision={onDecision} />

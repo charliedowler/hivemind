@@ -1,5 +1,17 @@
 # Hive analytics implementation report
 
+## Better Auth integration, 13 October 2026
+
+The landing merge preserves main at `dec46f6` and adds Better Auth access events. Signup is the committed verified enrollment milestone. Enrollment records invite creation, invite acceptance, domain joins and creator role promotion. Sessions record login and explicit logout; email verification records successful delivery and verification. Failed email login remains anonymous. Consent records a successful authorization-code grant, with no event for denied or invalid consent. Existing key, invite rotation and member removal events remain in place.
+
+MCP carries the verified key ID, role and OAuth session kind into each tool. Capture and both analytics client beacons use the shared OAuth bearer verifier, including its audience, scope and active-membership checks and legacy key fallback. The installer agent enum includes `executor`. Access replay keys include the outcome so key creation does not suppress revocation.
+
+Merged verification: recursive typecheck passes; 59 core and 179 web tests pass, with only the opt-in live classifier test skipped; the production web build passes. The suite uses a fresh isolated local schema and includes PostgreSQL ledger/report checks. Better Auth tests cover envelope privacy, pre-enrollment null identity, login failure, logout, denied/invalid/accepted consent, OAuth and API-key install/hook reports, replay identity and removed-member rejection. React Doctor reports no errors or React diagnostics; four existing sequential-await warnings remain in scripts and the ordered push transaction.
+
+Production migration and deployment are performed by the landing task after these checks. The original branch-only report below describes its earlier verification.
+
+## Original branch verification
+
 Verified on 13 October 2026. Branch: `feature/analytics`. Base: `31f347a` from `origin/main`. The implementation mirrors Wolf's ledger conventions. No production migration, deployment, merge, live provider call, Slack message, or Lightdash project is made in this round.
 
 ## Changes
@@ -121,8 +133,8 @@ SET
 ## Remaining integration work
 
 - Slack: after verified, deduplicated identity resolution, establish a Slack origin and emit `slack.event_received` and `slack.reply_decided`. Shared services emit push/search/ask automatically. Preserve the safe origin across queued continuations.
-- Installer: send member-key-authenticated outcomes to `POST /api/analytics/install`. Reuse an attempt UUID for delivery retries and use a new one for an actual install/doctor retry. Send only fixed step/outcome/agent/platform fields. Anonymous pre-key telemetry is not accepted here.
+- Installer: send OAuth- or member-key-authenticated outcomes to `POST /api/analytics/install`. Reuse an attempt UUID for delivery retries and use a new one for an actual install/doctor retry. Send only fixed step/outcome/agent/platform fields. Anonymous pre-authentication telemetry is not accepted here.
 - Hooks: the existing Stop capture gate emits `hook.fired` with a null pushed count. The later agent's push is not inferred to be hook-caused. Session-start hooks and known pushed counts can use `POST /api/analytics/hook`. Quiet sessions still make no request. Do not duplicate the existing capture gate event.
-- Better Auth: preserve the legacy event calls when resolving integration conflicts. Wire the new signup/login/verification/enrollment/role boundaries and successful `mcp_oauth_authorized` consent. Establish OAuth MCP origin with session kind `oauth` and bind the member role/key ID when known.
+- Better Auth: integrated by the landing merge as described above.
 
 Analytics is best effort. Individual write timeouts and process termination can leave gaps. The default traffic classification is unknown. The first ask funnel step can be a gap, and recent polling is observed use rather than engagement proof.

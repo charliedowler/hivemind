@@ -45,7 +45,7 @@ export function EarlyAccessForm() {
       <div className="thank-you stack" role="status">
         <Sprite name="bee-carry" scale={4} />
         <h3>You're on the list.</h3>
-        <p>Thanks for joining. We'll be in touch when your hive is ready.</p>
+        <p>We'll email you when your team can use Hive.</p>
       </div>
     );
   return (

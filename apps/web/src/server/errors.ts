@@ -8,7 +8,7 @@ export class HiveError extends Error {
   }
 }
 export class HiveNotFoundError extends HiveError {
-  constructor(message = "Learning not found in your team.") {
+  constructor(message = "Cell not found in your hive.") {
     super(message, 404);
   }
 }
@@ -20,7 +20,7 @@ export class HiveUnavailableError extends HiveError {
   }
 }
 export class HiveInputError extends HiveError {
-  constructor(message = "The input is invalid.") {
+  constructor(message = "Check the fields and try again.") {
     super(message, 400);
   }
 }

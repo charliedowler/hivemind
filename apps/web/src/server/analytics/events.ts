@@ -211,7 +211,7 @@ export const propertiesSchema = z.object({
       "doctor",
     ]),
   ),
-  agent: nullable(z.enum(["claude-code", "codex"])),
+  agent: nullable(z.enum(["claude-code", "codex", "executor"])),
   platform: nullable(z.enum(["darwin", "linux", "win32", "unknown"])),
   page: nullable(z.enum(["landing", "waitlist", "install"])),
   area: nullable(
@@ -265,6 +265,7 @@ export const bindRole = (ctx: HiveContext, role: "admin" | "member") => {
   roles.set(ctx, role);
   return ctx;
 };
+export const memberRole = (ctx: HiveContext) => roles.get(ctx) ?? null;
 const keyIds = new WeakMap<HiveContext, string>();
 export const bindApiKey = (ctx: HiveContext, id: string) => {
   keyIds.set(ctx, id);
@@ -345,6 +346,7 @@ export function withActor<T>(
     parent
       ? {
           ...parent,
+          sessionKind: parent.sessionKind === "anonymous" ? "web_session" : parent.sessionKind,
           teamId: ctx.teamId,
           memberId: ctx.memberId,
           apiKeyId:
@@ -501,7 +503,7 @@ export async function accessEvent(
     recordEvent({
       name: "access.changed",
       outcome,
-      key,
+      key: key ? `${outcome}:${key}` : undefined,
       properties: {
         actorKind: ctx ? "member" : "anonymous",
         role: ctx ? roles.get(ctx) : null,

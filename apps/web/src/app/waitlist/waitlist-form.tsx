@@ -26,7 +26,7 @@ export function WaitlistForm() {
       {status === "done" ? (
         <div className="waitlist-success" role="status">
           <h2>You're on the list.</h2>
-          <p>We'll be in touch when your team can join the hive.</p>
+          <p>We'll email you when your team can join the hive.</p>
         </div>
       ) : (
         <form
@@ -62,7 +62,9 @@ export function WaitlistForm() {
           </Button>
         </form>
       )}
-      <p className="waitlist-note">No spam. Just your invitation.</p>
+      <p className="waitlist-note">
+        We'll only use this email to send your invitation.
+      </p>
     </div>
   );
 }

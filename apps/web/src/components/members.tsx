@@ -49,8 +49,7 @@ export function Members({
     <div className="stack members-page">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">No one learns alone</span>
-          <h1>The people behind the hive</h1>
+          <h1>Members</h1>
           <p className="muted">
             {overview.teamName}: {overview.memberCount} members,{" "}
             {overview.learningCount} cells, {overview.repos.length} repos.
@@ -61,11 +60,11 @@ export function Members({
       {error ? <ErrorPanel message={error} /> : null}
       {admin ? (
         <Card className="stack">
-          <h2>Make room for your team.</h2>
+          <h2>Invite teammates</h2>
           <p className="muted">
-            Invites expire after seven days. Rotating an invite keeps existing
-            members working. Save the new invite now. The hive cannot show it
-            again.
+            Invites expire after seven days. A new invite replaces the old one
+            and keeps existing members connected. Save the new code now. The
+            hive shows it once.
           </p>
           <Button onClick={() => void act("invite")} loading={pending}>
             Rotate invite
@@ -84,13 +83,13 @@ export function Members({
               {new Date(overview.inviteExpiresAt).toLocaleDateString("en-GB", {
                 timeZone: "UTC",
               })}
-              . Its code stays private.
+              . The hive cannot show the code again.
             </p>
           )}
           <h2>Work domains</h2>
           <p className="muted">
-            Allow your own verified work domain. Public email providers cannot
-            join by domain.
+            Allow your verified work domain so teammates can join with their
+            email. Public email domains cannot use this option.
           </p>
           <p>
             {overview.domains.length

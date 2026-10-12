@@ -31,11 +31,10 @@ export function KnowledgeBrowser() {
     <section className="stack dashboard" aria-label="Knowledge tree">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Explore what the hive knows</span>
           <h1>Knowledge tree</h1>
           <p className="muted">
-            Browse by repo, topic, person or friction. Bring corrections back
-            through your agent.
+            Browse cells by repo, topic, person or friction. Ask your agent to
+            save corrections.
           </p>
         </div>
         <Sprite name="cell-full" scale={3} />
@@ -46,7 +45,7 @@ export function KnowledgeBrowser() {
           disabled={snapshot.pending}
           onClick={() => void download()}
         >
-          {snapshot.pending ? "Packing the hive" : "Prepare a snapshot"}
+          {snapshot.pending ? "Preparing a snapshot" : "Prepare a snapshot"}
         </Button>
         {snapshot.url ? (
           <a
@@ -169,7 +168,7 @@ function TreeContent({
     );
   if (!state.listing)
     return (
-      <LoadingPanel>A forager is gathering this part of the hive.</LoadingPanel>
+      <LoadingPanel>Loading this folder.</LoadingPanel>
     );
   return (
     <>

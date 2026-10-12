@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  accessEvent,
   analyticsTransaction,
   eventRow,
   originFor,
@@ -21,6 +22,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("analytics envelope", () => {
+  it("keeps key creation and revocation distinct while deduplicating each outcome", async () => {
+    const rows: EventRow[] = [];
+    await withOrigin(originFor(ctx), async () => {
+      await accessEvent(ctx, "key_created", {}, "key_aaaaaaaaaaaa");
+      await accessEvent(ctx, "key_revoked", {}, "key_aaaaaaaaaaaa");
+      await accessEvent(ctx, "key_revoked", {}, "key_aaaaaaaaaaaa");
+    }, async (row) => { rows.push(row); });
+    expect(rows[0].event_key).not.toBe(rows[1].event_key);
+    expect(rows[1].event_key).toBe(rows[2].event_key);
+  });
   it("hashes operation identity and fills every unknown property with null", () => {
     const input = {
       name: "search.performed" as const,

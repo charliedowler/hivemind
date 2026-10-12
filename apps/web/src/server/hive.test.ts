@@ -364,7 +364,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
     });
     expect(answer.answer).toContain("7 measured minutes");
     expect(answer.citations.map((item) => item.id)).toContain(first.id);
-    expect(answer.gaps).toContain("Unmeasured");
+    expect(answer.gaps).toContain("excludes reports without a measured cost");
   });
 
   it("refuses sensitive pushes before writing a learning or embedding", async () => {

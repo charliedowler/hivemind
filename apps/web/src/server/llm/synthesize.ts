@@ -58,8 +58,8 @@ export function extractiveAnswer(hits: SearchHit[]): AskResult {
   return {
     answer:
       topHits.length === 0
-        ? "The hive has nothing on this yet."
-        : `This is an unsynthesized list of the top learnings.\n\n${topHits
+        ? "The hive has no learning that answers this yet."
+        : `These are the closest matching learnings.\n\n${topHits
             .map((hit) => {
               const firstSentence = hit.body
                 .trim()

@@ -1,4 +1,4 @@
-import { withOrigin, originFor, bindApiKey } from "@/server/analytics/events";
+import { withOrigin, originFor, bindApiKey, bindRole } from "@/server/analytics/events";
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -30,7 +30,9 @@ const contextSchema = z.object({
   teamName: z.string(),
   memberId: z.string(),
   memberName: z.string(),
-  apiKeyId: z.string().optional(),
+  apiKeyId: z.string().nullish(),
+  role: z.enum(["admin", "member"]).nullish(),
+  sessionKind: z.enum(["api_key", "oauth"]).optional(),
 });
 type ToolContext = {
   http?: { authInfo?: AuthInfo; req?: { headers: Headers } };
@@ -39,10 +41,11 @@ type ToolContext = {
 function getContext(ctx: ToolContext): HiveContext {
   const parsed = contextSchema.safeParse(ctx.http?.authInfo?.extra);
   if (!parsed.success)
-    throw new HiveError("A valid hive API key is required.", 401);
-  return parsed.data.apiKeyId
-    ? bindApiKey(parsed.data, parsed.data.apiKeyId)
-    : parsed.data;
+    throw new HiveError("Connect your forager to the hive and sign in.", 401);
+  const actor = parsed.data;
+  if (actor.apiKeyId) bindApiKey(actor, actor.apiKeyId);
+  if (actor.role) bindRole(actor, actor.role);
+  return actor;
 }
 
 function age(date: string): string {
@@ -63,7 +66,7 @@ async function reply(action: () => Promise<string>, ctx: ToolContext) {
       content: [
         {
           type: "text" as const,
-          text: await withOrigin(originFor(getContext(ctx), "mcp"), action),
+          text: await withOrigin(originFor(getContext(ctx), "mcp", contextSchema.parse(ctx.http?.authInfo?.extra).sessionKind), action),
         },
       ],
     };
@@ -133,7 +136,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Share a learning",
       description:
-        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Use supersedes to correct a current cell and verify_after for facts that expire. Include insights and friction: what slowed you down, measured minutes lost, whether progress was blocked, and a workaround. Never include secrets or customer names.",
+        "Save a learning that would help a teammate. Include its evidence and repo. Use supersedes to correct a current cell. Set verify_after for facts that need checking later. For friction, record what slowed you down and any workaround. Include measured minutes lost and whether it blocked progress. Keep secrets and customer names out.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>
@@ -183,7 +186,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Ask the hive",
       description:
-        "Call for a synthesized answer with citations to the team's shared learnings. Read the confidence and gaps before acting.",
+        "Ask a question using the team's saved learnings. The answer cites its cells. Check the confidence and gaps before acting.",
       inputSchema: hiveAskInput,
     },
     async (input, ctx) =>
@@ -198,7 +201,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Catch up on learnings",
       description:
-        "Call to catch up on what the team has learned since a time or during a recent window. Optionally filter to one repository.",
+        "List what the team learned since a date or during a time window. Use repo to limit results to one repository.",
       inputSchema: hiveRecentInput,
     },
     async (input, ctx) =>

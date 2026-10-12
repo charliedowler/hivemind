@@ -1,5 +1,6 @@
+import { withHiveBearerAuth } from "../bearer-auth";
 import { z } from "zod";
-import { authenticateApiKey, getWebContext } from "../auth";
+import { getWebContext } from "../auth";
 import { getLearning } from "../hive";
 import { httpError } from "@/lib/http";
 import { originFor, recordEvent, withOrigin } from "./events";
@@ -70,7 +71,7 @@ const clientReport = z.discriminatedUnion("kind", [
       "doctor",
     ]),
     outcome: z.enum(["completed", "failed", "skipped"]),
-    agent: z.enum(["claude-code", "codex"]),
+    agent: z.enum(["claude-code", "codex", "executor"]),
     platform: z.enum(["darwin", "linux", "win32", "unknown"]),
     attemptId: z.string().uuid(),
   }),
@@ -84,11 +85,7 @@ const clientReport = z.discriminatedUnion("kind", [
 ]);
 export async function clientBeacon(request: Request, kind: "install" | "hook") {
   try {
-    const token = request.headers
-      .get("authorization")
-      ?.match(/^Bearer (.+)$/i)?.[1];
-    const ctx = token ? await authenticateApiKey(token) : null;
-    if (!ctx) return new Response(null, { status: 401 });
+    return await withHiveBearerAuth(request, async (request, ctx, claims) => {
     const text = await request.text();
     if (text.length > 1024) return new Response(null, { status: 413 });
     const input = clientReport.parse({
@@ -102,7 +99,7 @@ export async function clientBeacon(request: Request, kind: "install" | "hook") {
       60,
     );
     await withOrigin(
-      originFor(ctx, kind === "install" ? "installer" : "hook"),
+      originFor(ctx, kind === "install" ? "installer" : "hook", claims ? "oauth" : "api_key"),
       async () => {
         if (input.kind === "install")
           await recordEvent({
@@ -135,6 +132,7 @@ export async function clientBeacon(request: Request, kind: "install" | "hook") {
       },
     );
     return new Response(null, { status: 204 });
+    });
   } catch (error) {
     return httpError(error);
   }

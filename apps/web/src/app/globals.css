@@ -979,3 +979,23 @@ pre:focus-visible {
     padding: 16px;
   }
 }
+
+.tree-breadcrumbs button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--teal-700);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth-divider { text-align: center; }
+.consent-scopes { display: grid; gap: 12px; padding-left: 20px; }
+.consent-panel h1 { font-size: clamp(28px, 5vw, 40px); }
+@media (max-width: 640px) {
+  .login-panel .hm-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .login-panel .hm-tab { padding-inline: 4px; font-size: 12px; }
+  .login-panel .hm-tab:last-child { grid-column: auto; }
+}

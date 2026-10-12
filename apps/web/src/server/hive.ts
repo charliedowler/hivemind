@@ -68,7 +68,7 @@ function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
   if (!result.success)
     throw new HiveInputError(
-      "The input is invalid. Check the tool's fields and limits.",
+      "Check the tool's fields and limits.",
     );
   return result.data;
 }
@@ -113,7 +113,7 @@ async function pushLearningAction(
   const body = redactSecrets(data.body.trim());
   const workaround = redactSecrets(data.workaround ?? "");
   if (!title.text || !body.text)
-    throw new HiveInputError("The title and body cannot be blank.");
+    throw new HiveInputError("Enter a title and a body for the learning.");
   const { classification, decision } = await classifyPush({
     title: title.text,
     body: body.text,
@@ -432,10 +432,10 @@ async function askHiveAction(
   if (relevance.decision === "gap")
     result = {
       answer:
-        "The hive has nothing on this yet. Use hive_push once you find the answer.",
+        "The hive has no learning that answers this yet. Use hive_push to save what you find.",
       citations: [],
       confidence: "low",
-      gaps: "The retrieved learnings do not provide enough evidence to answer this question.",
+      gaps: "The matching cells do not have enough evidence to answer this question.",
       synthesized: false,
     };
   else {
