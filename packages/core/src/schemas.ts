@@ -19,7 +19,13 @@ export const frictionAreas = [
 ] as const;
 export const frictionAreaSchema = z.enum(frictionAreas);
 export type FrictionArea = z.infer<typeof frictionAreaSchema>;
-export const lifecycleStates = ["fresh", "confirmed", "superseded", "outdated", "retracted"] as const;
+export const lifecycleStates = [
+  "fresh",
+  "confirmed",
+  "superseded",
+  "outdated",
+  "retracted",
+] as const;
 export type LearningLifecycle = (typeof lifecycleStates)[number];
 
 export const learningSources = ["claude-code", "codex", "manual"] as const;
@@ -34,9 +40,23 @@ export type LearningSource = z.infer<typeof learningSourceSchema>;
 export type FeedbackVote = z.infer<typeof feedbackVoteSchema>;
 
 export const hivePushInput = z.object({
-  evidence: z.object({ session_excerpt: z.string().max(50000).optional(), diff: z.string().max(50000).optional() }).optional(),
-  supersedes: z.string().regex(/^lrn_[a-z2-7]{12}$/).optional().describe("The current cell this learning replaces. The old cell stays readable."),
-  verify_after: z.iso.datetime({ offset: true }).optional().describe("An ISO timestamp after which this fact needs verification."),
+  evidence: z
+    .object({
+      session_excerpt: z.string().max(50000).optional(),
+      diff: z.string().max(50000).optional(),
+    })
+    .optional(),
+  supersedes: z
+    .string()
+    .regex(/^lrn_[a-z2-7]{12}$/)
+    .optional()
+    .describe(
+      "The current cell this learning replaces. The old cell stays readable.",
+    ),
+  verify_after: z.iso
+    .datetime({ offset: true })
+    .optional()
+    .describe("An ISO timestamp after which this fact needs verification."),
   title: z
     .string()
     .min(1)
@@ -49,7 +69,9 @@ export const hivePushInput = z.object({
     .describe("The learning in Markdown, including context and evidence."),
   kind: learningKindSchema
     .optional()
-    .describe("The kind of knowledge being shared. Omit to use the hive classifier."),
+    .describe(
+      "The kind of knowledge being shared. Omit to use the hive classifier.",
+    ),
   area: frictionAreaSchema
     .optional()
     .describe(
@@ -102,7 +124,12 @@ export const hivePushInput = z.object({
 });
 
 export const hiveSearchInput = z.object({
-  include_history: z.boolean().optional().describe("Include superseded, outdated and retracted cells for investigation."),
+  include_history: z
+    .boolean()
+    .optional()
+    .describe(
+      "Include superseded, outdated and retracted cells for investigation.",
+    ),
   query: z
     .string()
     .min(1)
@@ -190,7 +217,9 @@ export type HiveAskInput = z.infer<typeof hiveAskInput>;
 export type HiveRecentInput = z.infer<typeof hiveRecentInput>;
 export type HiveFeedbackInput = z.infer<typeof hiveFeedbackInput>;
 
-export const hiveBrowseInput = z.object({ path: z.string().max(500).default("") });
+export const hiveBrowseInput = z.object({
+  path: z.string().max(500).default(""),
+});
 export const hiveReadInput = z.object({ path: z.string().min(1).max(500) });
 export const learningEditInput = z.object({
   revision: z.number().int().positive(),

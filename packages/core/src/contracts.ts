@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { LearningKind, LearningSource, FrictionArea, LearningLifecycle } from "./schemas";
+import type {
+  LearningKind,
+  LearningSource,
+  FrictionArea,
+  LearningLifecycle,
+} from "./schemas";
 
 export type HiveContext = {
   teamId: string;
@@ -192,8 +197,20 @@ export type FrictionSummary = {
 
 export type LearningConflict = {
   id: string;
-  older: { id: string; title: string; body: string; author: string; revision: number };
-  newer: { id: string; title: string; body: string; author: string; revision: number };
+  older: {
+    id: string;
+    title: string;
+    body: string;
+    author: string;
+    revision: number;
+  };
+  newer: {
+    id: string;
+    title: string;
+    body: string;
+    author: string;
+    revision: number;
+  };
   relation: "update" | "contradiction";
   confidence: number;
   status: "candidate" | "accepted" | "rejected";
@@ -204,7 +221,21 @@ export type LearningConflict = {
   stale: boolean;
   createdAt: string;
 };
-export type LearningVersion = { revision: number; author: string; createdAt: string; content: Record<string, unknown>; diff: Record<string, { before: unknown; after: unknown }> };
-export type KnowledgeEntry = { path: string; name: string; type: "directory" | "file" };
-export type KnowledgeListing = { path: string; revision: number; entries: KnowledgeEntry[] };
+export type LearningVersion = {
+  revision: number;
+  author: string;
+  createdAt: string;
+  content: Record<string, unknown>;
+  diff: Record<string, { before: unknown; after: unknown }>;
+};
+export type KnowledgeEntry = {
+  path: string;
+  name: string;
+  type: "directory" | "file";
+};
+export type KnowledgeListing = {
+  path: string;
+  revision: number;
+  entries: KnowledgeEntry[];
+};
 export type KnowledgeFile = { path: string; revision: number; content: string };

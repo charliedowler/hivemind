@@ -14,6 +14,8 @@ const instructions = [
   "- When you hit an error you do not understand, call `hive_search` with the error text before you investigate.",
   "- Call `hive_push` when you learn something a teammate would otherwise need to rediscover. This includes gotchas, fixes, decisions and insights about how the team works. For friction, describe what slowed you down, how long it took and any workaround. Use a title that states the fact. Include the repo, 3 to 5 tags and relevant paths. Keep secrets and customer names out.",
   "- When a result helped, call `hive_feedback` with `up`. When it is wrong or stale, vote `down` or `outdated` and say why.",
+  "- Before pushing a correction, search for and read the old cell. Set `supersedes` to its id so the replacement becomes current and the old source stays in history. Set `verify_after` to an ISO date for time-sensitive facts; check expired cells before use.",
+  "- Use `hive_browse` and `hive_read` to explore the read-only knowledge tree. Use `hive_snapshot` to download an archive for local grep. Tree edits are not saved; corrections go through `hive_push`.",
   "- Use `hive_ask` for a question that needs several learnings joined into one answer.",
 ].join("\n");
 

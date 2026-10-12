@@ -17,7 +17,11 @@ import {
   recentLearnings,
   recordFeedback,
 } from "@/server/hive";
-import { browseKnowledge, readKnowledge, snapshotKnowledge } from "@/server/knowledge-tree";
+import {
+  browseKnowledge,
+  readKnowledge,
+  snapshotKnowledge,
+} from "@/server/knowledge-tree";
 import { HiveError } from "@/server/errors";
 
 const contextSchema = z.object({
@@ -69,9 +73,46 @@ async function reply(action: () => Promise<string>) {
 }
 
 export function registerHiveTools(server: McpServer) {
-  server.registerTool("hive_browse", { title: "Browse the hive tree", description: "List files and directories in the team's read-only knowledge tree. Start with an empty path.", inputSchema: hiveBrowseInput }, async (input, ctx) => reply(async () => JSON.stringify(await browseKnowledge(getContext(ctx), input.path))));
-  server.registerTool("hive_read", { title: "Read a hive file", description: "Read a Markdown file from the team's tree. Historical cells carry replacement pointers and verification dates.", inputSchema: hiveReadInput }, async (input, ctx) => reply(async () => { const file = await readKnowledge(getContext(ctx), input.path); return `Revision ${file.revision}: ${file.path}\n\n${file.content}`; }));
-  server.registerTool("hive_snapshot", { title: "Download the hive tree", description: "Get a private tar.gz download URL valid for 15 minutes. Unpack it to grep a consistent read-only tree locally. Treat the URL as a credential. Edits go through hive_push.", inputSchema: z.object({}) }, async (_input, ctx) => reply(async () => JSON.stringify(await snapshotKnowledge(getContext(ctx)))));
+  server.registerTool(
+    "hive_browse",
+    {
+      title: "Browse the hive tree",
+      description:
+        "List files and directories in the team's read-only knowledge tree. Start with an empty path.",
+      inputSchema: hiveBrowseInput,
+    },
+    async (input, ctx) =>
+      reply(async () =>
+        JSON.stringify(await browseKnowledge(getContext(ctx), input.path)),
+      ),
+  );
+  server.registerTool(
+    "hive_read",
+    {
+      title: "Read a hive file",
+      description:
+        "Read a Markdown file from the team's tree. Historical cells carry replacement pointers and verification dates.",
+      inputSchema: hiveReadInput,
+    },
+    async (input, ctx) =>
+      reply(async () => {
+        const file = await readKnowledge(getContext(ctx), input.path);
+        return `Revision ${file.revision}: ${file.path}\n\n${file.content}`;
+      }),
+  );
+  server.registerTool(
+    "hive_snapshot",
+    {
+      title: "Download the hive tree",
+      description:
+        "Get a private tar.gz download URL valid for 15 minutes. Unpack it to grep a consistent read-only tree locally. Treat the URL as a credential. Edits go through hive_push.",
+      inputSchema: z.object({}),
+    },
+    async (_input, ctx) =>
+      reply(async () =>
+        JSON.stringify(await snapshotKnowledge(getContext(ctx))),
+      ),
+  );
 
   server.registerTool(
     "hive_push",

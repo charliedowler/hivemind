@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { FrictionSummary } from "@hivemind/core";
 import { Card, Sprite } from "@hivemind/design-system";
 import { requestJson, errorMessage } from "@/lib/client";
+import { CellCitation } from "./cell-citation";
 import { ErrorPanel, LoadingPanel } from "./primitives";
 export function FrictionPanel({
   repo,
@@ -59,7 +60,7 @@ export function FrictionPanel({
     </section>
   );
 }
-function FrictionContent({
+export function FrictionContent({
   data,
   onOpen,
 }: {
@@ -94,7 +95,7 @@ function FrictionContent({
                     style={{ width: `${(area.minutes / data.minutes) * 100}%` }}
                   />
                 ) : null}
-                <Cited ids={area.ids} onOpen={onOpen} />
+                <Cited ids={area.ids} cells={data.cells} onOpen={onOpen} />
               </div>
             ))}
           </div>
@@ -105,7 +106,7 @@ function FrictionContent({
                 <p>
                   {item.title} · {item.count} reports · {item.minutes} min
                 </p>
-                <Cited ids={item.ids} onOpen={onOpen} />
+                <Cited ids={item.ids} cells={data.cells} onOpen={onOpen} />
               </div>
             ))
           ) : (
@@ -125,22 +126,18 @@ function FrictionContent({
 }
 function Cited({
   ids,
+  cells,
   onOpen,
 }: {
   ids: string[];
+  cells: FrictionSummary["cells"];
   onOpen: (id: string) => void;
 }) {
+  const titles = new Map(cells.map((cell) => [cell.id, cell.title]));
   return (
     <div className="row wrap">
       {ids.map((id) => (
-        <button
-          key={id}
-          type="button"
-          className="hm-cite small"
-          onClick={() => onOpen(id)}
-        >
-          {id}
-        </button>
+        <CellCitation key={id} id={id} title={titles.get(id)} onOpen={onOpen} />
       ))}
     </div>
   );
