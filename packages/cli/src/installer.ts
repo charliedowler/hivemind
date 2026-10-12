@@ -3,13 +3,15 @@ import { join, dirname, resolve, relative } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 export type Agent = 'claude' | 'codex';
 type Hook = { type?: string; command?: string; [key: string]: unknown };
 type HookGroup = { hooks: Hook[]; [key: string]: unknown };
+type OwnedHook = { event: string; command: string; group?: HookGroup };
 type Settings = { hooks?: Record<string, HookGroup[]>; [key: string]: unknown };
 type OwnedFile = { hash: string; previous?: string };
-type Manifest = { version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: { event: string; command: string }[] };
+type Manifest = { version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: OwnedHook[] };
 export type Result = { status: number; stdout: string; stderr: string };
 export type Runner = (command: string, args: string[], home: string) => Result;
 export type Options = { home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string };
@@ -39,7 +41,7 @@ export function validateSettings(value: unknown): asserts value is Settings {
   }
 }
 
-export function mergeHooks(value: unknown, home: string, remove = false, ownedHooks?: { event: string; command: string }[]): Settings {
+export function mergeHooks(value: unknown, home: string, remove = false, ownedHooks?: OwnedHook[]): Settings {
   validateSettings(value);
   const settings: Settings = structuredClone(value);
   const hooks = settings.hooks || {};
@@ -47,7 +49,18 @@ export function mergeHooks(value: unknown, home: string, remove = false, ownedHo
     const command = hookCommand(home, script);
     const groups = hooks[event] || [];
     if (remove) {
-      if (ownedHooks && !ownedHooks.some(hook => hook.event === event && hook.command === command)) continue;
+      if (ownedHooks) {
+        const records = ownedHooks.filter(hook => hook.event === event && hook.command === command);
+        const remaining = [...groups];
+        for (const record of records) {
+          if (!record.group) continue;
+          const index = remaining.findIndex(group => isDeepStrictEqual(group, record.group));
+          if (index !== -1) remaining.splice(index, 1);
+        }
+        if (remaining.length) hooks[event] = remaining;
+        else delete hooks[event];
+        continue;
+      }
       const kept = groups.flatMap(group => {
         const remaining = group.hooks.filter(hook => !(hook.type === 'command' && hook.command === command));
         return remaining.length ? [{ ...group, hooks: remaining }] : [];
@@ -92,7 +105,10 @@ function loadManifest(home: string): Manifest {
   if (!manifest.ownedHooks) {
     const originalPath = manifest.backupDirectories?.[0] ? join(manifest.backupDirectories[0], '.claude/settings.json') : undefined;
     const original: Settings = JSON.parse(originalPath ? read(originalPath) || '{}' : '{}');
-    manifest.ownedHooks = manifest.agents.includes('claude') ? [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']].filter(([event, script]) => !(original.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.command === hookCommand(home, script)))).map(([event, script]) => ({ event, command: hookCommand(home, script) })) : [];
+    manifest.ownedHooks = manifest.agents.includes('claude') ? [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']].filter(([event, script]) => !(original.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.command === hookCommand(home, script)))).map(([event, script]) => ({ event, command: hookCommand(home, script), group: { ...(event === 'SessionStart' ? { matcher: 'startup|resume|clear|compact' } : {}), hooks: [{ type: 'command', command: hookCommand(home, script), timeout: event === 'SessionStart' ? 4 : 6 }] } })) : [];
+  }
+  for (const record of manifest.ownedHooks) {
+    if (!record.group) record.group = { ...(record.event === 'SessionStart' ? { matcher: 'startup|resume|clear|compact' } : {}), hooks: [{ type: 'command', command: record.command, timeout: record.event === 'SessionStart' ? 4 : 6 }] };
   }
   return manifest;
 }
@@ -172,7 +188,7 @@ export function install(options: Options): Manifest {
       const merged = mergeHooks(existing, home);
       for (const [event, script] of [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']]) {
         const command = hookCommand(home, script);
-        if (!(existing.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.type === 'command' && hook.command === command))) manifest.ownedHooks.push({ event, command });
+        if (!(existing.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.type === 'command' && hook.command === command))) manifest.ownedHooks.push({ event, command, group: structuredClone(merged.hooks![event].at(-1)!) });
       }
       writes.set(settingsPath, JSON.stringify(merged, null, 2) + '\n');
     }
@@ -265,7 +281,7 @@ export function uninstall(options: Options) {
     const manifest = loadManifest(home);
     for (const path of Object.keys(manifest.files)) {
       const full = resolve(home, path);
-      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/')) throw new Error('The Hive install record contains an unexpected path');
+      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/') || relative(home, full) !== path) throw new Error('The Hive install record contains an unexpected path');
     }
     const writes = new Map<string, string>();
     for (const agent of manifest.agents) {
@@ -278,9 +294,15 @@ export function uninstall(options: Options) {
     const backupDir = options.backupDir || join(home, '.hive/backups', `${Date.now()}-uninstall`);
     backUp(home, [...writes.keys(), join(home, '.claude.json'), join(home, '.codex/config.toml'), manifestPath(home)], backupDir);
     for (const [path, content] of writes) atomicWrite(path, content);
+    const remainingHooks: Settings = manifest.agents.includes('claude') ? JSON.parse(read(settingsPath) || '{}') : {};
+    const retainedRuntime = Object.values(remainingHooks.hooks || {}).some(groups => groups.some(group => group.hooks.some(hook => typeof hook.command === 'string' && hook.command.includes(join(home, '.claude/skills/hive/scripts')))));
+    manifest.ownedHooks = [];
+    atomicWrite(manifestPath(home), JSON.stringify(manifest, null, 2) + '\n');
+    if (retainedRuntime) log('Kept the Claude skill runtime for a preserved hook');
     for (const [path, owned] of Object.entries(manifest.files)) {
       const full = resolve(home, path);
-      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/')) throw new Error('The Hive install record contains an unexpected path');
+      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/') || relative(home, full) !== path) throw new Error('The Hive install record contains an unexpected path');
+      if (retainedRuntime && path.startsWith('.claude/skills/hive/')) continue;
       const current = read(full);
       if (current === undefined) continue;
       if (digest(current) !== owned.hash) { log(`Kept a changed skill file: ${full}`); continue; }

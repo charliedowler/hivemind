@@ -211,3 +211,37 @@ test('install and uninstall preserve symlinked configuration files', () => {
   assert.deepEqual(JSON.parse(f.read('dotfiles/settings.json')), originalSettings);
   assert.equal(f.read('dotfiles/CLAUDE.md'), 'Original rules\n');
 });
+
+test('uninstall preserves edited hook groups and their runtime', () => {
+  const f = fixture();
+  install(f.options);
+  const settings = JSON.parse(f.read('.claude/settings.json'));
+  settings.hooks.Stop[0].hooks[0].timeout = 9;
+  f.write('.claude/settings.json', JSON.stringify(settings));
+  uninstall(f.options);
+  assert.deepEqual(JSON.parse(f.read('.claude/settings.json')).hooks.Stop, settings.hooks.Stop);
+  assert.ok(existsSync(join(f.home, '.claude/skills/hive/scripts/stop.mjs')));
+  assert.ok(existsSync(join(f.home, '.claude/skills/hive/scripts/mcp.mjs')));
+});
+
+test('uninstall removes one owned group and preserves a later duplicate', () => {
+  const f = fixture();
+  install(f.options);
+  const settings = JSON.parse(f.read('.claude/settings.json'));
+  settings.hooks.Stop.push(structuredClone(settings.hooks.Stop[0]));
+  f.write('.claude/settings.json', JSON.stringify(settings));
+  uninstall(f.options);
+  assert.equal(JSON.parse(f.read('.claude/settings.json')).hooks.Stop.length, 1);
+});
+
+test('a retry after MCP removal fails cannot remove a surviving duplicate', () => {
+  const f = fixture();
+  install(f.options);
+  const settings = JSON.parse(f.read('.claude/settings.json'));
+  settings.hooks.Stop.push(structuredClone(settings.hooks.Stop[0]));
+  f.write('.claude/settings.json', JSON.stringify(settings));
+  assert.throws(() => uninstall({ ...f.options, run: (command, args, home) => args[1] === 'remove' ? { status: 1, stdout: '', stderr: 'fixture removal failure' } : f.options.run(command, args, home) }), /another pass/);
+  assert.equal(JSON.parse(f.read('.hive/install.json')).ownedHooks.length, 0);
+  uninstall(f.options);
+  assert.equal(JSON.parse(f.read('.claude/settings.json')).hooks.Stop.length, 1);
+});
