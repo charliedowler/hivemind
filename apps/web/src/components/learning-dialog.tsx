@@ -1,4 +1,5 @@
 "use client";
+import { AnalyticsBeacon } from "./analytics-beacon";
 
 import { useEffect, useState } from "react";
 import type {
@@ -54,6 +55,7 @@ export function LearningDetail({
   }
   return (
     <div className="stack learning-detail">
+      <AnalyticsBeacon learningId={learning.id} />
       <div className="row wrap">
         <Badge tone={learningStatus({ ...learning, votes })}>
           {learning.lifecycle ?? learningStatus({ ...learning, votes })}

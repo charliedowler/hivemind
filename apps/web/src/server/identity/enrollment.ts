@@ -1,3 +1,5 @@
+import { accessEvent, bindRole } from "../analytics/events";
+import { earlyAccessIdForEmail } from "../analytics/linkages";
 import type { HiveContext } from "@hivemind/core";
 import { hiveRegistration, type HiveRegistration } from "@/lib/hive-registration";
 import { getSql } from "../db/client";
@@ -16,12 +18,12 @@ export function registrationForStorage(value: unknown): string | null {
 
 export async function memberContext(memberId: string, teamId?: string): Promise<HiveContext | null> {
   const sql = getSql();
-  const rows = await sql`SELECT m.id, m.name, m.team_id, t.name AS team_name FROM members m JOIN teams t ON t.id = m.team_id WHERE m.id = ${memberId} AND m.removed_at IS NULL ${teamId ? sql`AND m.team_id = ${teamId}` : sql``}`;
-  return rows[0] ? { memberId: rows[0].id, memberName: rows[0].name, teamId: rows[0].team_id, teamName: rows[0].team_name } : null;
+  const rows = await sql`SELECT m.id, m.name, m.role, m.team_id, t.name AS team_name FROM members m JOIN teams t ON t.id = m.team_id WHERE m.id = ${memberId} AND m.removed_at IS NULL ${teamId ? sql`AND m.team_id = ${teamId}` : sql``}`;
+  return rows[0] ? bindRole({ memberId: rows[0].id, memberName: rows[0].name, teamId: rows[0].team_id, teamName: rows[0].team_name }, rows[0].role) : null;
 }
 
 export async function enrollMember(memberId: string, input?: HiveRegistration): Promise<HiveContext | null> {
-  await getSql().begin(async (tx) => {
+  const enrollment = await getSql().begin(async (tx) => {
     const rows = await tx`SELECT * FROM members WHERE id = ${memberId} FOR UPDATE`;
     const member = rows[0];
     if (!member || member.removed_at) throw new HiveError("This membership is no longer active.", 403);
@@ -51,6 +53,14 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
     }
     await tx`UPDATE members SET team_id = ${teamId}, role = ${registration.intent === "create" ? "admin" : "member"}, hive_registration = NULL, updated_at = now() WHERE id = ${memberId} AND team_id IS NULL AND removed_at IS NULL`;
     await tx`UPDATE web_sessions SET team_id = ${teamId} WHERE member_id = ${memberId} AND team_id IS NULL`;
+    return { intent: registration.intent as "create" | "invite" | "domain", email: member.email as string, promoted: registration.intent === "create" && member.role !== "admin" };
+
   });
-  return memberContext(memberId);
+  const ctx = await memberContext(memberId);
+  if (ctx && enrollment) {
+    await accessEvent(ctx, "signup", { earlyAccessId: await earlyAccessIdForEmail(enrollment.email) }, `enrollment:${memberId}`);
+    await accessEvent(ctx, enrollment.intent === "create" ? "invite_created" : enrollment.intent === "invite" ? "invite_accepted" : "domain_join", {}, `enrollment:${memberId}`);
+    if (enrollment.promoted) await accessEvent(ctx, "role_changed", { role: "admin", targetMemberId: memberId }, `enrollment:${memberId}`);
+  }
+  return ctx;
 }

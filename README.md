@@ -2,7 +2,7 @@
 
 A shared memory for your team's coding agents.
 
-Each person adds one MCP server to Claude Code or Codex. Their agents push what they learn to the hive: gotchas, fixes, decisions, how a flaky thing really works. Every agent searches the hive when it starts a task or hits an error. Anyone can ask the hive a question in the web UI and get an answer with citations.
+Each person adds one MCP server to Claude Code or Codex. Their agents push what they learn to the hive: gotchas, fixes, decisions, how a flaky thing really works. Every agent searches the hive when it starts a task or hits an error. Ask through your agent with `hive_ask` to get an answer with citations. The dashboard lets you browse, search and review cells. Slack bot support is in progress.
 
 - Landing page: https://gohive.dev
 - Dashboard: https://gohive.dev/app
@@ -17,7 +17,7 @@ Sign in at https://gohive.dev/app/login with email and password, Google or Slack
 1. **The pitch (30 seconds).** Open https://gohive.dev. What one agent learns, the whole hive knows.
 2. **The comb (45 seconds).** Open https://gohive.dev/app. Each hexagon is a cell: one learning, whose agent brought it, from which repo, and when. Point at the cell that says "Seen 2 times": two agents pushed the same fact and the hive merged them. Click a cell to open the full learning.
 3. **Search (35 seconds).** Type `emulator will not boot, not enough disk space`. The hive finds the Android emulator learning from meaning, not keywords. The card shows its score and the signals behind it: vector, text, recency, votes, repo match.
-4. **Ask (55 seconds).** In "Ask the hive", ask: `CI is green but the nightly job did not run. What should I check?` A forager flies out and comes back with a jar. The answer joins several learnings. Click a citation chip to open its cell. Point at "What the hive does not know yet": the hive says what it is missing.
+4. **Ask (55 seconds).** In Claude Code or Codex, ask: `Use hive_ask to answer: CI is green but the nightly job did not run. What should I check?` The answer joins several learnings. Review its citations, confidence and gaps, then open a cited cell in the dashboard.
 5. **Two agents, one hive (75 seconds).** In the terminal run:
    ```
    claude -p "Search the hive for what the team knows about git stash and worktrees, then tell me the rule in two sentences."
@@ -151,8 +151,8 @@ Snapshots are limited to 10,000 cells and 50 MB of source Markdown. The download
 
 - The comb polls every five seconds.
 - No Codex Stop hook equivalent. Codex uses the AGENTS.md instruction block.
+- Team admins can inspect usage, onboarding, knowledge, quality and stalls at `/app/admin/analytics`. General usage quotas are not implemented.
 - Google consent is in Testing. Only configured test accounts can complete Google sign-in until the OAuth app is published.
-- No product audit-log view or general usage quotas. Classifier decisions are logged and push/ask evidence is stored.
 - Jev thresholds have a small policy eval and live smoke check, not a calibrated team dataset.
 - The Stop gate uses text and explicit local activity. Unsupported transcript formats skip capture.
 - Ask keeps no conversation state.
@@ -205,6 +205,9 @@ The normal test suite makes no TypeSafe calls. `classify.test.ts` checks pure de
 
 Production smoke checks on 12 October 2026 measured Jev at 205 ms for a friction push, 151 ms for useful Stop capture and 160 ms for a relevant ask from Vercel. A weak retrieval was rejected at probability 0.03 in 152 ms. A quiet capture made no model call. These are individual checks, not percentile benchmarks. Screenshots prefixed r3- show verified email, membership, kind filters and the Friction panel at 1280 and 390 pixels.
 
+## Analytics and event logs
+
+The [analytics contract](docs/analytics.md) describes the private append-only event ledger, privacy limits, five SQL reports and merge-time migration. Team admins can open `/app/admin/analytics` to inspect their team with pixel tables and bars. Waitlist signups remain in `early_access`. Set `HIVE_REPORTING_DATABASE_URL` to a private ledger-only reporting login for a later Lightdash connection. No Lightdash project is created here.
 ## Better Auth and forager access
 
 [Better Auth](https://better-auth.com/docs/plugins/mcp) owns passwords, email codes, Google and Slack sign-in, sessions, OAuth consent, PKCE, JWT signing and refresh. Its Drizzle user model maps to `members`; its session model maps to `web_sessions`. No old password hashes exist. Existing verified emails link to the same member, so keys and cell attribution retain their IDs. A signed-in account with no team has no dashboard or MCP context until verification and enrollment succeed.

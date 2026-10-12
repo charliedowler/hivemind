@@ -1,3 +1,5 @@
+import { clientBeacon } from "./analytics/beacons";
+import { withOrigin, originFor, type EventRow } from "./analytics/events";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
@@ -21,6 +23,7 @@ vi.mock("./llm/embeddings", () => ({ embedText: async () => null }));
 
 const suffix = randomBytes(8).toString("hex");
 const codes = new Map<string, string>();
+const events: EventRow[] = [];
 const password = "Fixture-password-48";
 let baseUrl: string;
 let server: Server;
@@ -97,7 +100,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
         const headers = new Headers();
         for (const [key, value] of Object.entries(req.headers)) if (value) headers.set(key, Array.isArray(value) ? value.join(",") : value);
         const incoming = new Request(new URL(req.url!, baseUrl), { method: req.method, headers, ...(chunks.length ? { body: Buffer.concat(chunks) } : {}) });
-        const response = req.url?.startsWith("/api/mcp") ? await mcpRoute(incoming) : req.url?.startsWith("/api/app/capture") ? await captureRoute(incoming) : await authHandler(incoming);
+        const response = await withOrigin(originFor(), async () => req.url?.startsWith("/api/mcp") ? await mcpRoute(incoming) : req.url?.startsWith("/api/app/capture") ? await captureRoute(incoming) : req.url?.startsWith("/api/analytics/") ? await clientBeacon(incoming, req.url.endsWith("install") ? "install" : "hook") : await authHandler(incoming), async (row) => { events.push(row); });
         res.statusCode = response.status;
         response.headers.forEach((value, key) => { if (key !== "set-cookie") res.setHeader(key, value); });
         if (response.headers.getSetCookie().length) res.setHeader("set-cookie", response.headers.getSetCookie());
@@ -132,6 +135,22 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
       await sql.end();
     }
     vi.unstubAllEnvs();
+  });
+  it("records verified enrollment, scoped sessions and anonymous failures without credentials", async () => {
+    const rows = events.filter((row) => row.member_id === memberA && row.event_name === "access.changed");
+    for (const outcome of ["signup", "email_verified", "invite_created", "role_changed", "login"]) expect(rows.some((row) => row.outcome === outcome), outcome).toBe(true);
+    expect(rows.find((row) => row.outcome === "signup")).toMatchObject({ team_id: teamA, properties: { role: "admin" } });
+    expect(events.some((row) => row.outcome === "email_verification_sent" && row.team_id === null)).toBe(true);
+    const failed = await request("/api/auth/sign-in/email", { email: `alpha-${suffix}@auth.example.test`, password: "wrong-password" });
+    expect(failed.status).toBe(401);
+    expect(events.at(-1)).toMatchObject({ outcome: "login_failed", member_id: null, team_id: null, reason_code: "invalid_credentials" });
+    const text = JSON.stringify(events);
+    for (const secret of [password, "wrong-password", "@auth.example.test", ...codes.values()]) expect(text).not.toContain(secret);
+    const signedIn = await request("/api/auth/sign-in/email", { email: `alpha-${suffix}@auth.example.test`, password });
+    expect(signedIn.status).toBe(200);
+    const out = await request("/api/auth/sign-out", {}, sessionCookies(signedIn));
+    expect(out.status).toBe(200);
+    expect(events.at(-1)).toMatchObject({ outcome: "logout", member_id: memberA, team_id: teamA });
   });
   it("keeps the member table and legacy keys intact and removes key web login", async () => {
     expect(await authenticateApiKey(legacyKey)).not.toBeNull();
@@ -241,7 +260,16 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     const { secret } = await fixture.auth!.$context;
     expect(await verifyOAuthQueryParams(consentQuery, secret)).toBe(true);
     expect(await verifyOAuthQueryParams(consentQuery.replace("hive", "admin"), secret)).toBe(false);
+    const grantCount = () => events.filter((row) => row.outcome === "mcp_oauth_authorized").length;
+    const beforeGrant = grantCount();
+    const denied = await request("/api/auth/oauth2/consent", { accept: false, oauth_query: consentQuery }, cookiesA);
+    expect(denied.status).toBe(200);
+    expect(grantCount()).toBe(beforeGrant);
+    await request("/api/auth/oauth2/consent", { accept: true, oauth_query: "invalid" }, cookiesA);
+    expect(grantCount()).toBe(beforeGrant);
     const consent = await request("/api/auth/oauth2/consent", { accept: true, oauth_query: consentQuery }, cookiesA);
+    expect(grantCount()).toBe(beforeGrant + 1);
+    expect(events.at(-1)).toMatchObject({ outcome: "mcp_oauth_authorized", team_id: teamA, member_id: memberA });
     expect(consent.status, await consent.clone().text()).toBe(200);
     const callback = new URL((await consent.json()).url);
     expect(callback.searchParams.get("state")).toBe("fixture-state");
@@ -273,6 +301,29 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
       expect(await mcp.text()).toContain("hive_recent");
     }
   });
+  it("accepts OAuth and legacy key installer and hook reports with the trusted identity", async () => {
+    for (const token of [accessToken, legacyKey]) {
+      for (const kind of ["install", "hook"] as const) {
+        const input = kind === "install" ? { step: "doctor", outcome: "completed", agent: "executor", platform: "darwin" } : { hookKind: "session_start", gateDecision: "skip", pushedCount: 0 };
+        const body = { ...input, attemptId: "00000000-0000-4000-8000-000000000003", teamId: "other", transcript: "private canary" };
+        const send = () => fetch(`${baseUrl}/api/analytics/${kind}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        expect((await send()).status).toBe(204);
+        const first = events.at(-1)!;
+        expect((await send()).status).toBe(204);
+        expect(events.at(-1)!.event_key).toBe(first.event_key);
+        expect(first).toMatchObject({ session_kind: token === accessToken ? "oauth" : "api_key", entrypoint: kind === "install" ? "installer" : "hook" });
+        expect(first.team_id).toBe(token === accessToken ? teamA : (await authenticateApiKey(legacyKey))!.teamId);
+        if (kind === "install") expect(first.properties.agent).toBe("executor");
+        expect(JSON.stringify(first)).not.toContain("private canary");
+      }
+    }
+    const count = events.length;
+    for (const kind of ["install", "hook"]) {
+      const denied = await fetch(`${baseUrl}/api/analytics/${kind}`, { method: "POST", headers: { Authorization: "Bearer invalid", "Content-Type": "application/json" }, body: "{}" });
+      expect(denied.status).toBe(401);
+    }
+    expect(events).toHaveLength(count);
+  });
   it("refreshes the grant with the same team binding and rejects a removed member", async () => {
     const response = await fetch(`${baseUrl}/api/auth/oauth2/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", client_id: clientId, refresh_token: refreshToken, resource: `${baseUrl}/api/mcp` }) });
     expect(response.status, await response.clone().text()).toBe(200);
@@ -280,6 +331,12 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     await getSql()`UPDATE members SET removed_at = now() WHERE id = ${memberA} AND team_id = ${teamA}`;
     const mcp = await fetch(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${tokens.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
     expect(mcp.status).toBe(403);
+    const beforeReports = events.length;
+    for (const kind of ["install", "hook"]) {
+      const denied = await fetch(`${baseUrl}/api/analytics/${kind}`, { method: "POST", headers: { Authorization: `Bearer ${tokens.access_token}`, "Content-Type": "application/json" }, body: "{}" });
+      expect(denied.status).toBe(403);
+    }
+    expect(events).toHaveLength(beforeReports);
   });
   it("preserves legacy session hashes during the additive member migration", async () => {
     const sql = getSql();

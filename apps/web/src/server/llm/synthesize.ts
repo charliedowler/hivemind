@@ -1,3 +1,4 @@
+import { beginCall, reportedModel } from "../analytics/events";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { AskResult, SearchHit } from "@hivemind/core";
@@ -87,6 +88,7 @@ export async function synthesizeAnswer(
 ): Promise<AskResult> {
   if (!process.env.ANTHROPIC_API_KEY || hits.length === 0)
     return extractiveAnswer(hits);
+  const finish = await beginCall("model", "synthesis", "claude-sonnet-5-5");
   try {
     const client = new Anthropic({ timeout: 30_000, maxRetries: 1 });
     const response = await client.beta.messages.parse({
@@ -103,13 +105,30 @@ export async function synthesizeAnswer(
       ],
       output_config: { effort: "low", format: zodOutputFormat(answerSchema) },
     });
+    const usage = {
+      model: reportedModel(response.model),
+      inputTokens: response.usage?.input_tokens,
+      outputTokens: response.usage?.output_tokens,
+      cacheReadTokens: response.usage?.cache_read_input_tokens,
+      cacheWriteTokens: response.usage?.cache_creation_input_tokens,
+    };
     if (
       response.stop_reason === "refusal" ||
       response.stop_reason === "max_tokens"
-    )
+    ) {
+      await finish(
+        "refused",
+        response.stop_reason === "refusal" ? "provider_refused" : "max_tokens",
+        usage,
+      );
       return extractiveAnswer(hits);
+    }
     const parsed = answerSchema.safeParse(response.parsed_output);
-    if (!parsed.success) return extractiveAnswer(hits);
+    if (!parsed.success) {
+      await finish("failed", "invalid_response", usage);
+      return extractiveAnswer(hits);
+    }
+    await finish("completed", null, usage);
     const titles = new Map(hits.map((hit) => [hit.id, hit.title]));
     const filterMarkers = (text: string) =>
       text.replace(/\[(lrn_[a-zA-Z0-9_-]+)\]/g, (marker, id: string) =>
@@ -129,6 +148,7 @@ export async function synthesizeAnswer(
       synthesized: true,
     };
   } catch (error) {
+    await finish("failed", "provider_failed");
     if (error instanceof Anthropic.APIConnectionError) {
       console.warn(`Synthesis failed: ${error.name} status=none`);
     } else if (error instanceof Anthropic.APIError) {

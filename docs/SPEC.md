@@ -1,6 +1,6 @@
 # Hive MVP spec
 
-Hive is a shared memory for a team's coding agents. Each person adds one remote MCP server to Claude Code or Codex. Agents push learnings to the hive. Agents and people search and ask the hive.
+Hive is a shared memory for a team's coding agents. Each person adds one remote MCP server to Claude Code or Codex. Agents push learnings to the hive. People browse and search cells in the dashboard. They ask through their agents with `hive_ask`; Slack bot support is in progress.
 
 This file is the contract between implementation rounds. When code and spec disagree, fix the code or change the spec in the same commit.
 
@@ -192,6 +192,8 @@ endWebSession(): Promise<void>
 
 ### Ask
 
+The shared ask service, relevance gate and MCP `hive_ask` tool serve agent requests and the Slack integration. Keep `POST /api/app/ask` available while the Slack integration is in progress; the dashboard does not call it.
+
 1. `searchLearnings` with the question, limit 8.
 2. No hits: return a fixed answer that says the hive has nothing on this yet, `synthesized: false`, `confidence: "low"`.
 3. Rerank each hit with a Jev relevance probability, scaling its score by `0.5 + 0.5 * probability`; use the original ranking on failure. Gate retrieved evidence with Jev. Weak evidence returns a gap before synthesis. Empty retrieval skips Jev. On an outage require a vector similarity of at least 0.55 or 75% lexical coverage without vectors. Then call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
@@ -220,7 +222,7 @@ Tool results are compact Markdown with cell IDs. Tool errors use isError and a o
 - `/app/login`: Sign in, Create a team and Join tabs. Sign-in uses email/password or a configured Google/Slack provider. Create/join collect a password and verify email with a code. Join accepts an invite link/code or an allowed work domain. No API key form or raw key appears here.
 - `/app/join`: a verified signed-in account without a team chooses a hive. It resumes an MCP login after enrollment.
 - `/app/consent`: verifies the signed OAuth query before displaying the client, hive, identity, scopes and requested profile claims. Allow and Cancel complete the Better Auth flow.
-- `/app`: the comb, one hexagonal cell per learning (title, repo, whose agent, time, votes, status, push count), polling every 5 seconds; a cell opens the full learning with kind, tags, paths, feedback and a copyable id. Status is outdated when outdated votes outnumber up votes, confirmed when it has up votes or more than one push, otherwise fresh. Search box whose result cards show the score and every ranking signal. "Ask the hive" box that shows the answer with clickable citations, the confidence and the gaps. "Fresh nectar" lists the latest arrivals with the agent that brought them.
+- `/app`: the comb, one hexagonal cell per learning (title, repo, whose agent, time, votes, status, push count), polling every 5 seconds; a cell opens the full learning with kind, tags, paths, feedback and a copyable id. Status is outdated when outdated votes outnumber up votes, confirmed when it has up votes or more than one push, otherwise fresh. Search box whose result cards show the score and every ranking signal. Asking is available through MCP, with Slack bot support in progress. The dashboard has no question input or answer history. "Fresh nectar" lists the latest arrivals with the agent that brought them.
 - All UI comes from `@hivemind/design-system`. `design/system/readme.md` sets the vocabulary and the voice.
 - `/app/members`: members, the invite code with a copy button.
 - `/app/install`: keyless Claude and Codex OAuth commands, instructions and Stop hook first; headless key commands last. Key creation and management live only on `/app/account`.
@@ -323,6 +325,9 @@ Dashboard routes: `/app/conflicts`, `/app/tree`, `/app/cells/[id]`. Friction, an
 
 Operational limits: Blob garbage collection, a scheduled queue worker, streaming large hives, arbitrary free-form entity extraction and a visual content editor are not implemented. Run `pnpm --filter web knowledge:rebuild` for recovery. The SQL rollback files refuse to discard evidence/history already created by the feature; read them before considering a rollback. Normal development and production use the handwritten migration runner, never schema push.
 
+## Analytics
+
+The [analytics contract](analytics.md) defines the versioned append-only event envelope, allowlisted metadata, fixed reasons, traffic classification, trusted boundaries and five reports. It follows Wolf reporting conventions. Team admins can open `/app/admin/analytics`; all rows are scoped to their authenticated team. Only landing, waitlist and install pages send a small first-party page beacon. Waitlist signups stay in `early_access`. Installer, hook, Slack and Better Auth handoffs are explicit in the contract. Migration `0013_analytics_events.sql` is applied at merge time before deploy.
 ## Better Auth web and MCP access
 
 This section replaces the historical public create/join/email-code and key sign-in routes. POST `/api/app/teams` and `/api/app/join` return 410. `/api/app/email` is only a scoped legacy account-email upgrade. Normal accounts use `/api/auth/sign-up/email`, `/api/auth/sign-in/email`, `/api/auth/email-otp/verify-email`, `/api/auth/email-otp/request-password-reset` and `/api/auth/email-otp/reset-password`. Email codes are hashed, last 15 minutes and allow five attempts. Shared database rate limits protect auth and email sending. Passwords use Better Auth's scrypt. First-password reset creates a credential account for the same existing member. Password reset revokes web sessions.
