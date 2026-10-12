@@ -1,76 +1,234 @@
 .waitlist-page {
   min-height: 100svh;
-  display: grid;
-  place-items: center;
-  padding: 32px 24px;
+  padding: 0 32px;
   border-top: 8px solid var(--honey-400);
 }
 
-.waitlist-content {
+.waitlist-shell {
   width: 100%;
-  max-width: 600px;
+  max-width: 1120px;
+  margin-inline: auto;
+}
+
+.waitlist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 80px;
 }
 
 .waitlist-brand {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 32px;
 }
 
-.waitlist-mark {
+.waitlist-access {
+  padding: 8px 16px;
+  border: var(--outline-ink);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.waitlist-hero {
   position: relative;
-  width: 96px;
-  height: 92px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 32px;
+  padding: 24px 40px 32px;
+  border: var(--outline-ink);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard);
+  background: var(--honey-400);
 }
 
-.waitlist-mark > :last-child {
-  position: absolute;
-  right: 0;
-  bottom: 0;
+.waitlist-copy {
+  display: grid;
+  gap: 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.waitlist-copy .eyebrow {
+  font-size: 12px;
 }
 
 .waitlist-page h1 {
-  max-width: 540px;
-  font-size: 48px;
-  line-height: 1;
-  text-wrap: balance;
+  max-width: 560px;
+  font-size: 72px;
+  line-height: .96;
+  text-shadow: 3px 3px 0 var(--honey-200);
 }
 
 .waitlist-lead {
-  margin-top: 20px;
-  font-size: 17px;
-  line-height: 1.55;
+  max-width: 520px;
+  font-size: 18px;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.waitlist-scene {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 296px;
+}
+
+.waitlist-comb {
+  filter: drop-shadow(4px 4px 0 var(--ink));
+}
+
+.waitlist-forager,
+.waitlist-returning {
+  position: absolute;
+  z-index: 1;
+}
+
+.waitlist-forager {
+  left: 0;
+  top: 20px;
+}
+
+.waitlist-returning {
+  right: -8px;
+  bottom: 16px;
+}
+
+.waitlist-flight {
+  position: absolute;
+  width: 48px;
+  left: 8px;
+  top: 96px;
+  border-top: 4px dotted var(--ink);
+}
+
+.waitlist-ground {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  background: var(--dither-ink), var(--honey-600);
+  border-top: var(--outline-ink);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.waitlist-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+.waitlist-proof {
+  min-width: 0;
+}
+
+.waitlist-proof .hm-answer-head {
+  padding: 16px 20px;
+  background: var(--terminal-scan), var(--teal-950);
+  color: var(--wax);
+  gap: 16px;
+}
+
+.waitlist-proof .hm-answer-eyebrow {
+  color: var(--teal-200);
+}
+
+.waitlist-proof .hm-answer-head > .sprite {
+  width: 56px;
+  height: 60px;
+}
+
+.waitlist-proof .hm-answer-question {
+  font-size: 24px;
+  line-height: 1.15;
+  margin-top: 8px;
+}
+
+.waitlist-proof .hm-answer-body {
+  padding: 20px;
+  line-height: 1.5;
+}
+
+.waitlist-proof .hm-answer-cites {
+  padding: 12px 20px 16px;
+  gap: 8px;
+}
+
+.waitlist-proof .hm-cite {
+  min-height: 48px;
+  cursor: default;
+}
+
+.waitlist-proof .hm-cite-who {
+  font-size: 13px;
+}
+
+.waitlist-gap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 4px 0;
+}
+
+.waitlist-gap h2 {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.waitlist-gap p {
+  font-size: 14px;
+  color: var(--text-subtle);
+  margin-top: 4px;
+}
+
+.waitlist-invitation {
+  min-width: 0;
+  padding: 24px;
+  border: var(--outline-ink);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard);
+  background: var(--wax-50);
+}
+
+.waitlist-invitation-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.waitlist-invitation-heading .eyebrow {
+  font-size: 10px;
   color: var(--text-subtle);
 }
 
-.waitlist-benefits {
-  display: grid;
-  gap: 14px;
-  margin: 24px 0;
-  padding: 0;
-  list-style: none;
+.waitlist-invitation-heading h2 {
+  margin-top: 8px;
+  font-size: 32px;
 }
 
-.waitlist-benefits li {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.waitlist-page .sprite {
-  flex-shrink: 0;
-}
-
-.waitlist-signup {
-  max-width: 440px;
+.waitlist-next {
+  margin: 16px 0 20px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text-subtle);
 }
 
 .waitlist-form {
   display: grid;
   gap: 16px;
+}
+
+.waitlist-form .hm-input {
+  min-height: 48px;
 }
 
 .waitlist-form [role="alert"] {
@@ -81,6 +239,10 @@
   padding: 20px;
   border: 2px solid var(--teal-700);
   background: var(--teal-100);
+}
+
+.waitlist-success h2 {
+  font-size: 28px;
 }
 
 .waitlist-success p {
@@ -94,16 +256,154 @@
   text-align: center;
 }
 
-@media (min-width: 640px) {
+.waitlist-page .sprite {
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+
+.waitlist-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  font-size: 13px;
+  color: var(--text-subtle);
+}
+
+@media (max-width: 960px) {
+  .waitlist-page h1 {
+    font-size: 56px;
+  }
+
+  .waitlist-hero {
+    padding-inline: 24px;
+  }
+
+  .waitlist-comb {
+    width: 240px;
+    height: 222px;
+  }
+
+  .waitlist-invitation-heading > .sprite {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
   .waitlist-page {
-    padding: 48px 32px;
+    padding-inline: 16px;
+  }
+
+  .waitlist-header {
+    min-height: 72px;
+  }
+
+  .waitlist-brand {
+    font-size: 28px;
+    gap: 8px;
+  }
+
+  .waitlist-brand > .sprite {
+    width: 32px;
+    height: 32px;
+  }
+
+  .waitlist-access {
+    padding: 4px 12px;
+    font-size: 12px;
+  }
+
+  .waitlist-hero,
+  .waitlist-bottom {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .waitlist-hero {
+    padding: 24px 20px 32px;
+    gap: 12px;
+  }
+
+  .waitlist-copy {
+    gap: 16px;
+  }
+
+  .waitlist-copy .eyebrow {
+    font-size: 10px;
+    max-width: 240px;
   }
 
   .waitlist-page h1 {
-    font-size: 64px;
+    font-size: 48px;
   }
 
   .waitlist-lead {
-    font-size: 18px;
+    font-size: 16px;
+  }
+
+  .waitlist-scene {
+    min-height: 176px;
+  }
+
+  .waitlist-comb {
+    width: 160px;
+    height: 148px;
+  }
+
+  .waitlist-forager,
+  .waitlist-returning {
+    width: 48px;
+    height: 48px;
+  }
+
+  .waitlist-forager {
+    left: 12px;
+    top: 16px;
+  }
+
+  .waitlist-returning {
+    right: 4px;
+    bottom: 16px;
+  }
+
+  .waitlist-flight {
+    left: 24px;
+    top: 84px;
+    width: 32px;
+  }
+
+  .waitlist-bottom {
+    margin-top: 24px;
+  }
+
+  .waitlist-proof .hm-answer-head,
+  .waitlist-proof .hm-answer-body,
+  .waitlist-proof .hm-answer-cites {
+    padding: 16px;
+  }
+
+  .waitlist-proof .hm-answer-question {
+    font-size: 24px;
+  }
+
+  .waitlist-invitation {
+    padding: 20px;
+  }
+
+  .waitlist-invitation-heading > .sprite {
+    display: block;
+  }
+
+  .waitlist-invitation-heading {
+    gap: 12px;
+  }
+
+  .waitlist-invitation-heading h2 {
+    font-size: 28px;
+  }
+
+  .waitlist-footer {
+    flex-direction: column;
+    gap: 8px;
   }
 }
