@@ -28,7 +28,12 @@ export const lifecycleStates = [
 ] as const;
 export type LearningLifecycle = (typeof lifecycleStates)[number];
 
-export const learningSources = ["claude-code", "codex", "manual"] as const;
+export const learningSources = [
+  "claude-code",
+  "codex",
+  "manual",
+  "slack",
+] as const;
 export const feedbackVotes = ["up", "down", "outdated"] as const;
 
 export const learningKindSchema = z.enum(learningKinds);
@@ -234,3 +239,11 @@ export const learningEditInput = z.object({
   verify_after: z.iso.datetime({ offset: true }).optional(),
   lifecycle: z.enum(["fresh", "confirmed", "outdated", "retracted"]).optional(),
 });
+
+export const hiveSlackSearchInput = z.object({
+  query: z.string().min(1).max(500),
+  channel: z.string().max(100).optional(),
+  since: z.string().max(80).optional(),
+  limit: z.number().int().min(1).max(30).default(8),
+});
+export type HiveSlackSearchInput = z.infer<typeof hiveSlackSearchInput>;

@@ -48,12 +48,6 @@ It detects Claude Code and Codex, adds their MCP connection, installs the [Hive 
 
 For Executor, run `npx gohive install --client executor`. It opens the organisation setup page with the MCP URL where supported and walks through OAuth sign-in. It keeps existing organisation accounts and policies. Doctor recognises an existing Hive namespace by its server URL.
 
-Until the npm package is published, use the same installer from Git:
-
-```sh
-npx --yes --package github:charliedowler/hivemind gohive install
-```
-
 The [CLI guide](packages/cli/README.md) covers backup paths, hook login and client selection. Manual setup remains available. For Claude Code:
 
 ```
@@ -179,6 +173,16 @@ Open [What Hive keeps](https://gohive.dev/settings/capture) to exclude repos, pa
 - Ask keeps no conversation state.
 - Two original seed authors are fictional. Test members from install checks are labelled as demos.
 
+## Releasing
+
+Maintainer note: `gohive@0.1.0` was published on 2026-10-13.
+
+Build and publish the CLI package. Publishing requires npm 2FA in the browser.
+
+```sh
+pnpm --filter gohive build && npm publish ./packages/cli --access public
+```
+
 ## Develop
 
 Needs Node 24 and pnpm 10.
@@ -250,3 +254,10 @@ Migration `0014_conflict_decisions.sql` stores attempts and reversals with team-
 Models run before the team write lock. The transaction rechecks revisions and applies lifecycle changes. A weaker duplicate moves its pushes and evidence into the older cell; the newer cell remains retracted history. Both stale cells become outdated and need verification. Undecided comparisons keep both cells current. A related push retries up to three older candidates in the same request; there is no daily job. Existing explicit replacements still work. Admin reversal records a new log entry and refuses changed content, votes or push counts.
 
 `conflict.decided` uses the private analytics ledger after commit. It stores the action, confidence, fixed model, Jev probability distributions and latency, without cell bodies or reasons. The SQL rollback refuses populated decision history. Apply migrations from merged main before deploying application code.
+## Hive in Slack
+
+Team admins connect the Hive bot at `/app/settings/slack`. Invite Hive to a channel, then mention it or send a DM. Hive routes requests through a small Sonnet tool registry and answers with cell or Slack message links, confidence and gaps. `/hive ask`, `/hive recent`, the Save to hive message shortcut and a bee reaction are supported. `/hive save <message permalink>` captures the selected channel thread, with an explicit note if it exceeds 15 messages.
+
+Indexing is off until an admin enables a joined channel. Private channels require an invitation and an explicit selection. Direct messages are never indexed. Stop keeps existing messages searchable; purge removes indexed messages and channel ask history while keeping saved learning cells. Unprompted replies require confirmed evidence and a Jev decision, with one reply per thread and two per channel per hour. Admins can inspect the decision log in Slack settings.
+
+`hive_search` and `hive_ask` include permissioned Slack evidence below learning cells. `hive_slack_search({query, channel?, since?, limit?})` searches Slack explicitly. See [the Slack contract](docs/slack-integration.md) and [the specification](docs/SPEC.md). Runtime needs the Slack OAuth/signing secrets, a separate 32-byte base64 `SLACK_TOKEN_ENCRYPTION_KEY`, and the Vercel Queue consumer in `apps/web/vercel.json`. Apply `0015_slack.sql` with the migration runner before deploying. The rollback refuses populated Slack knowledge.

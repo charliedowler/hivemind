@@ -48,8 +48,8 @@ The ledger intentionally has no cascading foreign keys. Removing a member or ope
 | `tree.rebuilt` | A complete knowledge manifest publishes at a database revision. Records revision and file count; one event per team revision. Cached reads do not count as rebuilds. |
 | `tree.read` | An authorized browse or file read returns verified content. Records revision, file count, and bytes when known; no file path or content. |
 | `snapshot.exported` | The private archive and expiring snapshot record persist. Records revision, files, and bytes. No download token or object URL. |
-| `slack.event_received` | Reserved for the Slack round: record after signature verification, identity resolution, and operational deduplication. Record a fixed Slack event kind, not text. |
-| `slack.reply_decided` | Reserved for the Slack round: record the actual `reply` or `silent` gate decision and relevance probability when available. |
+| `slack.event_received` | Recorded by the signed, deduplicated Slack worker with team, channelId, fixed slackEventKind and queue receipt latency. Backfills do not count as received Slack events. No message text. |
+| `slack.reply_decided` | Recorded after database reply reservation with team, channelId, actual gateDecision (`reply_now`, `react_only`, `stay_silent`) and Jev latency. Outcome is reply or silent. No message text. |
 | `page.viewed` | A same-origin browser beacon for `landing`, `waitlist`, or authenticated `install`. No arbitrary route, referrer, browser identity, or extra cookies. Counts are reported loads, not unique visitors. |
 
 Entrypoints are `mcp`, `web`, `slack`, `hook`, `installer`, `scheduled`, and `unknown`. Sources are `claude-code`, `codex`, `slack`, `web`, `hook`, and `unknown`. Existing manual pushes through MCP have unknown agent source. A web manual push has web source. A hook or Slack origin supplies its source. Existing Stop nudges cause later MCP pushes with the agent's source; they do not prove hook attribution.

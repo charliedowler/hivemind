@@ -70,6 +70,8 @@ import {
   suggestTags,
 } from "@/server/llm";
 
+import { searchSlack, getSlackMessage } from "./slack/search";
+
 const minimumVectorSimilarity = 0.3;
 const minimumLexemeCoverage = 0.5;
 
@@ -409,15 +411,17 @@ async function pushLearningAction(
 export function searchLearnings(
   ctx: HiveContext,
   input: HiveSearchInput,
-  excludeFlagged = ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? ""),
+  options: { publicOnly?: boolean; cellsOnly?: boolean; excludeFlagged?: boolean } = {},
 ): Promise<SearchHit[]> {
-  return withOperation(ctx, "search", () => searchLearningsAction(ctx, input, excludeFlagged));
+  return withOperation(ctx, "search", () =>
+    searchLearningsAction(ctx, input, options),
+  );
 }
 
 async function searchLearningsAction(
   ctx: HiveContext,
   input: HiveSearchInput,
-  excludeFlagged: boolean,
+  options: { publicOnly?: boolean; cellsOnly?: boolean; excludeFlagged?: boolean } = {},
 ): Promise<SearchHit[]> {
   const started = performance.now();
   const data = validate(hiveSearchInput, input);
@@ -429,7 +433,8 @@ async function searchLearningsAction(
   const tsquery = sql`replace(plainto_tsquery('english', ${data.query})::text, '&', '|')::tsquery`;
   const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
   const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
-  const filter = sql`l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null})`;
+  const excludeFlagged = options.excludeFlagged ?? ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
+  const filter = sql`l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND (${!options.publicOnly} OR l.source <> 'slack' OR EXISTS(SELECT 1 FROM slack_channels sc WHERE sc.team_id=l.team_id AND sc.private=false AND sc.bot_member=true AND l.session_ref LIKE '%' || '/archives/' || sc.channel_id || '/%'))`;
   const ftsRows =
     await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
@@ -466,10 +471,20 @@ async function searchLearningsAction(
         });
     }
   }
-  const hits = rankCandidates([...candidates.values()], data.repo).slice(
-    0,
-    data.limit,
-  );
+  const cells = rankCandidates([...candidates.values()], data.repo);
+  const slack =
+    options.cellsOnly ||
+    (data.kind && data.kind !== "learning") ||
+    tags.some((tag) => tag !== "slack")
+      ? []
+      : await searchSlack(
+          ctx,
+          { query: data.query, limit: data.limit },
+          options.publicOnly,
+        );
+  const hits = [...cells, ...slack]
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+    .slice(0, data.limit);
   await recordEvent({
     name: "search.performed",
     latencyMs: performance.now() - started,
@@ -496,19 +511,22 @@ async function searchLearningsAction(
 export function askHive(
   ctx: HiveContext,
   input: HiveAskInput,
+  options: { publicOnly?: boolean } = {},
 ): Promise<AskResult> {
-  return withOperation(ctx, "ask", () => askHiveAction(ctx, input));
+  return withOperation(ctx, "ask", () => askHiveAction(ctx, input, options));
 }
 
 async function askHiveAction(
   ctx: HiveContext,
   input: HiveAskInput,
+  options: { publicOnly?: boolean } = {},
 ): Promise<AskResult> {
   const started = performance.now();
   const data = validate(hiveAskInput, input);
-  const friction = isFrictionAsk(data.question)
-    ? await frictionSummary(ctx, data.repo)
-    : null;
+  const friction =
+    !options.publicOnly && isFrictionAsk(data.question)
+      ? await frictionSummary(ctx, data.repo)
+      : null;
   if (friction && friction.count) {
     const cells =
       await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
@@ -534,11 +552,15 @@ async function askHiveAction(
   }
   const hits = await rerankMemory(
     data.question,
-    await searchLearnings(ctx, {
-      query: data.question.slice(0, 500),
-      repo: data.repo,
-      limit: 8,
-    }, true),
+    await searchLearnings(
+      ctx,
+      {
+        query: data.question.slice(0, 500),
+        repo: data.repo,
+        limit: 8,
+      },
+      {...options, excludeFlagged: true},
+    ),
   );
   const [context, relevance] = await Promise.all([
     answerLifecycleContext(ctx, hits),
@@ -567,6 +589,32 @@ async function askHiveAction(
     };
   }
   if (result.citations.length) result = appendLifecycleContext(result, context);
+  const slackHits = hits.filter((h) => h.id.startsWith("slk_"));
+  const permitted = await Promise.all(
+    slackHits.map((h) => getSlackMessage(ctx, h.id)),
+  );
+  if (permitted.some((h) => !h))
+    result = {
+      answer:
+        "Slack source permissions changed while the hive was answering. Ask again with the current sources.",
+      citations: [],
+      confidence: "low",
+      gaps: "Some retrieved Slack evidence is no longer available.",
+      synthesized: false,
+    };
+  const sources = new Map(
+    hits
+      .filter((h) => h.source === "slack" && h.permalink)
+      .map((h) => [h.id, h.permalink!]),
+  );
+  result = {
+    ...result,
+    citations: result.citations.map((c) =>
+      sources.has(c.id)
+        ? { ...c, source: "slack", permalink: sources.get(c.id) }
+        : c,
+    ),
+  };
   await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized, classification) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((citation) => citation.id)}, ${result.synthesized}, ${relevance.classification ? getSql().json(classificationJson(relevance.classification)) : null})`;
   await recordEvent({
     name: "ask.performed",
@@ -679,6 +727,7 @@ export async function getLearning(
   ctx: HiveContext,
   id: string,
 ): Promise<LearningView | null> {
+  if (id.startsWith("slk_")) return getSlackMessage(ctx, id);
   const rows =
     await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
   return rows[0] ? view(rows[0], ctx) : null;

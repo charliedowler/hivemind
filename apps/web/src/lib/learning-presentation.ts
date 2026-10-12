@@ -25,6 +25,7 @@ export function agentKind(source: string): AgentKind | undefined {
 export function learnedBy(
   learning: Pick<LearningView, "author" | "source">,
 ): string {
+  if (learning.source === "slack") return `${learning.author.name} via Slack`;
   const agent = agentKind(learning.source);
   return `${learning.author.name}'s ${agent === "claude" ? "Claude" : agent === "codex" ? "Codex" : "learning"}`;
 }

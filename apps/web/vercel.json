@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "src/app/api/queues/slack/route.ts": {
+      "experimentalTriggers": [
+        { "type": "queue/v2beta", "topic": "hive-slack", "maxConcurrency": 1 }
+      ]
+    }
+  }
+}

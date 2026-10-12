@@ -29,6 +29,12 @@ export function learningView(row: Record<string, unknown>, ctx?: HiveContext): L
     ),
     supersededBy: row.superseded_by as string | null,
     sessionRef: row.session_ref as string | null,
+    permalink:
+      row.source === "slack" &&
+      typeof row.session_ref === "string" &&
+      /^https:\/\/[^/]+\.slack\.com\//.test(row.session_ref)
+        ? row.session_ref
+        : null,
     classification: row.classification as LearningView["classification"],
     adminOutdated: Boolean(row.admin_outdated),
     captureFlagged: Boolean(row.capture_flagged),
