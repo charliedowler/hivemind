@@ -27,7 +27,8 @@ describe("waitlist page", () => {
     expect(html).toContain('type="email"');
     expect(html).toContain('required=""');
     expect(html).toContain("Join the waitlist");
-    expect(html).not.toContain("<nav");
+    expect(html).not.toContain('href="/app');
+    expect(html).toContain('aria-label="Legal"');
   });
 
   it("publishes the canonical waitlist URL and Open Graph metadata", async () => {

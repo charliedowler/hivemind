@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalLinks } from "@/components/legal-links";
 import { AnswerCard, Sprite } from "@hivemind/design-system";
 import { publicUrl } from "@/lib/public-url";
 import { WaitlistForm } from "./waitlist-form";
@@ -69,7 +70,7 @@ export default function WaitlistPage() {
             aria-label="A sample answer from the hive"
           >
             <AnswerCard
-              eyebrow="A sample ask"
+              eyebrow="Sample answer"
               question="Why does the API reject my webhook?"
               citations={[
                 {
@@ -90,7 +91,9 @@ export default function WaitlistPage() {
               <Sprite name="cell-empty" scale={2} paused />
               <div>
                 <h2>What the hive does not know yet</h2>
-                <p>Which middleware changed the body in your current request.</p>
+                <p>
+                  Which middleware changed the body in your current request.
+                </p>
               </div>
             </div>
           </section>
@@ -101,7 +104,6 @@ export default function WaitlistPage() {
             <div className="waitlist-invitation-heading">
               <Sprite name="hive-entrance" scale={3} paused />
               <div>
-                <span className="eyebrow">A hive for your team</span>
                 <h2 id="waitlist-signup-title">Join the waitlist</h2>
               </div>
             </div>
@@ -114,6 +116,7 @@ export default function WaitlistPage() {
         <footer className="waitlist-footer">
           <span>What one agent learns, the whole hive knows.</span>
           <span className="mono">gohive.dev</span>
+          <LegalLinks />
         </footer>
       </div>
     </main>

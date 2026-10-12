@@ -1,0 +1,65 @@
+.shell {
+  width: min(760px, calc(100% - 32px));
+  margin-inline: auto;
+  padding-bottom: 32px;
+}
+
+.header,
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 24px;
+}
+
+.access {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+}
+
+.document {
+  padding: clamp(20px, 5vw, 40px);
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.document h1 {
+  font-size: clamp(30px, 7vw, 44px);
+  line-height: 1.15;
+}
+
+.document h2 {
+  margin: 32px 0 12px;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.document p {
+  margin: 12px 0 0;
+}
+
+.document .updated {
+  margin-top: 16px;
+  color: var(--text-subtle);
+  font-size: 14px;
+}
+
+.footer {
+  font-size: 14px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+
+.links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}

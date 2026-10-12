@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { authenticateApiKey } from "@/server/auth";
+import { withHiveBearerAuth } from "@/server/bearer-auth";
 import { classifyCapture } from "@/server/classify";
 import { rateLimit } from "@/server/identity/rate-limit";
 import { httpError, readJson } from "@/lib/http";
@@ -14,15 +14,7 @@ const inputSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const rawKey = request.headers
-      .get("authorization")
-      ?.match(/^Bearer (.+)$/i)?.[1];
-    const ctx = rawKey ? await authenticateApiKey(rawKey) : null;
-    if (!ctx)
-      return Response.json(
-        { error: "A valid hive API key is required." },
-        { status: 401 },
-      );
+    return await withHiveBearerAuth(request, async (request, ctx) => {
     const input = inputSchema.parse(await readJson(request));
     await rateLimit("capture", `${ctx.teamId}/${ctx.memberId}`, 30, 60);
     const result = await classifyCapture(input);
@@ -31,6 +23,7 @@ export async function POST(request: Request) {
         "Cache-Control": "no-store",
         "Server-Timing": `jev;dur=${result.classification?.latencyMs ?? 0}`,
       },
+    });
     });
   } catch (error) {
     return httpError(error);

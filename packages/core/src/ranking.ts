@@ -46,10 +46,33 @@ export function rankCandidates(
         learning.votes.outdated >= 1
       )
         score *= 0.4;
+      const lifecycle =
+        learning.lifecycle === "fresh"
+          ? 0.95
+          : learning.lifecycle &&
+              ["superseded", "outdated", "retracted"].includes(
+                learning.lifecycle,
+              )
+            ? 0.25
+            : 1;
+      const verification =
+        learning.verifyAfter &&
+        Date.parse(learning.verifyAfter) <= now.getTime()
+          ? 0.7
+          : 1;
+      score *= lifecycle * verification;
       return {
         ...learning,
         score,
-        signals: { vector, fts, recency, votes, repoMatch },
+        signals: {
+          vector,
+          fts,
+          recency,
+          votes,
+          repoMatch,
+          lifecycle,
+          verification,
+        },
       };
     })
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));

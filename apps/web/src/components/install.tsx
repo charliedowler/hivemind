@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import {
   Badge,
-  Button,
   Card,
   InstallSnippet,
   Sprite,
 } from "@hivemind/design-system";
 import { buildInstallSnippets } from "@/lib/install";
-import { requestJson, errorMessage } from "@/lib/client";
-import { CopyButton, ErrorPanel } from "./primitives";
+
+import { CopyButton } from "./primitives";
 
 export function InstallSnippets({
   baseUrl,
@@ -22,20 +21,16 @@ export function InstallSnippets({
   const snippets = buildInstallSnippets({ baseUrl, apiKey });
   return (
     <div className="snippet-list">
-      {snippets.map((snippet) =>
-        snippet.id === "claude" || snippet.id === "codex" ? (
-          <section className="stack" key={snippet.id}>
-            <div>
-              <h2>{snippet.title}</h2>
-              <p className="muted">{snippet.description}</p>
-            </div>
-            <InstallSnippet
-              options={[
-                { agent: snippet.id, label: snippet.title, code: snippet.code },
-              ]}
-            />
-          </section>
-        ) : (
+      <section className="stack">
+        <h2>Connect your forager</h2>
+        <InstallSnippet options={snippets.slice(0, 3).map((snippet) => ({
+          agent: snippet.id as "claude" | "codex" | "executor",
+          label: snippet.title,
+          code: snippet.code,
+          description: snippet.description,
+        }))} />
+      </section>
+      {snippets.slice(3).map((snippet) => (
           <section className="stack" key={snippet.id}>
             <div>
               <h2>{snippet.title}</h2>
@@ -58,8 +53,7 @@ export function InstallSnippets({
               </pre>
             </Card>
           </section>
-        ),
-      )}
+        ))}
     </div>
   );
 }
@@ -73,7 +67,7 @@ export function KeyBox({ apiKey }: { apiKey: string }) {
       </div>
       <h2>Your API key</h2>
       <p>
-        Save it now. Treat it like a password. The hive cannot show it again.
+        Save your key now and keep it private. The hive cannot show it again.
       </p>
       <div className="row wrap">
         <code className="breakable">{apiKey}</code>
@@ -84,48 +78,18 @@ export function KeyBox({ apiKey }: { apiKey: string }) {
 }
 
 export function InstallPage({ baseUrl }: { baseUrl: string }) {
-  const [apiKey, setApiKey] = useState<string>();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  async function createKey() {
-    setPending(true);
-    setError("");
-    try {
-      const result = await requestJson<{ apiKey: string }>("/api/app/keys", {});
-      setApiKey(result.apiKey);
-    } catch (error) {
-      setError(errorMessage(error));
-    } finally {
-      setPending(false);
-    }
-  }
   return (
     <div className="install-page stack">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Bring a forager</span>
           <h1>Add your agent</h1>
-          <p className="muted">
-            One connection. What your agent learns, the whole hive knows.
-          </p>
+          <p className="muted">Connect Claude Code, Codex or Executor to your team's hive.</p>
         </div>
         <Sprite name="bee-carry" scale={4} />
       </div>
-      {apiKey ? (
-        <KeyBox apiKey={apiKey} />
-      ) : (
-        <Card className="row between wrap">
-          <div>
-            <h2>A key for your forager</h2>
-            <p className="muted">Create a key to fill the commands below.</p>
-          </div>
-          <Button onClick={createKey} loading={pending} iconLeft="icon-plus">
-            {pending ? "Creating a key" : "Create a new key"}
-          </Button>
-        </Card>
-      )}
-      {error ? <ErrorPanel message={error} /> : null}
-      <InstallSnippets baseUrl={baseUrl} apiKey={apiKey} />
+      <p className="muted">Sign in in your browser and allow access to this hive. No pasted key is needed.</p>
+      <InstallSnippets baseUrl={baseUrl} />
+      <Link href="/app/account" className="text-button">Manage headless keys on your account</Link>
     </div>
   );
 }

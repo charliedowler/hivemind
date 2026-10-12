@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { FrictionSummary } from "@hivemind/core";
 import { Card, Sprite } from "@hivemind/design-system";
 import { requestJson, errorMessage } from "@/lib/client";
+import { CellCitation } from "./cell-citation";
 import { ErrorPanel, LoadingPanel } from "./primitives";
 export function FrictionPanel({
   repo,
@@ -45,7 +46,6 @@ export function FrictionPanel({
     <section className="stack" aria-label="Friction">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">What slows the foragers down</span>
           <h2>Friction</h2>
         </div>
         <Sprite name="cell-outdated" scale={2} />
@@ -53,14 +53,14 @@ export function FrictionPanel({
       {state.error ? (
         <ErrorPanel message={state.error} />
       ) : !state.data ? (
-        <LoadingPanel>A forager is gathering the friction.</LoadingPanel>
+        <LoadingPanel>Loading friction reports.</LoadingPanel>
       ) : (
         <FrictionContent data={state.data} onOpen={onOpen} />
       )}
     </section>
   );
 }
-function FrictionContent({
+export function FrictionContent({
   data,
   onOpen,
 }: {
@@ -70,15 +70,16 @@ function FrictionContent({
   return (
     <Card className="stack">
       <p className="lead">
-        {data.minutes} measured minutes lost this week · {data.count} friction reports
+        {data.minutes} measured minutes lost this week · {data.count} friction
+        reports
       </p>
       <p className="small muted">
-        {data.unmeasured} reports have no measured cost. Minutes include
-        measured costs only. This week means the past seven days.
+        {data.unmeasured} reports have no measured cost and are excluded from
+        the minutes total. This week covers the past seven days.
       </p>
       {data.count ? (
         <>
-          <h3>Top areas</h3>
+          <h3>Areas by minutes lost</h3>
           <div className="friction-areas">
             {data.areas.map((area) => (
               <div className="stack friction-area" key={area.area}>
@@ -94,7 +95,7 @@ function FrictionContent({
                     style={{ width: `${(area.minutes / data.minutes) * 100}%` }}
                   />
                 ) : null}
-                <Cited ids={area.ids} onOpen={onOpen} />
+                <Cited ids={area.ids} cells={data.cells} onOpen={onOpen} />
               </div>
             ))}
           </div>
@@ -105,17 +106,19 @@ function FrictionContent({
                 <p>
                   {item.title} · {item.count} reports · {item.minutes} min
                 </p>
-                <Cited ids={item.ids} onOpen={onOpen} />
+                <Cited ids={item.ids} cells={data.cells} onOpen={onOpen} />
               </div>
             ))
           ) : (
-            <p className="muted">No repeated friction this week.</p>
+            <p className="muted">
+              No repeated friction reports in the past seven days.
+            </p>
           )}
         </>
       ) : (
         <p className="muted">
-          No friction shared this week. Bring back what slowed you down and any
-          workaround.
+          No friction reports in the past seven days. Ask your agent to save
+          what slowed you down and any workaround.
         </p>
       )}
     </Card>
@@ -123,22 +126,18 @@ function FrictionContent({
 }
 function Cited({
   ids,
+  cells,
   onOpen,
 }: {
   ids: string[];
+  cells: FrictionSummary["cells"];
   onOpen: (id: string) => void;
 }) {
+  const titles = new Map(cells.map((cell) => [cell.id, cell.title]));
   return (
     <div className="row wrap">
       {ids.map((id) => (
-        <button
-          key={id}
-          type="button"
-          className="hm-cite small"
-          onClick={() => onOpen(id)}
-        >
-          {id}
-        </button>
+        <CellCitation key={id} id={id} title={titles.get(id)} onOpen={onOpen} />
       ))}
     </div>
   );

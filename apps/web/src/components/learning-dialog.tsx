@@ -14,6 +14,8 @@ import {
   learningStatus,
 } from "@/lib/learning-presentation";
 import { CopyButton, ErrorPanel, LoadingPanel } from "./primitives";
+import { CellCitation } from "./cell-citation";
+import { LearningHistory } from "./learning-history";
 import { Markdown } from "./markdown";
 
 export function LearningDetail({
@@ -54,7 +56,7 @@ export function LearningDetail({
     <div className="stack learning-detail">
       <div className="row wrap">
         <Badge tone={learningStatus({ ...learning, votes })}>
-          {learningStatus({ ...learning, votes })}
+          {learning.lifecycle ?? learningStatus({ ...learning, votes })}
         </Badge>
         <Badge>{learning.kind}</Badge>
         {learning.pushCount > 1 ? (
@@ -71,9 +73,10 @@ export function LearningDetail({
       </div>
       {learning.adminOutdated || votes.outdated > votes.up ? (
         <p className="cell-warning">
-          This cell needs a fresh source. Check the learning before you cite it.
+          This cell is marked outdated. Check the learning before you cite it.
         </p>
       ) : null}
+      <LifecycleNotice learning={learning} />
       <FrictionDetails learning={learning} />
       <Markdown text={learning.body} />
       {learning.tags.length ? (
@@ -120,7 +123,10 @@ export function LearningDetail({
           <CopyButton text={learning.id} label="Copy id" />
         </div>
       </div>
-      {canModerate ? (
+      {learning.revision ? (
+        <LearningHistory id={learning.id} revision={learning.revision} />
+      ) : null}
+      {canModerate && learning.lifecycle !== "superseded" ? (
         <Moderation id={learning.id} onDone={onModerated} />
       ) : null}
       {error ? <ErrorPanel message={error} /> : null}
@@ -157,8 +163,7 @@ export function LearningDialog({
   }, [id]);
   return (
     <Dialog
-      title={result.learning?.title ?? "From the hive"}
-      eyebrow="Inside the cell"
+      title={result.learning?.title ?? "Loading cell"}
       width={760}
       onClose={onClose}
     >
@@ -172,7 +177,7 @@ export function LearningDialog({
           onModerated={onClose}
         />
       ) : (
-        <LoadingPanel>A forager is finding this cell.</LoadingPanel>
+        <LoadingPanel>Loading the learning.</LoadingPanel>
       )}
     </Dialog>
   );
@@ -210,7 +215,7 @@ function Moderation({ id, onDone }: { id: string; onDone?: () => void }) {
           disabled={pending}
           onClick={() => (confirm ? void act("delete") : setConfirm(true))}
         >
-          {confirm ? "Confirm deletion" : "Delete cell"}
+          {confirm ? "Confirm retraction" : "Retract cell"}
         </Button>
         {confirm ? (
           <Button variant="ghost" onClick={() => setConfirm(false)}>
@@ -236,4 +241,38 @@ function FrictionDetails({ learning }: { learning: LearningView }) {
       {learning.workaround ? <p>Workaround: {learning.workaround}</p> : null}
     </div>
   ) : null;
+}
+
+function LifecycleNotice({ learning }: { learning: LearningView }) {
+  return (
+    <>
+      {" "}
+      {learning.supersededBy ? (
+        <div className="cell-warning stack">
+          <strong>Superseded by</strong>
+          <CellCitation id={learning.supersededBy} />
+          <p className="small">
+            This cell is historical. Use its replacement for current guidance.
+          </p>
+        </div>
+      ) : null}
+      {learning.lifecycle === "retracted" ? (
+        <p className="cell-warning">
+          This cell is retracted. Hive keeps it in the history and excludes it
+          from current guidance.
+        </p>
+      ) : null}
+      {learning.verifyBeforeUse ? (
+        <p className="cell-warning">
+          Verify before use. This learning passed its verification date{" "}
+          {learning.verifyAfter?.slice(0, 10)}.
+        </p>
+      ) : learning.verifyAfter ? (
+        <p className="small muted">
+          Verify by {learning.verifyAfter.slice(0, 10)} · As of{" "}
+          {learning.updatedAt.slice(0, 10)}
+        </p>
+      ) : null}
+    </>
+  );
 }

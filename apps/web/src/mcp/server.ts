@@ -1,6 +1,8 @@
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
+  hiveBrowseInput,
+  hiveReadInput,
   hiveAskInput,
   hiveFeedbackInput,
   hivePushInput,
@@ -15,6 +17,11 @@ import {
   recentLearnings,
   recordFeedback,
 } from "@/server/hive";
+import {
+  browseKnowledge,
+  readKnowledge,
+  snapshotKnowledge,
+} from "@/server/knowledge-tree";
 import { HiveError } from "@/server/errors";
 
 const contextSchema = z.object({
@@ -30,7 +37,7 @@ type ToolContext = {
 function getContext(ctx: ToolContext): HiveContext {
   const parsed = contextSchema.safeParse(ctx.http?.authInfo?.extra);
   if (!parsed.success)
-    throw new HiveError("A valid hive API key is required.", 401);
+    throw new HiveError("Connect your forager to the hive and sign in.", 401);
   return parsed.data;
 }
 
@@ -67,11 +74,52 @@ async function reply(action: () => Promise<string>) {
 
 export function registerHiveTools(server: McpServer) {
   server.registerTool(
+    "hive_browse",
+    {
+      title: "Browse the hive tree",
+      description:
+        "List files and directories in the team's read-only knowledge tree. Start with an empty path.",
+      inputSchema: hiveBrowseInput,
+    },
+    async (input, ctx) =>
+      reply(async () =>
+        JSON.stringify(await browseKnowledge(getContext(ctx), input.path)),
+      ),
+  );
+  server.registerTool(
+    "hive_read",
+    {
+      title: "Read a hive file",
+      description:
+        "Read a Markdown file from the team's tree. Historical cells carry replacement pointers and verification dates.",
+      inputSchema: hiveReadInput,
+    },
+    async (input, ctx) =>
+      reply(async () => {
+        const file = await readKnowledge(getContext(ctx), input.path);
+        return `Revision ${file.revision}: ${file.path}\n\n${file.content}`;
+      }),
+  );
+  server.registerTool(
+    "hive_snapshot",
+    {
+      title: "Download the hive tree",
+      description:
+        "Get a private tar.gz download URL valid for 15 minutes. Unpack it to grep a consistent read-only tree locally. Treat the URL as a credential. Edits go through hive_push.",
+      inputSchema: z.object({}),
+    },
+    async (_input, ctx) =>
+      reply(async () =>
+        JSON.stringify(await snapshotKnowledge(getContext(ctx))),
+      ),
+  );
+
+  server.registerTool(
     "hive_push",
     {
       title: "Share a learning",
       description:
-        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Include insights and friction: what slowed you down, measured minutes lost, whether progress was blocked, and a workaround. Never include secrets or customer names.",
+        "Save a learning that would help a teammate. Include its evidence and repo. Use supersedes to correct a current cell. Set verify_after for facts that need checking later. For friction, record what slowed you down and any workaround. Include measured minutes lost and whether it blocked progress. Keep secrets and customer names out.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>
@@ -110,7 +158,7 @@ export function registerHiveTools(server: McpServer) {
         return hits
           .map(
             (hit, index) =>
-              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
+              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
           )
           .join("\n\n");
       }),
@@ -121,7 +169,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Ask the hive",
       description:
-        "Call for a synthesized answer with citations to the team's shared learnings. Read the confidence and gaps before acting.",
+        "Ask a question using the team's saved learnings. The answer cites its cells. Check the confidence and gaps before acting.",
       inputSchema: hiveAskInput,
     },
     async (input, ctx) =>
@@ -136,7 +184,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Catch up on learnings",
       description:
-        "Call to catch up on what the team has learned since a time or during a recent window. Optionally filter to one repository.",
+        "List what the team learned since a date or during a time window. Use repo to limit results to one repository.",
       inputSchema: hiveRecentInput,
     },
     async (input, ctx) =>
@@ -146,7 +194,7 @@ export function registerHiveTools(server: McpServer) {
           learnings
             .map(
               (learning) =>
-                `- ${learning.id}: ${learning.title} | ${learning.author.name} via ${learning.source} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
+                `- ${learning.id}: ${learning.title} | ${learning.lifecycle ?? "fresh"}${learning.supersededBy ? `, superseded by ${learning.supersededBy}` : ""}${learning.verifyBeforeUse ? ", verify before use" : ""} | ${learning.author.name} via ${learning.source} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
             )
             .join("\n") ||
           "No learnings in this time window. Use hive_push once you learn something useful."

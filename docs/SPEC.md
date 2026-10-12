@@ -22,7 +22,8 @@ apps/web                     Next.js App Router (Vercel root directory)
   src/app                    routes
   src/mcp/server.ts          registerHiveTools(server, getContext)
   src/server/db/             client.ts, schema.ts (Drizzle, postgres.js driver)
-  src/server/auth.ts         API keys, web sessions
+  src/server/auth.ts         headless keys, legacy session compatibility
+  src/server/better-auth.ts  web sign-in, enrollment hooks, MCP OAuth
   src/server/hive.ts         the service: every read and write goes through here
   src/server/llm/            embeddings.ts, synthesize.ts, tagger.ts (index.ts re-exports all three)
   src/lib/install.ts         install snippet generators (pure)
@@ -40,6 +41,10 @@ design/system                @hivemind/design-system: tokens, pixel sprites and 
 | `TYPESAFE_API_KEY` | Jev push, capture and relevance judgments | deterministic policies and Haiku tagging fallback |
 | `RESEND_API_KEY` / `EMAIL_FROM` | verification email delivery | email joins return a clear disabled response |
 | `RESEND_EMAIL_DOMAIN` | configured sender domain for delivery operations | sender-domain configuration needs checking |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in | Google button hidden |
+| `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | Slack OpenID Connect sign-in | Slack button hidden |
+| `BETTER_AUTH_SECRET` | session, verification and OAuth secrets | production authentication refuses to start; development has a local fallback |
+| `BETTER_AUTH_URL` | authorization origin | uses publicUrl() |
 | `PUBLIC_URL`        | canonical URL in metadata, install snippets and invite links | falls back to the request origin                              |
 
 Local Postgres for development: `postgres://hivemind:hivemind@127.0.0.1:54329/<database>` (Docker container `hivemind-pg`, image `pgvector/pgvector:pg18`, extension `vector` 0.8).
@@ -51,7 +56,7 @@ Driver: `postgres` (postgres.js) with `drizzle-orm/postgres-js`, `prepare: false
 - Ids are text with a prefix and 12 lowercase base32 characters: `team_`, `mem_`, `key_`, `lrn_`, `psh_`, `ses_`, `ea_`, `ask_`.
 - API key format: `hm_` + 32 random bytes as base64url. The database stores `sha256(key)` as hex and a display prefix (first 10 characters). The raw key is shown once.
 - Invite code: `hive-` plus random bytes. Only its SHA-256 hash is stored. It expires after seven days. The Members page shows a rotated code once.
-- Web session: random 32 byte token in the `hm_session` cookie (httpOnly, secure in production, sameSite lax, 30 days). The database stores the sha256 hash.
+- Web sessions use Better Auth cookies, secure in production, httpOnly and sameSite lax. Legacy `hm_session` hashes keep working until their 30-day expiry or sign-out. API keys cannot create web sessions.
 
 ## Tables
 
@@ -169,8 +174,8 @@ endWebSession(): Promise<void>
 1. Validate with `hivePushInput`. Normalize repo to lower case `owner/name` (strip `https://github.com/`, `.git`). Normalize tags to lower case kebab, deduped.
 2. Redact secrets in title and body with `redactSecrets` from core (API key shapes such as `sk-`, `sk-ant-`, `ghp_`, `github_pat_`, `xox[bap]-`, `AKIA…`, `hm_…`, JWTs, `-----BEGIN … PRIVATE KEY-----` blocks, `postgres://user:pass@` passwords). Replace with `[redacted]`. Return the count.
 3. Classify the redacted observation with Jev before any embedding or write. Refuse high sensitive-data probability. Keep an explicit caller kind, otherwise use a confident suggestion or learning. Store the raw typed answers. Embed `title + "\n\n" + body` (truncate to 8000 characters) when `OPENAI_API_KEY` exists. The call has a 6 second timeout and two retries. An embedding failure never fails the push.
-4. Dedupe inside the same team, repo (null equals null) and kind. Try equal normalized titles first. Friction uses title equality only. Other kinds also use nearest neighbour with cosine similarity >= 0.90. On a duplicate: increment `push_count`, set `last_pushed_at`, union tags and paths, keep the max confidence, keep the existing title, replace the body only when the new body is at least 1.5 times longer. Insert a `learning_pushes` row with `merged = true`. Return `merged: true` and the existing id.
-5. Otherwise insert the learning and a `learning_pushes` row.
+4. Select up to four current candidates in the same team, repo and kind, using normalized title equality or vector similarity >= 0.8. Jev compares same/update/contradiction/unrelated and checks named tool/service tags. Inside a team advisory lock, reread candidates and reject judgments against an old revision. Dedupe only an exact normalized title plus body, or a same-fact judgment >= 0.9. Friction also groups equal titles unless Jev finds an update or contradiction. Merge counts, tags, paths and confidence without overwriting the body.
+5. Otherwise insert a new learning, its push event and a redacted evidence outbox record. `supersedes` forces a new cell and atomically accepts a replacement; it never dedupes. Similar corrections with confidence >= 0.7 create candidate edges. A same-author correction >= 0.9 accepts automatically. Environment facts with matching area, judgment >= 0.98 and caller confidence >= 0.95 also accept. Other edges need an admin or two distinct active member votes.
 6. When Jev is unavailable, tags are empty and `ANTHROPIC_API_KEY` exists, schedule `suggestTags` with `after()` from `next/server` and store up to 5 tags. This never delays or fails the push.
 
 ### Search
@@ -183,15 +188,15 @@ endWebSession(): Promise<void>
    - `votes` = `0.5 + 0.5 * tanh((up - down + 0.5 * (pushCount - 1)) / 3)`
    - `score = 0.55 * vector + 0.25 * fts + 0.10 * recency + 0.10 * votes`. Without a vector signal: `0.70 * fts + 0.15 * recency + 0.15 * votes`.
    - plus 0.08 when the repo matches, times `0.85 + 0.15 * confidence`, times 0.4 when `outdated > up` and `outdated >= 1`.
-3. Return the top `limit` hits with signals.
+3. Default candidates exclude superseded, outdated and retracted cells before limits are applied. `include_history: true` includes them. Scale by lifecycle (confirmed 1, fresh 0.95, historical 0.25) and verification age (0.7 after the deadline). Return the top `limit` hits with signals.
 
 ### Ask
 
 1. `searchLearnings` with the question, limit 8.
 2. No hits: return a fixed answer that says the hive has nothing on this yet, `synthesized: false`, `confidence: "low"`.
-3. Gate retrieved evidence with Jev. Weak evidence returns a gap before synthesis. Empty retrieval skips Jev. On an outage require a vector similarity of at least 0.55 or 75% lexical coverage without vectors. Then call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
+3. Rerank each hit with a Jev relevance probability, scaling its score by `0.5 + 0.5 * probability`; use the original ranking on failure. Gate retrieved evidence with Jev. Weak evidence returns a gap before synthesis. Empty retrieval skips Jev. On an outage require a vector similarity of at least 0.55 or 75% lexical coverage without vectors. Then call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
 4. Drop citations whose id is not in the retrieved set. On `stop_reason: "refusal"`, any API error, or a missing key: return the extractive fallback (top 3 hits as a bullet list with ids), `synthesized: false`.
-5. Write an `ask_log` row.
+5. Append the accepted replacement chain (up to 16 links), an as-of date and overdue verification warnings with their historical citations. If there are no answer citations, do not manufacture a chain. Write an `ask_log` row.
 
 ### Recent
 
@@ -203,16 +208,22 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 
 ## MCP endpoint
 
-`/api/mcp`, stateless Streamable HTTP through `mcp-handler` 2.x. `Authorization: Bearer <api key>` is required. A missing or wrong key returns HTTP 401 with `WWW-Authenticate: Bearer` and a JSON body that says how to get a key. Tool results are a text content block. The text is compact markdown that an agent can read, and it always carries the learning ids. Tool errors return `isError: true` with a one-line cause.
+**MCP auth is OAuth-first.** `/api/mcp` uses stateless Streamable HTTP through mcp-handler 2.x. Missing or invalid tokens receive 401 with the RFC 9728 `WWW-Authenticate` challenge. Discovery advertises the canonical protected resource, CIMD support and the DCR fallback. `jwt()`, `mcp()` and `cimd({ metadataProfile: "mcp-2026-07-28" })` share one Better Auth instance. Both DCR controls are explicitly enabled. The secure Node CIMD transport pins public DNS results and rejects redirects.
+
+`requireMcpAuth` verifies the signature, issuer, audience, expiry and hive scope. It also verifies DPoP when used. The token's server-derived `hive_member_id`, `hive_team_id` and subject must identify the same current active membership. The resulting HiveContext reaches tools through AuthInfo.extra. Legacy `hm_` bearer keys remain an independent headless/CI path. Web cookies alone cannot authorize MCP. `/api/app/capture` uses the same shared bearer helper and team binding.
+
+Tool results are compact Markdown with cell IDs. Tool errors use isError and a one-line cause.
 
 ## Web
 
 - `/` landing: pitch, how it works, early-access form (name, email, company, team size). The form writes an `early_access` row and shows a thank-you state.
-- `/app/login`: three panels. Create a team (team name, your name, work email and code). Join a team (invite code or allowed work domain, your name, work email and code). Sign in (paste an API key). Create and join show the API key once, with the install snippets filled in.
+- `/app/login`: Sign in, Create a team and Join tabs. Sign-in uses email/password or a configured Google/Slack provider. Create/join collect a password and verify email with a code. Join accepts an invite link/code or an allowed work domain. No API key form or raw key appears here.
+- `/app/join`: a verified signed-in account without a team chooses a hive. It resumes an MCP login after enrollment.
+- `/app/consent`: verifies the signed OAuth query before displaying the client, hive, identity, scopes and requested profile claims. Allow and Cancel complete the Better Auth flow.
 - `/app`: the comb, one hexagonal cell per learning (title, repo, whose agent, time, votes, status, push count), polling every 5 seconds; a cell opens the full learning with kind, tags, paths, feedback and a copyable id. Status is outdated when outdated votes outnumber up votes, confirmed when it has up votes or more than one push, otherwise fresh. Search box whose result cards show the score and every ranking signal. "Ask the hive" box that shows the answer with clickable citations, the confidence and the gaps. "Fresh nectar" lists the latest arrivals with the agent that brought them.
 - All UI comes from `@hivemind/design-system`. `design/system/readme.md` sets the vocabulary and the voice.
 - `/app/members`: members, the invite code with a copy button.
-- `/app/install`: snippets with copy buttons. A "Create a new key" button issues a key, shows it once and fills the snippets.
+- `/app/install`: keyless Claude and Codex OAuth commands, instructions and Stop hook first; headless key commands last. Key creation and management live only on `/app/account`.
 - Web API routes live under `/api/app/*` and authenticate with the session cookie. They call the same service functions as the MCP tools.
 
 ## Web HTTP API
@@ -222,9 +233,9 @@ All bodies are JSON. Errors are `{ "error": "<one line>" }` with a 4xx or 5xx st
 | Route                                       | Body                         | Success                                                                                 |
 | ------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
 | `POST /api/early-access`                    | `EarlyAccessInput`           | 201 `{ ok: true }`                                                                      |
-| `POST /api/app/teams`                       | `{ teamName, memberName, email }` | 202 `{ verificationToken, expiresIn }`; PUT /api/app/email completes the join |
-| `POST /api/app/join`                        | `{ inviteCode, memberName, email }` | 202 `{ verificationToken, expiresIn }`; PUT /api/app/email completes the join |
-| `POST /api/app/session`                     | `{ apiKey }`                 | 200 `{ team, member }`, sets the cookie. 401 for an unknown key                         |
+| `POST /api/app/teams` | any | 410; use Better Auth signup and enrollment |
+| `POST /api/app/join` | any | 410; use Better Auth signup and enrollment |
+| `POST /api/app/session`                     | any | 410; API-key web sign-in is removed |
 | `DELETE /api/app/session`                   | none                         | 204, clears the cookie                                                                  |
 | `GET /api/app/feed?since=7d&repo=&limit=50` | none                         | 200 `{ learnings: LearningView[] }`                                                     |
 | `POST /api/app/search`                      | `HiveSearchInput`            | 200 `{ hits: SearchHit[] }`                                                             |
@@ -246,7 +257,7 @@ suggestTags(learning: Pick<LearningView, "title" | "body" | "kind" | "repo">): P
 
 `apps/web/scripts/seed-data.json` holds the demo learnings; each has an `author` name. `pnpm --filter web seed -- --url <base url> --key <api key of an existing member> --invite <invite code>` joins the other authors through `POST /api/app/join`, then pushes every learning through `tools/call hive_push` on `/api/mcp` with the right author's key. The script prints the ids. It never prints a key.
 
-## Round 3: email identity and access
+## Round 3: email identity and access (historical contract)
 
 Email verification precedes public team creation and joins. POST `/api/app/teams` and `/api/app/join` return 202 with an opaque verification token. POST `/api/app/email` accepts `intent: domain` for domain joins or `intent: account` with a session to verify a legacy member. PUT `/api/app/email` consumes the token and six-digit code. Successful creation or join returns the key once and starts the existing hashed, httpOnly session. An account verification binds the email without issuing a new key.
 
@@ -274,8 +285,56 @@ GET /api/app/friction returns count, measured minutes, unmeasured count, blocked
 
 One server module, src/server/classify.ts, owns typed questions and the pure decide() policy. The JavaScript SDK is pinned to 0.6.0. Every request uses jev-1.13.0, timeout 500 ms, retry.maxRetries 0 and SDK body logging off. Five independent push questions run in one POST /v1/systemone: kind (Choice over seven kinds), worthSharing (Noul), sensitive (Noul), repoArea (Choice over frontend/backend/database/testing/deployment/tooling/documentation/process/none), and severity (Score from no friction to destructive impact). Known secret shapes are redacted before this request. Sensitive probability at least 0.8 refuses the push. A caller's kind always wins; otherwise Choice confidence at least 0.6 selects the kind. A repository-topic tag needs confidence at least 0.6; none adds no tag. Sharing value is advisory for intentional pushes, not silent data loss. Severity is consumed only for friction. Raw probabilities remain available in classification.
 
-The Node Stop script reads up to 100,000 trailing transcript characters and extracts at most 6000 characters of assistant text. Local changes, errors or explicit observations plus at least 20 characters of text form the cheap pre-gate. A quiet session has no network or model call. An authenticated POST /api/app/capture runs one sharing Noul. At least 0.65 asks the agent to capture; lower skips. The route rate-limits each member to 30 requests per minute. The script reads HIVE_KEY or the matching registered user-scope hive server, asks once per session, and preserves headless final answers. A provider or network outage uses the local activity signal. Missing/unsupported transcripts skip capture. Installed scripts need to be updated.
+The Node Stop script reads up to 100,000 trailing transcript characters and extracts at most 6000 characters of assistant text. Local changes, errors or explicit observations plus at least 20 characters of text form the cheap pre-gate. A quiet session has no network or model call. An authenticated POST /api/app/capture runs one sharing Noul. At least 0.65 asks the agent to capture; lower skips. The route rate-limits each member to 30 requests per minute. The script reads and refreshes ~/.hive/oauth.json first, then accepts HIVE_KEY or a registered headless key as a fallback, asks once per session, and preserves headless final answers. A provider or network outage uses the local activity signal. Missing/unsupported transcripts skip capture. Installed scripts need to be updated.
 
 The ask Noul receives the question and bounded retrieved cell evidence, with outdated state. Probability at least 0.7 permits synthesis. Lower probabilities return no citations, low confidence and an explicit evidence gap. Empty retrieval and deterministic friction summaries need no model. On a TypeSafe outage, current evidence needs vector similarity at least 0.55 or at least 75% direct lexical coverage when vectors are absent. This fallback is conservative, not proof of answerability.
 
 Migration 0008_classification.sql adds JSONB evidence to learnings, learning_pushes and ask_log. A learning holds its latest push classification; push events preserve earlier evidence. Ask logs preserve relevance evidence. Decision logs contain model, latency, policy output and provider status, never raw text or credentials. No-network evals cover thresholds, caller precedence, refusals, empty/quiet gates, outages and malformed responses. TYPESAFE_LIVE_TEST=1 opts into a real provider smoke test. The thresholds need a larger labeled team eval before broad rollout.
+
+
+## Current learning lifecycle and knowledge tree
+
+The normative storage decision is [learnings-backend.md](learnings-backend.md). Migrations 0009 and 0010 add the following contracts without dropping old cells or identity data.
+
+- `learnings.lifecycle`: fresh, confirmed, superseded, outdated, retracted. `superseded_by` is a same-team foreign key. `verify_after` and `revision` are persisted. Existing outdated votes/admin marks backfill outdated; positive feedback/repeat pushes backfill confirmed.
+- `learning_versions`: immutable content snapshots plus a field-level before/after diff. Triggers cover content changes from all writers, ignore counters/embedding-only writes and attribute explicit edits to the request actor. The first migration backfills version 1 for every existing cell. Author/admin PATCH uses `revision` as an optimistic concurrency check. Superseded cells cannot be edited; edit the successor.
+- `learning_supersessions`: same-team endpoints, their compared revisions, relation, confidence, candidate/accepted/rejected state and decision reason. Acceptance takes the team lock, rechecks both endpoint versions, prevents cycles and permits only one accepted successor per older cell. Stale comparisons return 409. Conflict votes are unique per member and edge. Admin rejection keeps both cells.
+- Verification defaults: environment 14 days, snippet/incident 30, gotcha/friction 45, learning/insight 90, decision 180. Version/dependency/URL signals cap this at 30 days. An explicit `verify_after` overrides the default. Expiry marks uncertainty; it does not erase a cell.
+- `learning_evidence`: one immutable redacted payload per push, including optional `evidence.session_excerpt` and `evidence.diff` (50,000 characters each). The same transaction stores its pending JSON, hash and target key. A successful private Blob upload clears the temporary payload and records the object reference. Existing pre-0010 raw inputs have no evidence archive.
+- `knowledge_state`: per-team desired/published revisions, path-to-object manifest and next verification deadline. Row changes mark the tree dirty. `after()` flushes evidence and regenerates the tree, uploading only changed files. Publication uses compare-and-swap on the desired revision. Readers retry dirty publication; a failed upload leaves the last manifest and pending work intact. An explicit rebuild force-writes all files and drains all evidence batches.
+
+The tree contains `repos/<owner>/<repo>/<area>/<slug>-<id>.md`, `notes/<area>/...` for missing repos, `topics/<tag>.md`, `people/<member>.md`, `friction/<area>.md` and `INDEX.md`. Canonical files contain JSON-valued YAML metadata, Markdown content, lifecycle and replacement IDs. Index links are relative, so they work after extraction. History stays in the tree and is labelled; only the root's current section excludes it. Topic tags combine normalized caller tags, the existing Jev repository topic and a bounded list of tool/service entities accepted by Jev at probability >= 0.8. This is not a general entity graph.
+
+MCP additions:
+
+| Tool or input | Contract |
+| --- | --- |
+| `hive_push.supersedes` | Existing same-team cell ID; explicit acceptance of a new replacement |
+| `hive_push.verify_after` | ISO datetime for a future verification check; past dates immediately show a warning |
+| `hive_push.evidence` | Optional redacted session excerpt and diff |
+| `hive_search.include_history` | False by default |
+| `hive_browse({path?})` | Immediate children of a relative directory; root is the empty path |
+| `hive_read({path})` | A generated Markdown file and its published revision |
+| `hive_snapshot({})` | Tar.gz URL, expiry, file count and revision |
+
+Tree reads never accept object keys. Paths reject absolute paths, dot traversal, backslashes and control characters. Every lookup uses the authenticated team manifest. Objects live in private Vercel Blob under team-prefixed, content-addressed keys. Snapshots use regular read-only tar entries, validate file digests and cap source bytes at 50 MB. Generation has an explicit 10,000-cell limit. A random 256-bit snapshot token is stored only as a hash, bound to its team/member and checked for expiry and active membership on every download. The URL lasts 15 minutes and grants access to its one archive; it is a bearer credential and must not be logged or shared publicly.
+
+Dashboard routes: `/app/conflicts`, `/app/tree`, `/app/cells/[id]`. Friction, answer and replacement citations display truncated titles, with IDs only in tooltips or cell details. Cells show lifecycle, verification dates, a readable successor link and version diffs. `GET/POST /api/app/conflicts` lists/decides scoped edges; `GET /api/app/learnings/[id]/versions` reads history; `PATCH /api/app/learnings/[id]` accepts a revision and edited title/body/verification/lifecycle fields; `GET /api/app/knowledge?path=...&read=true` reads a file and POST prepares a snapshot. All app routes authenticate before querying. `GET /api/knowledge/snapshot?token=...` authenticates by its short-lived capability instead of cookies.
+
+Operational limits: Blob garbage collection, a scheduled queue worker, streaming large hives, arbitrary free-form entity extraction and a visual content editor are not implemented. Run `pnpm --filter web knowledge:rebuild` for recovery. The SQL rollback files refuse to discard evidence/history already created by the feature; read them before considering a rollback. Normal development and production use the handwritten migration runner, never schema push.
+
+## Better Auth web and MCP access
+
+This section replaces the historical public create/join/email-code and key sign-in routes. POST `/api/app/teams` and `/api/app/join` return 410. `/api/app/email` is only a scoped legacy account-email upgrade. Normal accounts use `/api/auth/sign-up/email`, `/api/auth/sign-in/email`, `/api/auth/email-otp/verify-email`, `/api/auth/email-otp/request-password-reset` and `/api/auth/email-otp/reset-password`. Email codes are hashed, last 15 minutes and allow five attempts. Shared database rate limits protect auth and email sending. Passwords use Better Auth's scrypt. First-password reset creates a credential account for the same existing member. Password reset revokes web sessions.
+
+The user model maps to members. Its nullable team_id is unset only for pending accounts. Better Auth owns image and updated_at; hive_registration stores a validated pending intent and only an invite hash. Team and role fields are server-owned. Enrollment locks the member row, requires verified email, validates the live invite or exact allowed work domain, and never moves an existing membership to another team. A creator is admin; every join is member. Public providers cannot domain-join. Google and Slack accounts link by matching verified email; no unverified provider is trusted for linking.
+
+The session model maps to web_sessions, with new token, updated_at, ip_address and user_agent columns. New sessions also retain a token_hash and the resolved team when one exists. Legacy hash-only rows and member IDs stay intact. A member with no email uses a live legacy session to verify an address on the account page. Keys remain valid for headless access. Removed members cannot obtain sessions or use already-issued MCP JWTs.
+
+0011_better_auth.sql adds the mapped model fields, credential accounts, verification and database rate limits. 0012_mcp_oauth.sql adds signing keys, clients, resources, client-resource links, access/refresh tokens, consents and client assertions. Both migrations have IF NOT EXISTS guards and local lock/statement timeouts. Rollbacks refuse populated accounts/grants; they are not applied to production as verification.
+
+The authorization issuer is Better Auth's canonical base URL including /api/auth. Well-known resource and issuer aliases and /oauth2/* reach auth.handler. The protected resource comes from publicUrl(). Token grants are authorization_code and refresh_token; public clients require S256 PKCE. The hive scope allows all existing tools in one team. offline_access must be requested to get refresh tokens. Login and post-login flows preserve the signed oauth_query through email, social sign-in, enrollment and consent. Tampered or expired consent queries do not render a permission request. Dynamic native registrations that omit application_type receive a validated native hint; explicit client choices remain intact.
+
+Install commands are `claude mcp add --transport http hive https://gohive.dev/api/mcp --scope user` and `codex mcp add hive --url https://gohive.dev/api/mcp`, followed by `codex mcp login hive`. Claude authenticates through /mcp. No HIVE_KEY is required for this path. The Stop hook has its own OAuth token store because native agent stores are private. The shared bearer helper makes its Jev gate work with OAuth and preserves the legacy key fallback. Connecting Slack for digests is outside this round.
+
+The install page offers Claude Code, Codex and Executor tabs. Executor uses the remote MCP URL and OAuth. Dynamic registration accepts hosted HTTPS redirect URIs as well as native loopback clients.

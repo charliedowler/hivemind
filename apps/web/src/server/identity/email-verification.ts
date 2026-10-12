@@ -9,11 +9,30 @@ import { hashCode, verifyCode } from "./passwords";
 import { emailDomain, isPublicDomain } from "./email-domain";
 import { rateLimit } from "./rate-limit";
 export const emailRequest = z.object({
-  email: z.string().trim().toLowerCase().max(200).pipe(z.email()),
-  memberName: z.string().trim().min(1).max(80),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(200, "Keep your email to 200 characters or fewer.")
+    .pipe(z.email("Enter a valid work email address.")),
+  memberName: z
+    .string()
+    .trim()
+    .min(1, "Enter your name.")
+    .max(80, "Keep your name to 80 characters or fewer."),
   intent: z.enum(["teams", "join", "domain", "account"]),
-  teamName: z.string().trim().min(1).max(80).optional(),
-  inviteCode: z.string().trim().min(4).max(80).optional(),
+  teamName: z
+    .string()
+    .trim()
+    .min(1, "Enter a team name.")
+    .max(80, "Keep the team name to 80 characters or fewer.")
+    .optional(),
+  inviteCode: z
+    .string()
+    .trim()
+    .min(4, "Enter the invite code from your team.")
+    .max(80, "Check your invite code. It must be 80 characters or fewer.")
+    .optional(),
 });
 type Payload = z.infer<typeof emailRequest> & {
   teamId?: string;
@@ -27,7 +46,10 @@ export async function sendEmailCode(
   delivery: Delivery = deliverCode,
 ) {
   if (!emailConfigured())
-    throw new HiveError("Email verification is not available yet.", 503);
+    throw new HiveError(
+      "Email verification is unavailable. Please try later.",
+      503,
+    );
   const data = emailRequest.parse(input);
   if (data.intent === "account" && !ctx)
     throw new HiveError("Sign in first.", 401);
@@ -70,7 +92,7 @@ export async function sendEmailCode(
     await tx`INSERT INTO email_verifications (id, email, token_hash, code_hash, payload, expires_at) VALUES (${id}, ${data.email}, ${hashToken(token)}, ${hash}, ${tx.json(payload)}, now() + interval '15 minutes')`;
   });
   if (!(await delivery(data.email, code, id)))
-    throw new HiveError("Code could not be sent. Try later.", 502);
+    throw new HiveError("We could not send the code. Please try later.", 502);
   await getSql()`UPDATE email_verifications SET delivered = true WHERE id = ${id} AND email = ${data.email} AND consumed_at IS NULL`;
   return { verificationToken: token, expiresIn: 900 };
 }
@@ -81,7 +103,10 @@ export async function completeEmailCode(
   ctx?: HiveContext,
 ) {
   if (!emailConfigured())
-    throw new HiveError("Email verification is not available yet.", 503);
+    throw new HiveError(
+      "Email verification is unavailable. Please try later.",
+      503,
+    );
   await Promise.all([
     rateLimit("email-verify", token, 30, 60),
     rateLimit("email-verify-ip", ip, 60, 60),
@@ -91,14 +116,20 @@ export async function completeEmailCode(
       await tx`SELECT *, expires_at <= now() AS expired FROM email_verifications WHERE token_hash = ${hashToken(token)} FOR UPDATE`;
     const row = rows[0];
     if (!row || row.consumed_at || !row.delivered)
-      return { error: "Code is not correct." };
-    if (row.expired) return { error: "This code has expired." };
+      return {
+        error: "This code is invalid. Check your email or request a new code.",
+      };
+    if (row.expired)
+      return { error: "This code has expired. Request a new code." };
     if (row.attempts >= 5)
       return { error: "Too many attempts. Request a new code." };
     const correct =
       /^\d{6}$/.test(code) && (await verifyCode(code, row.code_hash));
     await tx`UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ${row.id} AND token_hash = ${hashToken(token)}`;
-    if (!correct) return { error: "Code is not correct." };
+    if (!correct)
+      return {
+        error: "This code is invalid. Check your email or request a new code.",
+      };
     const payload = row.payload as Payload;
     if (payload.intent === "account") {
       if (
@@ -122,7 +153,7 @@ export async function completeEmailCode(
     if (existing.length)
       return {
         error:
-          "This email already belongs to a member. Sign in with your saved key.",
+          "This email already belongs to a member. Sign in or set your password with an email code.",
       };
     let teamId = newId("team"),
       teamName = payload.teamName ?? "",
@@ -136,7 +167,10 @@ export async function completeEmailCode(
           ? await tx`SELECT id, name FROM teams WHERE invite_code = ${payload.inviteCode!} AND invite_expires_at > now() FOR UPDATE`
           : await tx`SELECT t.id, t.name FROM teams t JOIN team_domains d ON d.team_id = t.id WHERE d.domain = ${emailDomain(row.email)} FOR UPDATE OF t`;
       if (!teams.length)
-        return { error: "No hive matches this invite or verified domain." };
+        return {
+          error:
+            "No hive matches your invite code or work domain. Check with your team admin.",
+        };
       teamId = teams[0].id;
       teamName = teams[0].name;
     }

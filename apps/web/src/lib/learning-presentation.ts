@@ -2,8 +2,14 @@ import type { LearningView } from "@hivemind/core";
 import type { LearningStatus, AgentKind } from "@hivemind/design-system";
 
 export function learningStatus(
-  learning: Pick<LearningView, "votes" | "pushCount" | "adminOutdated">,
+  learning: Pick<
+    LearningView,
+    "votes" | "pushCount" | "adminOutdated" | "lifecycle"
+  >,
 ): LearningStatus {
+  if (learning.lifecycle === "superseded" || learning.lifecycle === "retracted")
+    return "outdated";
+  if (learning.lifecycle) return learning.lifecycle;
   if (learning.adminOutdated) return "outdated";
   if (learning.votes.outdated > learning.votes.up) return "outdated";
   if (learning.votes.up > 0 || learning.pushCount > 1) return "confirmed";

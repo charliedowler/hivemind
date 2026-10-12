@@ -73,11 +73,20 @@ export function CitationChip({
   );
 
   return citation.onClick ? (
-    <button type="button" className="hm-cite" onClick={citation.onClick}>
+    <button
+      type="button"
+      className="hm-cite"
+      title={`${citation.title} (${citation.id})`}
+      onClick={citation.onClick}
+    >
       {content}
     </button>
   ) : citation.href ? (
-    <a className="hm-cite" href={citation.href}>
+    <a
+      className="hm-cite"
+      href={citation.href}
+      title={`${citation.title} (${citation.id})`}
+    >
       {content}
     </a>
   ) : (
