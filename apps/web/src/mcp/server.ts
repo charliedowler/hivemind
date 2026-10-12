@@ -110,7 +110,7 @@ export function registerHiveTools(server: McpServer) {
         return hits
           .map(
             (hit, index) =>
-              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
+              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
           )
           .join("\n\n");
       }),
@@ -146,7 +146,7 @@ export function registerHiveTools(server: McpServer) {
           learnings
             .map(
               (learning) =>
-                `- ${learning.id}: ${learning.title} | ${learning.author.name} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
+                `- ${learning.id}: ${learning.title} | ${learning.author.name} via ${learning.source} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
             )
             .join("\n") ||
           "No learnings in this time window. Use hive_push once you learn something useful."

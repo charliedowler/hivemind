@@ -41,21 +41,40 @@ describe("install snippets", () => {
       false,
     );
   });
-  it("blocks once per session and bypasses an active stop hook", () => {
-    const directory = mkdtempSync(join(tmpdir(), "hivemind-hook-test-"));
-    const run = (input: object) =>
-      execFileSync("bash", ["-c", snippets[3]!.code], {
-        input: JSON.stringify(input),
-        encoding: "utf8",
-        env: { ...process.env, TMPDIR: directory },
-      });
-    try {
-      expect(run({ session_id: "active", stop_hook_active: true })).toBe("");
-      expect(JSON.parse(run({ session_id: "first" })).decision).toBe("block");
-      expect(run({ session_id: "first" })).toBe("");
-      expect(JSON.parse(run({ session_id: "second" })).decision).toBe("block");
-    } finally {
-      rmSync(directory, { recursive: true });
-    }
-  });
+  it.each(["cli", "sdk-cli", "sdk-test", undefined])(
+    "uses the correct ending and guards for entrypoint %s",
+    (entrypoint) => {
+      const directory = mkdtempSync(join(tmpdir(), "hivemind-hook-test-"));
+      const run = (input: object) =>
+        execFileSync("bash", ["-c", snippets[3]!.code], {
+          input: JSON.stringify(input),
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            TMPDIR: directory,
+            CLAUDE_CODE_ENTRYPOINT: entrypoint,
+          },
+        });
+      try {
+        expect(run({ session_id: "active", stop_hook_active: true })).toBe("");
+        const first = JSON.parse(run({ session_id: "first" }));
+        expect(first.decision).toBe("block");
+        if (entrypoint === undefined || entrypoint === "cli") {
+          expect(first.reason).toMatch(
+            /If nothing qualifies, stop now without comment\.$/,
+          );
+          expect(first.reason).not.toContain("headless");
+        } else {
+          expect(first.reason).toMatch(
+            /This is a headless run and the caller reads only your last message, so finish by repeating your previous final answer word for word and nothing else\.$/,
+          );
+        }
+        expect(run({ session_id: "first" })).toBe("");
+        expect(JSON.parse(run({ session_id: "second" })).decision).toBe("block");
+        expect(JSON.parse(run({ session_id: "active" }))).toEqual(first);
+      } finally {
+        rmSync(directory, { recursive: true });
+      }
+    },
+  );
 });

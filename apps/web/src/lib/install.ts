@@ -19,13 +19,16 @@ const stopHook = [
   "#!/usr/bin/env bash",
   "input=$(cat)",
   "if printf '%s' \"$input\" | grep -q '\"stop_hook_active\"[[:space:]]*:[[:space:]]*true'; then exit 0; fi",
-  'session=$(printf \'%s\' "$input" | sed -n \'s/.*"session_id"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p\')',
-  'marker="${TMPDIR:-/tmp}/hivemind-stop-${session:-unknown}"',
-  '[ -e "$marker" ] && exit 0',
-  ': > "$marker"',
-  "cat <<'JSON'",
-  '{"decision":"block","reason":"Before you stop: if this session taught you something non-obvious that would help a teammate (a gotcha, a fix, a decision, how a flaky thing really works), call hive_push once per learning with a clear title, the repo and tags. If nothing qualifies, stop now without comment."}',
-  "JSON",
+  "session=$(printf '%s' \"$input\" | sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p')",
+  "marker=\"${TMPDIR:-/tmp}/hivemind-stop-${session:-unknown}\"",
+  "[ -e \"$marker\" ] && exit 0",
+  ": > \"$marker\"",
+  "ending=\"If nothing qualifies, stop now without comment.\"",
+  "if [ \"${CLAUDE_CODE_ENTRYPOINT:-cli}\" != \"cli\" ]; then",
+  "  ending=\"This is a headless run and the caller reads only your last message, so finish by repeating your previous final answer word for word and nothing else.\"",
+  "fi",
+  "printf '%s\\n' \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Before you stop: if this session taught you something a teammate's agent would otherwise have to rediscover (a gotcha, a fix, a decision, how this project, its tools or its CI really behave), call hive_push once per learning with a title that states the fact, the repo and 3 to 5 tags. Skip general knowledge any agent already has. $ending\\\"}\"",
+  "",
 ].join("\n");
 
 export function buildInstallSnippets({
