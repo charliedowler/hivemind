@@ -1,6 +1,6 @@
 # Hive — Design System
 
-Design system for **Hive**: a shared memory for a team's coding agents. Each person adds one MCP server to Claude Code or Codex. As they work, their agents push learnings (gotchas, fixes, decisions) to the hive, and agents ask the hive when they hit an error or start work in a repo the team already knows. People can ask the hive in a web dashboard, and every answer cites whose agent learned it.
+Design system for **Hive**: a shared memory for a team's coding agents. Each person adds one MCP server to Claude Code or Codex. As they work, their agents push learnings (gotchas, fixes, decisions) to the hive, and agents ask the hive when they hit an error or start work in a repo the team already knows. People ask through their agents with `hive_ask`, and every answer cites whose agent learned it. Slack bot support is in progress. The web dashboard supports browsing, search and review.
 
 The whole brand is **8-bit pixel art** with a **beehive narrative**. Agents are worker bees. A learning is a honeycomb cell filled with honey. The hive is the shared comb. Foragers fly out to repos (flowers) and bring nectar back. An answer is the hive handing a jar to the bee that asked. Warm, busy, cooperative. There is no queen: it is a flat team, and nothing in the system ranks one bee above another.
 
@@ -11,7 +11,7 @@ The whole brand is **8-bit pixel art** with a **beehive narrative**. Agents are 
 
 ## Products / surfaces
 1. **Landing page** (desktop 1200, mobile 390): HiveHero, the install snippet, a comb of sample learnings.
-2. **Dashboard**: the comb (CombGrid of LearningCells), AskBox and AnswerCard, ActivityFeed, members as MemberBees, install and key management.
+2. **Dashboard**: the comb (CombGrid of LearningCells), search, friction, ActivityFeed, members as MemberBees, install and key management.
 3. **Agent surface** (terminal, not styled by this system): the tool results agents read. The dashboard quotes them inside `terminal` cards and InstallSnippet.
 
 ## CONTENT FUNDAMENTALS
@@ -57,9 +57,9 @@ forms/: Input, Select, Switch
 navigation/: Tabs
 feedback/: Dialog, Toast, Tooltip
 sprites/: Sprite (inline pixel SVG by name), spriteData (generated)
-hive/: LearningCell (+ EmptyCell), CombGrid, AskBox, AnswerCard (+ CitationChip, CiteRef), MemberBee, InstallSnippet, ActivityFeed, HiveHero
+hive/: LearningCell (+ EmptyCell), CombGrid, AnswerCard (+ CitationChip, CiteRef), MemberBee, InstallSnippet, ActivityFeed, HiveHero
 
-All styling is class based with an `hm-` prefix in `components/core.css` and `components/hive.css`; the TSX files only set class names. Import `components/ds.css` once (it pulls in `styles.css` and both sheets) and import components from `components/index.ts`. Files that hold state (`AskBox`, `InstallSnippet`, `Tabs`, `Dialog`) are client components; the rest render on the server. To use the system in `apps/web`, copy `design/system/components` to `apps/web/src/components/ds` and `tokens/` + `styles.css` beside it, or import across the workspace.
+All styling is class based with an `hm-` prefix in `components/core.css` and `components/hive.css`; the TSX files only set class names. Import `components/ds.css` once (it pulls in `styles.css` and both sheets) and import components from `components/index.ts`. Files that hold state (`InstallSnippet`, `Tabs`, `Dialog`) are client components; the rest render on the server. To use the system in `apps/web`, copy `design/system/components` to `apps/web/src/components/ds` and `tokens/` + `styles.css` beside it, or import across the workspace.
 
 **Pixel sprites:** every prop is drawn as a character grid in `sprites/art/*.mjs` and compiled by `node sprites/build.mjs` into `sprites/*.svg`, `sprites/sprites.json`, `components/sprites/spriteData.ts` and `tokens/patterns.css`. Sprites use `shape-rendering:crispEdges` and `image-rendering:pixelated` (class `.sprite`), an ink silhouette around flat fills, and frame animation with stepped easing. Keep new props on the grid; never add curves or anti-aliased strokes. See `sprites/README.md`.
 
@@ -72,3 +72,5 @@ All styling is class based with an `hm-` prefix in `components/core.css` and `co
 
 ## Fonts
 No brand fonts were supplied. Lilita One, Nunito, Space Mono and Silkscreen are loaded from Google Fonts via `tokens/fonts.css`. In the Next.js app, prefer `next/font/google` for the same four families and set `--font-display`, `--font-body`, `--font-mono`, `--font-pixel` from it.
+
+`AnswerCard` remains for static product examples on the landing and waitlist pages. It is not a dashboard feature.

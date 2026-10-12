@@ -1,3 +1,4 @@
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import type { Metadata } from "next";
 import { LegalLinks } from "@/components/legal-links";
 import { AnswerCard, Sprite } from "@hivemind/design-system";
@@ -27,6 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function WaitlistPage() {
   return (
     <main className="waitlist-page">
+      <AnalyticsBeacon page="waitlist" />
       <div className="waitlist-shell">
         <header className="waitlist-header">
           <div className="waitlist-brand">

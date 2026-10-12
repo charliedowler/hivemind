@@ -9,9 +9,11 @@ import { requestJson, errorMessage } from "@/lib/client";
 export function Navigation({
   teamName,
   memberName,
+  isAdmin = false,
 }: {
   teamName: string;
   memberName: string;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -47,6 +49,7 @@ export function Navigation({
             ["/app/install", "Install"],
             ["/app/account", "Account"],
             ["/app/settings/slack", "Slack"],
+            ...(isAdmin ? [["/app/admin/analytics", "Analytics"]] : []),
           ].map(([href, label]) => (
             <Link
               key={href}

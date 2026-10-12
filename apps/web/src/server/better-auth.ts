@@ -1,3 +1,6 @@
+import { createAuthMiddleware, isAPIError } from "better-auth/api";
+import { authAccess } from "./analytics/auth";
+import { recordEvent } from "./analytics/events";
 import { betterAuth, APIError } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { emailOTP, jwt } from "better-auth/plugins";
@@ -55,6 +58,18 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
     account: { accountLinking: { enabled: true, trustedProviders: [], allowDifferentEmails: false } },
     rateLimit: { enabled: true, storage: "database", window: 60, max: 60 },
     disabledPaths: ["/token", "/sign-in/email-otp", "/update-user", "/delete-user", "/change-email"],
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        const result = ctx.context.returned;
+        if (ctx.path === "/sign-in/email" && isAPIError(result)) {
+          await recordEvent({ name: "access.changed", outcome: "login_failed", reasonCode: result.statusCode === 401 ? "invalid_credentials" : "access_denied", properties: { actorKind: "anonymous" } });
+        }
+        if (ctx.path === "/oauth2/consent" && ctx.body?.accept === true && !isAPIError(result) && ctx.context.session?.user && result && typeof result === "object" && "url" in result && typeof result.url === "string") {
+          const granted = new URL(result.url).searchParams;
+          if (granted.has("code") && !granted.has("error")) await authAccess({ memberId: ctx.context.session.user.id }, "mcp_oauth_authorized");
+        }
+      }),
+    },
     databaseHooks: {
       user: {
         create: {
@@ -66,15 +81,29 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
             catch { throw new APIError("BAD_REQUEST", { message: "Choose a valid team or invite." }); }
             return { data: { ...user, email: user.email.trim().toLowerCase(), hiveRegistration: registration } };
           },
-          after: async (user) => { if (user.emailVerified) await enrollMember(user.id); },
+          after: async (user) => {
+            if (user.emailVerified) {
+              await enrollMember(user.id);
+              await authAccess({ memberId: user.id }, "email_verified", user.id);
+            }
+          },
         },
-        update: { after: async (user) => { if (user.emailVerified) await enrollMember(user.id); } },
+        update: { after: async (user, ctx) => {
+          if (user.emailVerified) {
+            await enrollMember(user.id);
+            if (ctx?.path === "/email-otp/verify-email" || ctx?.path === "/verify-email") await authAccess({ memberId: user.id }, "email_verified", user.id);
+          }
+        } },
       },
       session: { create: { before: async (session) => {
         const rows = await getSql()`SELECT team_id, removed_at FROM members WHERE id = ${session.userId}`;
         if (!rows[0] || rows[0].removed_at) throw new APIError("FORBIDDEN", { message: "This membership is no longer active." });
         return { data: { ...session, tokenHash: hashToken(session.token), teamId: rows[0].team_id } };
-      } } },
+      }, after: async (session) => { await authAccess({ memberId: session.userId }, "login", session.id); } },
+        delete: { after: async (session, ctx) => {
+          if (ctx?.path === "/sign-out") await authAccess({ memberId: session.userId }, "logout", session.id);
+        } },
+      },
     },
     plugins: [
       emailOTP({
@@ -86,6 +115,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
         async sendVerificationOTP({ email, otp, type }) {
           await rateLimit("better-auth-email", email, 5, 3600);
           if (!await delivery(email, otp, newId(type))) throw new APIError("BAD_GATEWAY", { message: "Your email code could not be sent. Try again later." });
+          if (type === "email-verification") await authAccess({ email }, "email_verification_sent");
         },
       }),
       jwt(),

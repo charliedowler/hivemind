@@ -1,3 +1,4 @@
+import { withOrigin, originFor } from "@/server/analytics/events";
 import { z } from "zod";
 import { getWebContext } from "@/server/auth";
 import {
@@ -38,12 +39,12 @@ export async function PUT(request: Request) {
     if (!ctx) return Response.json({ error: "Sign in first." }, { status: 401 });
     const pending = await getSql()`SELECT id FROM email_verifications WHERE token_hash = ${hashToken(input.verificationToken)} AND payload->>'intent' = 'account' AND payload->>'teamId' = ${ctx.teamId} AND payload->>'memberId' = ${ctx.memberId}`;
     if (!pending.length) return Response.json({ error: "Verify your account email with a new code." }, { status: 400 });
-    const result = await completeEmailCode(
+    const result = await withOrigin(originFor(ctx), () => completeEmailCode(
       input.verificationToken,
       input.code,
       request.headers.get("x-vercel-forwarded-for") ?? "unknown",
-      ctx ?? undefined,
-    );
+      ctx,
+    ));
     if (result.apiKey) return Response.json({ error: "Create or join with an email account at /app/login." }, { status: 410 });
     return Response.json(
       {
