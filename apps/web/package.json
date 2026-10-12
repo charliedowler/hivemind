@@ -14,11 +14,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@c15t/integrations": "3.0.0",
     "@hivemind/core": "workspace:*",
     "@hivemind/design-system": "workspace:*",
     "@modelcontextprotocol/server": "^2.0.0",
     "@typesafe-ai/sdk": "0.6.0",
     "@vercel/blob": "^2.8.1",
+    "c15t": "3.0.0",
     "company-email-validator": "^1.2.7",
     "drizzle-orm": "^0.45.4",
     "mcp-handler": "^2.0.0",

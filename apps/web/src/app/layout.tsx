@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Lilita_One, Nunito, Space_Mono, Silkscreen } from "next/font/google";
+import { ConsentBanner, ConsentDialog, ConsentRoot } from "c15t/next";
+import { resolveConsent } from "c15t/next/server";
+import { CookiePreferencesLink } from "@/components/cookie-preferences-link";
 import "@hivemind/design-system/app.css";
 import "./globals.css";
+import "./privacy.css";
 
 const display = Lilita_One({
   weight: "400",
@@ -41,7 +45,14 @@ export default function RootLayout({
       <body
         className={`${display.variable} ${body.variable} ${mono.variable} ${pixel.variable}`}
       >
-        {children}
+        <ConsentRoot state={resolveConsent({ reportSessions: false })}>
+          {children}
+          <ConsentBanner legalLinks={["privacyPolicy"]} />
+          <ConsentDialog legalLinks={["privacyPolicy"]} />
+          <footer className="privacy-footer">
+            <CookiePreferencesLink />
+          </footer>
+        </ConsentRoot>
       </body>
     </html>
   );
