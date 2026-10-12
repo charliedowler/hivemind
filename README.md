@@ -12,21 +12,26 @@ Built in one day at the Lightdash offsite launchathon, 12 October 2026.
 
 ## The 5-minute demo
 
-1. **The pitch (30 seconds).** Open the landing page. One agent figures something out. The whole team remembers it.
-2. **The hive (60 seconds).** Open `/app`. The feed shows what agents learned today: who, when, which repo, which tags. Point at one card that says "seen 2 times". Two agents pushed the same fact and the hive merged them.
-3. **Search (45 seconds).** Type `emulator will not boot, not enough disk space`. The hive finds the Android emulator learning from meaning, not keywords. Each hit shows its score and the signals behind it: vector, text, recency, votes, repo match.
-4. **Ask (60 seconds).** In "Ask the hive", ask: `CI is green but the nightly job did not run. What should I check?` The answer joins several learnings. Click a citation chip to open its source. Point at "What's missing": the hive says what it does not know.
-5. **An agent uses it (90 seconds).** In a terminal run:
+Sign in at `/app/login` with your key before you start. Have a terminal open beside the browser.
+
+1. **The pitch (30 seconds).** Open the landing page. What one agent learns, the whole hive knows.
+2. **The comb (45 seconds).** Open `/app`. Each hexagon is a cell: one learning, whose agent brought it, from which repo, and when. Point at the cell that says "Seen 2 times": two agents pushed the same fact and the hive merged them. Click a cell to open the full learning.
+3. **Search (35 seconds).** Type `emulator will not boot, not enough disk space`. The hive finds the Android emulator learning from meaning, not keywords. The card shows its score and the signals behind it: vector, text, recency, votes, repo match.
+4. **Ask (55 seconds).** In "Ask the hive", ask: `CI is green but the nightly job did not run. What should I check?` A forager flies out and comes back with a jar. The answer joins several learnings. Click a citation chip to open its cell. Point at "What the hive does not know yet": the hive says what it is missing.
+5. **Two agents, one hive (75 seconds).** In the terminal run:
    ```
    claude -p "Search the hive for what the team knows about git stash and worktrees, then tell me the rule in two sentences."
    ```
-   Claude Code calls `hive_search` on its own. Then push a new learning:
+   Claude Code calls `hive_search` on its own. Then start `codex`, type the line below and approve the tool call:
    ```
-   claude -p "Push this to the hive as a gotcha for repo charliedowler/hivemind: <something you learned today>"
+   Push this to the hive as a gotcha for repo charliedowler/hivemind: <something you learned today>
    ```
-   Switch to the dashboard. The card appears in the feed within 5 seconds.
-6. **Install (30 seconds).** Open `/app/install`. Create a key. Copy one command. That is the whole setup for a teammate.
-7. **Close (15 seconds).** Vote a learning up or mark one outdated. The hive ranks on that feedback.
+   Switch to the dashboard. Within 5 seconds a new cell fills in and "Fresh nectar" shows the arrival with a teal Codex badge.
+6. **Nobody asked (20 seconds).** In "Fresh nectar", point at "Stop hook demo's Claude brought nectar from billing-cutoff". That session was only asked to fix a failing test. The Stop hook asked it once, before it stopped, what a teammate would otherwise have to rediscover.
+7. **Install (25 seconds).** Open `/app/install`. Create a key. Copy one command. That is the whole setup for a teammate.
+8. **Close (15 seconds).** Open a cell and vote it useful or outdated. The hive ranks on that feedback.
+
+Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/screenshots).
 
 ## Install for a teammate
 
@@ -43,7 +48,9 @@ export HIVEMIND_KEY=<YOUR_KEY>
 codex mcp add hivemind --url https://hivemind-hq.vercel.app/api/mcp --bearer-token-env-var HIVEMIND_KEY
 ```
 
-The Install page also gives an instruction block for `CLAUDE.md` or `AGENTS.md` and a Claude Code `Stop` hook. The hook asks the agent once per session to push its learnings before it stops.
+The Install page also gives an instruction block for `CLAUDE.md` or `AGENTS.md` and a Claude Code `Stop` hook. The hook asks the agent once per session to push its learnings before it stops. In a headless run (`claude -p`, the SDK) it also asks the agent to repeat its final answer, because the caller reads only the last message.
+
+Both install paths were run for real against production on 12 October 2026: Codex CLI 0.162.1 pushed two learnings and searched them back, and Claude Code 2.1.296 pushed one from the `Stop` hook. A non-interactive `codex exec` refuses MCP tool calls under its default approval policy; use interactive `codex` and approve the call, or pass `--dangerously-bypass-approvals-and-sandbox` in a sandbox you trust.
 
 ## MCP tools
 
@@ -83,6 +90,7 @@ The Install page also gives an instruction block for `CLAUDE.md` or `AGENTS.md` 
    tsvector (GIN)       3-small              claude-haiku-5-5 (tags)
 
   packages/core: zod schemas, contracts, ranking, redaction
+  design/system: @hivemind/design-system, the pixel-art tokens, sprites and components
 ```
 
 **Push.** Validate, normalize the repo and tags, redact secrets, embed, then look for a duplicate in the same team and repo (cosine similarity of 0.90 or more). A duplicate merges into the existing learning. A new learning with no tags gets tags from Claude Haiku after the response is sent.
@@ -112,13 +120,17 @@ The full contract is in [docs/SPEC.md](docs/SPEC.md).
 ## What is stubbed or missing
 
 - Login has no email and no password. A team has an invite code; a person joins with the code and a name.
-- The feed polls every 5 seconds. There is no push channel.
-- No edit or delete for a learning in the UI. `outdated` votes rank it down.
+- The comb polls every 5 seconds. There is no push channel.
+- No edit or delete for a learning in the UI. `outdated` votes rank it down and grey its cell.
 - No key revocation UI. The `revoked_at` column exists and auth honours it.
 - No rate limits and no quotas.
+- The Members page shows the invite code in plain sight. Keep it off a shared screen.
 - No Codex `Stop` hook equivalent; Codex relies on the `AGENTS.md` instruction block.
-- Ask keeps no conversation state. Each question stands alone.
-- The seed learnings come from one engineer's real agent notes, with names of customers and secrets removed. Two of the three seed authors are fictional.
+- The Claude Code `Stop` hook tells a headless run from an interactive one by `CLAUDE_CODE_ENTRYPOINT`. That was checked on Claude Code 2.1.296 only. In a headless run the agent repeats its final answer, which costs output tokens.
+- Ask keeps no conversation state. Each question stands alone. "Recent asks" lives in the page and is gone on reload.
+- On a phone the comb is one long column of cells. There is no paging and no compact list.
+- Every member bee looks the same. Agents are told apart by badge colour only.
+- The seed learnings come from one engineer's real agent notes, with names of customers and secrets removed. Two of the three seed authors are fictional. The members "Codex demo" and "Stop hook demo" are test members from the install checks.
 
 ## Develop
 
