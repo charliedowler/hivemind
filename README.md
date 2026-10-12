@@ -174,3 +174,5 @@ TYPESAFE_LIVE_TEST=1 pnpm --filter web test src/server/classify.live.test.ts
 ```
 
 The normal test suite makes no TypeSafe calls. `classify.test.ts` checks pure decision mapping, quiet-session gates, one request, no retries and invalid-response fallback. The capture route requires a member key and has a per-member rate limit. Update an installed Stop script from the Install page to get the new gate.
+
+Production smoke checks on 12 October 2026 measured Jev at 205 ms for a friction push, 151 ms for useful Stop capture and 160 ms for a relevant ask from Vercel. A weak retrieval was rejected at probability 0.03 in 152 ms. A quiet capture made no model call. These are individual checks, not percentile benchmarks. Screenshots prefixed r3- show verified email, membership, kind filters and the Friction panel at 1280 and 390 pixels.
