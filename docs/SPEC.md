@@ -24,7 +24,7 @@ apps/web                     Next.js App Router (Vercel root directory)
   src/server/db/             client.ts, schema.ts (Drizzle, postgres.js driver)
   src/server/auth.ts         API keys, web sessions
   src/server/hive.ts         the service: every read and write goes through here
-  src/server/llm/            embeddings.ts, synthesize.ts, tagger.ts
+  src/server/llm/            embeddings.ts, synthesize.ts, tagger.ts (index.ts re-exports all three)
   src/lib/install.ts         install snippet generators (pure)
 packages/core                @hivemind/core: zod schemas, contracts, ranking, redaction
 ```
