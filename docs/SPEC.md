@@ -27,6 +27,7 @@ apps/web                     Next.js App Router (Vercel root directory)
   src/server/llm/            embeddings.ts, synthesize.ts, tagger.ts (index.ts re-exports all three)
   src/lib/install.ts         install snippet generators (pure)
 packages/core                @hivemind/core: zod schemas, contracts, ranking, redaction
+design/system                @hivemind/design-system: tokens, pixel sprites and components, consumed by apps/web
 ```
 
 ## Environment
@@ -164,7 +165,8 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 
 - `/` landing: pitch, how it works, early-access form (name, email, company, team size). The form writes an `early_access` row and shows a thank-you state.
 - `/app/login`: three panels. Create a team (team name, your name). Join a team (invite code, your name). Sign in (paste an API key). Create and join show the API key once, with the install snippets filled in.
-- `/app`: feed of learnings (author, time, repo, tags, kind, votes, push count), polling every 5 seconds; search box; "Ask the hive" box that shows the answer with clickable citations.
+- `/app`: the comb, one hexagonal cell per learning (title, repo, whose agent, time, votes, status, push count), polling every 5 seconds; a cell opens the full learning with kind, tags, paths, feedback and a copyable id. Status is outdated when outdated votes outnumber up votes, confirmed when it has up votes or more than one push, otherwise fresh. Search box whose result cards show the score and every ranking signal. "Ask the hive" box that shows the answer with clickable citations, the confidence and the gaps. "Fresh nectar" lists the latest arrivals with the agent that brought them.
+- All UI comes from `@hivemind/design-system`. `design/system/readme.md` sets the vocabulary and the voice.
 - `/app/members`: members, the invite code with a copy button.
 - `/app/install`: snippets with copy buttons. A "Create a new key" button issues a key, shows it once and fills the snippets.
 - Web API routes live under `/api/app/*` and authenticate with the session cookie. They call the same service functions as the MCP tools.
