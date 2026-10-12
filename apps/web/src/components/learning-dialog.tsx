@@ -53,10 +53,9 @@ export function LearningDetail({
           {learningStatus({ ...learning, votes })}
         </Badge>
         <Badge>{learning.kind}</Badge>
-        <span className="small">
-          Seen {learning.pushCount}{" "}
-          {learning.pushCount === 1 ? "time" : "times"}
-        </span>
+        {learning.pushCount > 1 ? (
+          <span className="small">Seen {learning.pushCount} times</span>
+        ) : null}
       </div>
       <div className="row wrap">
         <MemberBee

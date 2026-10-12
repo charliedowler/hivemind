@@ -84,6 +84,11 @@ describe("dashboard components", () => {
   it("renders full markdown, paths, kind, votes and a copyable id inside a learning", () => {
     const html = renderToStaticMarkup(<LearningDetail learning={hit} />);
     expect(html).toContain("Seen 3 times");
+    expect(
+      renderToStaticMarkup(
+        <LearningDetail learning={{ ...hit, pushCount: 1 }} />,
+      ),
+    ).not.toContain("Seen ");
     expect(html).toContain("gotcha");
     expect(html).toContain("src/git.ts");
     expect(html).toContain("<code>git stash pop</code>");
