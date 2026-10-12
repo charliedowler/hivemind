@@ -247,6 +247,10 @@ export function uninstall(options: Options) {
   return withLock(home, () => {
     if (!existsSync(manifestPath(home))) { log('Hive has no install record here. Nothing changed'); return; }
     const manifest = loadManifest(home);
+    for (const path of Object.keys(manifest.files)) {
+      const full = resolve(home, path);
+      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/')) throw new Error('The Hive install record contains an unexpected path');
+    }
     const writes = new Map<string, string>();
     for (const agent of manifest.agents) {
       const path = instructionPaths(home, agent);

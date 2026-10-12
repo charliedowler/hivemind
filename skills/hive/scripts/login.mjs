@@ -58,8 +58,10 @@ async function main() {
     console.log(authorizationUrl.href);
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
     const args = process.platform === 'win32' ? ['/c', 'start', '', authorizationUrl.href] : [authorizationUrl.href];
-    const browser = spawn(command, args, { stdio: 'ignore' });
-    browser.on('error', () => {});
+    if (process.env.HIVE_NO_BROWSER !== '1') {
+      const browser = spawn(command, args, { stdio: 'ignore' });
+      browser.on('error', () => {});
+    }
     const code = await codePromise;
     const tokens = await json(discovery.token_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id: registration.client_id, redirect_uri: redirectUri, resource }) });
     if (!tokens.access_token) throw new Error('Hive did not return a token');

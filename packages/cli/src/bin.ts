@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
@@ -26,6 +27,7 @@ async function main() {
     } else throw new Error(`Unknown option: ${flag}`);
   }
   home = resolve(home);
+  mkdirSync(home, { recursive: true, mode: 0o700 });
   const agents = selectedAgent ? [selectedAgent] : detectAgents(home);
   const options = { home, agents, backupDir };
   if (command === 'install') {
