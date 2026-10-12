@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #151714;
+  --color-surface: #1e211c;
+  --color-honey: #edbb58;
+  --font-sans: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  color: #f5f3ec;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+
+::selection {
+  background: var(--color-honey);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-honey);
+  outline-offset: 4px;
+}
+
+input,
+select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #4a4d43;
+  border-radius: 0.5rem;
+  background: var(--color-ink);
+  padding: 0.75rem;
+  color: #f5f3ec;
+  font: inherit;
+}
+
+input::placeholder {
+  color: #93968c;
+}
+
+.hive-mark {
+  width: 1.5rem;
+  height: 1.65rem;
+  background: var(--color-honey);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
