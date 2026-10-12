@@ -119,7 +119,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Share a learning",
       description:
-        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Use supersedes to correct a current cell and verify_after for facts that expire. Include insights and friction: what slowed you down, measured minutes lost, whether progress was blocked, and a workaround. Never include secrets or customer names.",
+        "Save a learning that would help a teammate. Include its evidence and repo. Use supersedes to correct a current cell. Set verify_after for facts that need checking later. For friction, record what slowed you down and any workaround. Include measured minutes lost and whether it blocked progress. Keep secrets and customer names out.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>
@@ -169,7 +169,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Ask the hive",
       description:
-        "Call for a synthesized answer with citations to the team's shared learnings. Read the confidence and gaps before acting.",
+        "Ask a question using the team's saved learnings. The answer cites its cells. Check the confidence and gaps before acting.",
       inputSchema: hiveAskInput,
     },
     async (input, ctx) =>
@@ -184,7 +184,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Catch up on learnings",
       description:
-        "Call to catch up on what the team has learned since a time or during a recent window. Optionally filter to one repository.",
+        "List what the team learned since a date or during a time window. Use repo to limit results to one repository.",
       inputSchema: hiveRecentInput,
     },
     async (input, ctx) =>

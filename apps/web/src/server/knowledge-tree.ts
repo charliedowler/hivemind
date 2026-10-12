@@ -39,13 +39,13 @@ export function knowledgePath(path: string): string {
     /[\x00-\x1f\x7f]/.test(path) ||
     path.length > 500
   )
-    throw new HiveInputError("Use a relative hive path without traversal.");
+    throw new HiveInputError("Use a path relative to the hive root. Leave out . and .. segments.");
   const normalized = path.replace(/\/$/, "");
   if (
     normalized &&
     normalized.split("/").some((part) => !part || part === "." || part === "..")
   )
-    throw new HiveInputError("Use a relative hive path without traversal.");
+    throw new HiveInputError("Use a path relative to the hive root. Leave out . and .. segments.");
   return normalized;
 }
 
@@ -125,7 +125,7 @@ export function renderKnowledgeTree(
   const currentIds = new Set(current.map((cell) => cell.id));
   files.set(
     "INDEX.md",
-    `# The hive\n\nGenerated from the team's cells. This view is read-only. Use hive_push to add or correct a learning. Verification dates must be checked against today's date even in an older snapshot.\n\n## Current cells\n\n${links(current) || "No current cells."}\n\n## History\n\n${links(cells.filter((cell) => !currentIds.has(cell.id))) || "No historical cells."}\n`,
+    `# The hive\n\nThis tree contains your team's cells. Use hive_push to add or correct a learning. You cannot edit the tree directly. Check verification dates against today's date, including in older snapshots.\n\n## Current cells\n\n${links(current) || "No current cells."}\n\n## History\n\n${links(cells.filter((cell) => !currentIds.has(cell.id))) || "No historical cells."}\n`,
   );
   return files;
 }

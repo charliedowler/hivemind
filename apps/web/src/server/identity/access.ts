@@ -9,7 +9,7 @@ export async function requireAdmin(ctx: HiveContext): Promise<void> {
   const rows =
     await getSql()`SELECT id FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND role = 'admin' AND removed_at IS NULL`;
   if (!rows.length)
-    throw new HiveError("A team admin is needed for this action.", 403);
+    throw new HiveError("Only a team admin can do this.", 403);
 }
 export async function account(ctx: HiveContext) {
   const sql = getSql();

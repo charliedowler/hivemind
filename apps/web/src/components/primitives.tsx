@@ -36,18 +36,14 @@ export function ErrorPanel({ message }: { message: string }) {
   return (
     <Toast
       tone="error"
-      title="The hive could not finish that."
-      description={`${message} Try again.`}
+      title="The request failed."
+      description={message}
       className="error-panel"
     />
   );
 }
 
-export function LoadingPanel({
-  children = "A forager is out looking.",
-}: {
-  children?: string;
-}) {
+export function LoadingPanel({ children = "Loading." }: { children?: string }) {
   return (
     <Card className="loading-panel" role="status">
       <Sprite name="bee-fly" scale={3} className="hm-bob" />

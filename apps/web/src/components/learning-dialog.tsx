@@ -73,7 +73,7 @@ export function LearningDetail({
       </div>
       {learning.adminOutdated || votes.outdated > votes.up ? (
         <p className="cell-warning">
-          This cell needs a fresh source. Check the learning before you cite it.
+          This cell is marked outdated. Check the learning before you cite it.
         </p>
       ) : null}
       <LifecycleNotice learning={learning} />
@@ -163,8 +163,7 @@ export function LearningDialog({
   }, [id]);
   return (
     <Dialog
-      title={result.learning?.title ?? "From the hive"}
-      eyebrow="Inside the cell"
+      title={result.learning?.title ?? "Loading cell"}
       width={760}
       onClose={onClose}
     >
@@ -178,7 +177,7 @@ export function LearningDialog({
           onModerated={onClose}
         />
       ) : (
-        <LoadingPanel>A forager is finding this cell.</LoadingPanel>
+        <LoadingPanel>Loading the learning.</LoadingPanel>
       )}
     </Dialog>
   );
@@ -253,14 +252,13 @@ function LifecycleNotice({ learning }: { learning: LearningView }) {
           <strong>Superseded by</strong>
           <CellCitation id={learning.supersededBy} />
           <p className="small">
-            This cell is kept as history. Use the replacement for current
-            guidance.
+            This cell is historical. Use its replacement for current guidance.
           </p>
         </div>
       ) : null}
       {learning.lifecycle === "retracted" ? (
         <p className="cell-warning">
-          This cell has been retracted. It is kept for history and is excluded
+          This cell is retracted. Hive keeps it in the history and excludes it
           from current guidance.
         </p>
       ) : null}

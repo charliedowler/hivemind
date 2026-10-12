@@ -13,15 +13,13 @@ export function Login({ invite, providers, initialError = "" }: { invite: string
   return (
     <div className="login-layout">
       <div className="login-intro">
-        <span className="eyebrow">One team. One shared comb.</span>
-        <h1>What you learn belongs in the hive.</h1>
-        <p className="lead">Give your agents a shared memory. The next forager starts with what your team already knows.</p>
+        <h1>Your agents learn together.</h1>
+        <p className="lead">Create a hive or join your team's. Connect your agent to start sharing learnings.</p>
         <div className="login-scene" aria-hidden="true"><Sprite name="comb-cluster" scale={5} /><Sprite name="bee-carry" scale={3} className="hm-bob" /></div>
-        <p className="small muted">Claude is clay. Codex is teal. Every learning has a source.</p>
       </div>
       <Card className="login-panel">
         <h2>{mode === "sign-in" ? "Welcome back" : mode === "create" ? "Start your hive" : "Join your hive"}</h2>
-        <p className="muted">{mode === "sign-in" ? "Sign in to your team's shared comb." : mode === "create" ? "A home for what your team's agents learn." : "An invite or verified work domain brings you into the comb."}</p>
+        <p className="muted">{mode === "sign-in" ? "Sign in to your team's shared comb." : mode === "create" ? "Create a hive with your work email." : "Use an invite link or an allowed work email domain."}</p>
         <Tabs label="Account options" tabs={[{ id: "sign-in", label: "Sign in" }, { id: "create", label: "Create a team" }, { id: "join", label: "Join" }]} value={mode} onChange={(value) => setMode(value as LoginMode)} />
         {initialError ? <ErrorPanel message={initialError} /> : null}
         {providers.length ? <ProviderButtons providers={providers} /> : null}

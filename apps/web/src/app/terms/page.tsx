@@ -34,9 +34,9 @@ export default function TermsPage() {
       <section>
         <h2>Early access</h2>
         <p>
-          Hive is in early access. We provide it as is, and it may change or
-          become unavailable. We do not promise that it will be uninterrupted or
-          error-free. Check important results before relying on them.
+          Hive is in early access. We provide it as is. It may change or become
+          unavailable. We do not promise uninterrupted or error-free service.
+          Check important results before relying on them.
         </p>
       </section>
       <section>
@@ -44,18 +44,18 @@ export default function TermsPage() {
         <p>
           Use the service lawfully. Do not misuse it, try to access accounts or
           data without permission, disrupt it, or share content that infringes
-          someone else’s rights. Keep your account credentials and access keys
+          someone else's rights. Keep your account credentials and access keys
           secure.
         </p>
       </section>
       <section>
         <h2>Your content</h2>
         <p>
-          Your content stays yours. You grant Lightdash Ltd a licence to store,
-          process and share it as needed to run the service for you and your
-          team, including through our service providers. Our{" "}
-          <Link href="/privacy">privacy policy</Link> explains how we handle personal
-          data.
+          Your content stays yours. You grant Lightdash Ltd a licence to store
+          and process it to run Hive for you and your team. This licence lets us
+          share it with your team and our service providers as needed to run
+          Hive. Our <Link href="/privacy">privacy policy</Link> explains how we
+          handle personal data.
         </p>
       </section>
       <section>
@@ -80,8 +80,8 @@ export default function TermsPage() {
       <section>
         <h2>Governing law</h2>
         <p>
-          These terms are governed by the laws of England and Wales. Nothing in
-          these terms removes rights that the law does not allow us to exclude.
+          The laws of England and Wales govern these terms. You keep any rights
+          that the law does not let us exclude.
         </p>
       </section>
       <section>

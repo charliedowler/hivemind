@@ -20,7 +20,7 @@ export interface InstallSnippetProps {
 
 export function InstallSnippet({
   options,
-  footnote = "Your agent joins the hive.",
+  footnote = "Run this command in your terminal to connect your agent.",
   className,
 }: InstallSnippetProps) {
   const panelId = useId();
@@ -115,7 +115,7 @@ export function InstallSnippet({
           name={option.agent === "claude" ? "bee-claude" : option.agent === "codex" ? "bee-codex" : "bee-face"}
           scale={1}
         />
-        {copied ? "Connection details copied. Your forager is ready." : option.description ?? footnote}
+        {copied ? option.agent === "executor" ? "Server URL copied. Add it to your executor organisation." : "Command copied. Run it in your terminal." : option.description ?? footnote}
       </div>
     </div>
   );

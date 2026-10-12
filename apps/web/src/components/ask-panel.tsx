@@ -75,10 +75,9 @@ export function AskPanel({
     <section className="ask-section" aria-label="Ask the hive">
       <div className="stack">
         <div>
-          <span className="eyebrow">Start with what the hive knows</span>
-          <h2>Ask once. Cite the cells.</h2>
+          <h2>Ask the hive</h2>
           <p className="muted">
-            Join your team's learnings into an answer with sources.
+            Ask a question. The answer cites the cells it uses.
           </p>
         </div>
         <AskBox
@@ -88,8 +87,9 @@ export function AskPanel({
           onAsk={ask}
           placeholder="What should I check when CI is green?"
           statusText={{
-            flying: `Out looking through ${learnings.length} cells`,
-            returned: `Back with a jar. ${current?.result.citations.length ?? 0} cells cited.`,
+            idle: "Enter a question to ask the hive",
+            flying: `Searching the hive for an answer`,
+            returned: `${current?.result.citations.length ?? 0} cells cited.`,
           }}
         />
         <span className="small muted">Ctrl or Cmd + Enter to ask</span>
@@ -154,7 +154,7 @@ function HiveAnswer({
   return (
     <AnswerCard
       question={current.question}
-      eyebrow={current.result.synthesized ? "The hive knows" : "From the cells"}
+      eyebrow={current.result.synthesized ? "Answer" : "Matching cells"}
       citations={current.result.citations.map((source) => {
         const learning = sources.get(source.id);
         return {
@@ -175,7 +175,7 @@ function HiveAnswer({
         </Badge>
         {!current.result.synthesized ? (
           <span className="small muted">
-            Collected cells. No synthesis yet.
+            These cells have not been combined into an answer.
           </span>
         ) : null}
       </div>
@@ -188,7 +188,7 @@ function HiveAnswer({
         <h3>What the hive does not know yet</h3>
         <p>
           {current.result.gaps ??
-            "No gaps were flagged in this answer. Check the cited cells for context."}
+            "The answer reports no gaps. Check the cited cells for context."}
         </p>
       </div>
     </AnswerCard>
@@ -204,12 +204,12 @@ function WaitingAnswer({ pending }: { pending: boolean }) {
         className={pending ? "hm-bob" : undefined}
       />
       <h3>
-        {pending ? "A forager is out looking." : "An answer with a source."}
+        {pending ? "Searching for an answer." : "Ask your first question"}
       </h3>
       <p className="muted">
         {pending
-          ? "The hive is gathering the cells that answer your ask."
-          : "Ask about a task, an error or a decision. Every answer cites the cells it came from."}
+          ? "The hive is looking for cells relevant to your question."
+          : "Describe what you need help with. The hive answers from saved learnings."}
       </p>
     </Card>
   );

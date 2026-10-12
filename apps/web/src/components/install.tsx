@@ -67,7 +67,7 @@ export function KeyBox({ apiKey }: { apiKey: string }) {
       </div>
       <h2>Your API key</h2>
       <p>
-        Save it now. Treat it like a password. The hive cannot show it again.
+        Save your key now and keep it private. The hive cannot show it again.
       </p>
       <div className="row wrap">
         <code className="breakable">{apiKey}</code>
@@ -82,9 +82,8 @@ export function InstallPage({ baseUrl }: { baseUrl: string }) {
     <div className="install-page stack">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Bring a forager</span>
           <h1>Add your agent</h1>
-          <p className="muted">One connection. What your agent learns, the whole hive knows.</p>
+          <p className="muted">Connect Claude Code, Codex or Executor to your team's hive.</p>
         </div>
         <Sprite name="bee-carry" scale={4} />
       </div>

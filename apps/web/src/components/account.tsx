@@ -65,7 +65,6 @@ export function Account({ initial }: { initial: AccountData }) {
     <div className="stack narrow">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Your place in the hive</span>
           <h1>Your account</h1>
         </div>
       </div>
