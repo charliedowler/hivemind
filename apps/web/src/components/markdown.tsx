@@ -1,5 +1,5 @@
 "use client";
-import { CiteRef } from "@hivemind/design-system";
+import { CellCitation } from "./cell-citation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -10,14 +10,15 @@ export function Markdown({
 }: {
   text: string;
   onCitation?: (id: string) => void;
-  citations?: { id: string }[];
+  citations?: { id: string; title?: string }[];
 }) {
-  const numbers = new Map(
-    citations?.map((citation, index) => [citation.id, index + 1]),
+  const titles = new Map(
+    citations?.map((citation) => [citation.id, citation.title]),
   );
-  const content = onCitation
-    ? text.replace(/\[(lrn_[a-z0-9]+)\](?!\()/g, "[$1](#hive-citation-$1)")
-    : text;
+  const content = text.replace(
+    /\[(lrn_[a-z0-9]+)\](?!\()/g,
+    "[$1](#hive-citation-$1)",
+  );
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -25,18 +26,14 @@ export function Markdown({
         components={{
           pre: ({ children }) => <pre tabIndex={0}>{children}</pre>,
           a: ({ href, children }) => {
-            if (onCitation && href?.startsWith("#hive-citation-")) {
+            if (href?.startsWith("#hive-citation-")) {
               const id = href.slice(15);
-              const n = numbers.get(id);
-              if (n) return <CiteRef n={n} onClick={() => onCitation(id)} />;
               return (
-                <button
-                  type="button"
-                  className="citation"
-                  onClick={() => onCitation(href.slice(15))}
-                >
-                  {children}
-                </button>
+                <CellCitation
+                  id={id}
+                  title={titles.get(id)}
+                  onOpen={onCitation}
+                />
               );
             }
             return (

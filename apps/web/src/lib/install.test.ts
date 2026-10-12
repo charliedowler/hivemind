@@ -144,6 +144,8 @@ describe("install snippets", () => {
         const first = JSON.parse(run({ session_id: "first" }));
         expect(first.decision).toBe("block");
         expect(first.reason).toContain("https://hive.example/api/mcp");
+        expect(first.reason).toContain("supersedes");
+        expect(first.reason).toContain("verify_after");
         if (entrypoint === undefined || entrypoint === "cli") {
           expect(first.reason).toMatch(
             /If nothing qualifies, stop now without comment\.$/,

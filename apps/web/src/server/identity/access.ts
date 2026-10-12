@@ -83,13 +83,22 @@ export async function removeMember(
     await tx`DELETE FROM web_sessions WHERE member_id = ${id} AND team_id = ${ctx.teamId}`;
   });
 }
-export async function moderateLearning(ctx: HiveContext, id: string, action: "delete" | "outdated"): Promise<void> {
+export async function moderateLearning(
+  ctx: HiveContext,
+  id: string,
+  action: "delete" | "outdated",
+): Promise<void> {
   await requireAdmin(ctx);
   await getSql().begin(async (tx) => {
     await lockLearningWrites(tx, ctx);
-    const rows = await tx`SELECT id, lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+    const rows =
+      await tx`SELECT id, lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
     if (!rows.length) throw new HiveNotFoundError();
-    if (rows[0].lifecycle === "superseded") throw new HiveError("Moderate the current cell in the chain instead.", 409);
+    if (rows[0].lifecycle === "superseded")
+      throw new HiveError(
+        "Moderate the current cell in the chain instead.",
+        409,
+      );
     await tx`UPDATE learnings SET lifecycle = ${action === "delete" ? "retracted" : "outdated"}, admin_outdated = true, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
   });
   scheduleKnowledge(ctx);
