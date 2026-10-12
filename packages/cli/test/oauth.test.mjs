@@ -26,6 +26,7 @@ test('the hook OAuth login discovers the server, uses PKCE and saves a private r
     if (request.url === '/register') {
       const client = JSON.parse(body);
       assert.equal(client.token_endpoint_auth_method, 'none');
+      assert.equal(client.application_type, 'native');
       redirectUri = client.redirect_uris[0];
       assert.ok(redirectUri.startsWith('http://127.0.0.1:'));
       send({ client_id: 'hook-client' }); return;
@@ -33,7 +34,7 @@ test('the hook OAuth login discovers the server, uses PKCE and saves a private r
     if (request.url === '/token') {
       const params = new URLSearchParams(body);
       assert.equal(params.get('client_id'), 'hook-client');
-      if (params.get('grant_type') === 'refresh_token') { refreshes++; assert.equal(params.get('refresh_token'), 'fixture-refresh'); send({ access_token: 'refreshed-token', expires_in: 3600 }); return; }
+      if (params.get('grant_type') === 'refresh_token') { assert.equal(params.get('resource'), `${baseUrl}/api/mcp`); refreshes++; assert.equal(params.get('refresh_token'), 'fixture-refresh'); send({ access_token: 'refreshed-token', expires_in: 3600 }); return; }
       assert.equal(params.get('redirect_uri'), redirectUri);
       assert.equal(params.get('resource'), `${baseUrl}/api/mcp`);
       assert.equal(params.get('code'), 'fixture-code');

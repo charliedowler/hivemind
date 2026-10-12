@@ -50,7 +50,7 @@ async function main() {
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const redirectUri = `http://127.0.0.1:${server.address().port}/callback`;
-    const registration = await json(discovery.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Hive hooks', redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' }) });
+    const registration = await json(discovery.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Hive hooks', application_type: 'native', redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' }) });
     if (!registration.client_id) throw new Error('Hive did not register the hook client');
     const authorizationUrl = new URL(trustedUrl(discovery.authorization_endpoint));
     authorizationUrl.search = new URLSearchParams({ client_id: registration.client_id, redirect_uri: redirectUri, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state, resource, scope: resourceMetadata.scopes_supported?.join(' ') || 'hive' }).toString();

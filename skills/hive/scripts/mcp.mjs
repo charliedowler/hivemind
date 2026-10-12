@@ -24,7 +24,7 @@ export async function bearerToken(home = homeDirectory(), baseUrl = endpoint(), 
         const response = await fetch(stored.token_endpoint, {
           method: 'POST', signal,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: stored.refresh_token, client_id: stored.client_id }),
+          body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: stored.refresh_token, client_id: stored.client_id, resource: `${baseUrl}/api/mcp` }),
         });
         if (response.ok) {
           const tokens = await response.json();
