@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { issueApiKey } from "@/server/auth";
 import { authenticated, readJson } from "@/lib/http";
-const keyInput = z.object({ label: z.string().trim().min(1).max(120).optional() });
+const keyInput = z.object({
+  label: z.string().trim().min(1).max(120).optional(),
+});
 export const runtime = "nodejs";
 export async function POST(request: Request) {
   return authenticated(async (ctx) => {

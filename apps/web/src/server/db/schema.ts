@@ -1,6 +1,15 @@
-import { pgTable, text, timestamp, integer, real, boolean, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  real,
+  boolean,
+  primaryKey,
+} from "drizzle-orm/pg-core";
 
-const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+const createdAt = () =>
+  timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 export const teams = pgTable("teams", {
   id: text("id").primaryKey(),
@@ -11,7 +20,9 @@ export const teams = pgTable("teams", {
 
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
-  teamId: text("team_id").notNull().references(() => teams.id),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
   name: text("name").notNull(),
   createdAt: createdAt(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
@@ -19,8 +30,12 @@ export const members = pgTable("members", {
 
 export const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
-  teamId: text("team_id").notNull().references(() => teams.id),
-  memberId: text("member_id").notNull().references(() => members.id),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
+  memberId: text("member_id")
+    .notNull()
+    .references(() => members.id),
   keyHash: text("key_hash").notNull().unique(),
   prefix: text("prefix").notNull(),
   label: text("label").notNull().default("Agent key"),
@@ -31,8 +46,12 @@ export const apiKeys = pgTable("api_keys", {
 
 export const webSessions = pgTable("web_sessions", {
   id: text("id").primaryKey(),
-  memberId: text("member_id").notNull().references(() => members.id),
-  teamId: text("team_id").notNull().references(() => teams.id),
+  memberId: text("member_id")
+    .notNull()
+    .references(() => members.id),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
   tokenHash: text("token_hash").notNull().unique(),
   createdAt: createdAt(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -40,8 +59,12 @@ export const webSessions = pgTable("web_sessions", {
 
 export const learnings = pgTable("learnings", {
   id: text("id").primaryKey(),
-  teamId: text("team_id").notNull().references(() => teams.id),
-  memberId: text("member_id").notNull().references(() => members.id),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
+  memberId: text("member_id")
+    .notNull()
+    .references(() => members.id),
   title: text("title").notNull(),
   body: text("body").notNull(),
   kind: text("kind").notNull(),
@@ -56,35 +79,61 @@ export const learnings = pgTable("learnings", {
   downVotes: integer("down_votes").notNull().default(0),
   outdatedVotes: integer("outdated_votes").notNull().default(0),
   createdAt: createdAt(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  lastPushedAt: timestamp("last_pushed_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastPushedAt: timestamp("last_pushed_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 export const learningPushes = pgTable("learning_pushes", {
   id: text("id").primaryKey(),
-  learningId: text("learning_id").notNull().references(() => learnings.id),
-  teamId: text("team_id").notNull().references(() => teams.id),
-  memberId: text("member_id").notNull().references(() => members.id),
+  learningId: text("learning_id")
+    .notNull()
+    .references(() => learnings.id),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
+  memberId: text("member_id")
+    .notNull()
+    .references(() => members.id),
   source: text("source").notNull(),
   sessionRef: text("session_ref"),
   merged: boolean("merged").notNull(),
   createdAt: createdAt(),
 });
 
-export const feedback = pgTable("feedback", {
-  learningId: text("learning_id").notNull().references(() => learnings.id),
-  memberId: text("member_id").notNull().references(() => members.id),
-  teamId: text("team_id").notNull().references(() => teams.id),
-  vote: text("vote").notNull(),
-  note: text("note"),
-  createdAt: createdAt(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [primaryKey({ columns: [table.learningId, table.memberId] })]);
+export const feedback = pgTable(
+  "feedback",
+  {
+    learningId: text("learning_id")
+      .notNull()
+      .references(() => learnings.id),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id),
+    vote: text("vote").notNull(),
+    note: text("note"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.learningId, table.memberId] })],
+);
 
 export const askLog = pgTable("ask_log", {
   id: text("id").primaryKey(),
-  teamId: text("team_id").notNull().references(() => teams.id),
-  memberId: text("member_id").notNull().references(() => members.id),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
+  memberId: text("member_id")
+    .notNull()
+    .references(() => members.id),
   question: text("question").notNull(),
   answer: text("answer").notNull(),
   citedIds: text("cited_ids").array().notNull().default([]),

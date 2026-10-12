@@ -6,28 +6,56 @@ import { join } from "node:path";
 import { buildInstallSnippets } from "./install";
 
 describe("install snippets", () => {
-  const snippets = buildInstallSnippets({ baseUrl: "https://hive.example/", apiKey: "<YOUR_KEY>" });
+  const snippets = buildInstallSnippets({
+    baseUrl: "https://hive.example/",
+    apiKey: "<YOUR_KEY>",
+  });
   it("keeps the required order and exact connection commands", () => {
-    expect(snippets.map(({ id }) => id)).toEqual(["claude", "codex", "instructions", "stop-script", "stop-settings", "check"]);
-    expect(snippets[0]?.code).toBe('claude mcp add --transport http hivemind https://hive.example/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user');
-    expect(snippets[1]?.code).toBe('export HIVEMIND_KEY=<YOUR_KEY>\ncodex mcp add hivemind --url https://hive.example/api/mcp --bearer-token-env-var HIVEMIND_KEY');
-    expect(JSON.parse(snippets[4]!.code).hooks.Stop[0].hooks[0].command).toBe("$HOME/.claude/hooks/hivemind-stop.sh");
+    expect(snippets.map(({ id }) => id)).toEqual([
+      "claude",
+      "codex",
+      "instructions",
+      "stop-script",
+      "stop-settings",
+      "check",
+    ]);
+    expect(snippets[0]?.code).toBe(
+      'claude mcp add --transport http hivemind https://hive.example/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user',
+    );
+    expect(snippets[1]?.code).toBe(
+      "export HIVEMIND_KEY=<YOUR_KEY>\ncodex mcp add hivemind --url https://hive.example/api/mcp --bearer-token-env-var HIVEMIND_KEY",
+    );
+    expect(JSON.parse(snippets[4]!.code).hooks.Stop[0].hooks[0].command).toBe(
+      "$HOME/.claude/hooks/hivemind-stop.sh",
+    );
     expect(snippets[5]?.code).toBe("claude mcp list");
   });
   it("substitutes the issued key in only the connection snippets", () => {
-    const result = buildInstallSnippets({ baseUrl: "http://localhost:4340", apiKey: "test-key" });
-    expect(result[0]?.code).toContain('Bearer test-key');
-    expect(result[1]?.code).toContain('export HIVEMIND_KEY=test-key\n');
-    expect(result.slice(2).some(({ code }) => code.includes("test-key"))).toBe(false);
+    const result = buildInstallSnippets({
+      baseUrl: "http://localhost:4340",
+      apiKey: "test-key",
+    });
+    expect(result[0]?.code).toContain("Bearer test-key");
+    expect(result[1]?.code).toContain("export HIVEMIND_KEY=test-key\n");
+    expect(result.slice(2).some(({ code }) => code.includes("test-key"))).toBe(
+      false,
+    );
   });
   it("blocks once per session and bypasses an active stop hook", () => {
     const directory = mkdtempSync(join(tmpdir(), "hivemind-hook-test-"));
-    const run = (input: object) => execFileSync("bash", ["-c", snippets[3]!.code], { input: JSON.stringify(input), encoding: "utf8", env: { ...process.env, TMPDIR: directory } });
+    const run = (input: object) =>
+      execFileSync("bash", ["-c", snippets[3]!.code], {
+        input: JSON.stringify(input),
+        encoding: "utf8",
+        env: { ...process.env, TMPDIR: directory },
+      });
     try {
       expect(run({ session_id: "active", stop_hook_active: true })).toBe("");
       expect(JSON.parse(run({ session_id: "first" })).decision).toBe("block");
       expect(run({ session_id: "first" })).toBe("");
       expect(JSON.parse(run({ session_id: "second" })).decision).toBe("block");
-    } finally { rmSync(directory, { recursive: true }); }
+    } finally {
+      rmSync(directory, { recursive: true });
+    }
   });
 });

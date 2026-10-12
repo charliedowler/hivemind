@@ -36,7 +36,10 @@ export type SearchSignals = {
   repoMatch: boolean;
 };
 
-export type SearchHit = LearningView & { score: number; signals: SearchSignals };
+export type SearchHit = LearningView & {
+  score: number;
+  signals: SearchSignals;
+};
 
 export type PushResult = {
   id: string;

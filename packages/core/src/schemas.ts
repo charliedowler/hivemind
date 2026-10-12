@@ -70,7 +70,9 @@ export const hiveSearchInput = z.object({
   repo: z
     .string()
     .optional()
-    .describe("Boost results from this repository, such as owner/name. Other repositories can still match."),
+    .describe(
+      "Boost results from this repository, such as owner/name. Other repositories can still match.",
+    ),
   tags: z
     .array(z.string())
     .optional()

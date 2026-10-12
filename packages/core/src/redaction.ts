@@ -11,12 +11,18 @@ const patterns = [
 export function redactSecrets(text: string): { text: string; count: number } {
   let count = 0;
   for (const pattern of patterns) {
-    text = text.replace(pattern, () => { count += 1; return "[redacted]"; });
+    text = text.replace(pattern, () => {
+      count += 1;
+      return "[redacted]";
+    });
   }
-  text = text.replace(/(postgres(?:ql)?:\/\/[^\s:/@]+:)([^\s@]+)(@)/gi, (_, prefix: string, password: string, suffix: string) => {
-    if (password === "[redacted]") return `${prefix}${password}${suffix}`;
-    count += 1;
-    return `${prefix}[redacted]${suffix}`;
-  });
+  text = text.replace(
+    /(postgres(?:ql)?:\/\/[^\s:/@]+:)([^\s@]+)(@)/gi,
+    (_, prefix: string, password: string, suffix: string) => {
+      if (password === "[redacted]") return `${prefix}${password}${suffix}`;
+      count += 1;
+      return `${prefix}[redacted]${suffix}`;
+    },
+  );
   return { text, count };
 }

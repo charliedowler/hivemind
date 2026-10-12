@@ -6,5 +6,7 @@ export async function POST(request: Request) {
   try {
     await submitEarlyAccess(earlyAccessInput.parse(await readJson(request)));
     return Response.json({ ok: true }, { status: 201 });
-  } catch (error) { return httpError(error); }
+  } catch (error) {
+    return httpError(error);
+  }
 }

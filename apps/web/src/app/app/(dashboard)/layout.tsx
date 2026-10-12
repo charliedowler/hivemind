@@ -6,10 +6,32 @@ import { Navigation } from "@/components/navigation";
 import { ErrorPanel } from "@/components/primitives";
 import { errorMessage } from "@/lib/client";
 export const dynamic = "force-dynamic";
-export default async function DashboardLayout({ children }: { children: ReactNode }) {
+export default async function DashboardLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   let ctx;
-  try { ctx = await getWebContext(); }
-  catch (error) { return <main className="page narrow stack"><Link className="brand" href="/">Hivemind</Link><ErrorPanel message={errorMessage(error)} /><Link href="/app/login" className="text-button">Go to sign in</Link></main>; }
+  try {
+    ctx = await getWebContext();
+  } catch (error) {
+    return (
+      <main className="page narrow stack">
+        <Link className="brand" href="/">
+          Hivemind
+        </Link>
+        <ErrorPanel message={errorMessage(error)} />
+        <Link href="/app/login" className="text-button">
+          Go to sign in
+        </Link>
+      </main>
+    );
+  }
   if (!ctx) redirect("/app/login");
-  return <><Navigation teamName={ctx.teamName} memberName={ctx.memberName} /><main className="page">{children}</main></>;
+  return (
+    <>
+      <Navigation teamName={ctx.teamName} memberName={ctx.memberName} />
+      <main className="page">{children}</main>
+    </>
+  );
 }
