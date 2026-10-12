@@ -41,24 +41,39 @@ describe("dashboard components", () => {
 
   it("turns inline learning ids into citation buttons and leaves other links alone", () => {
     const html = renderToStaticMarkup(
-      <Markdown text="Use the exact ref [lrn_abcdefghijkl]. See [the docs](https://example.com)." onCitation={() => {}} />,
+      <Markdown
+        text="Use the exact ref [lrn_abcdefghijkl]. See [the docs](https://example.com)."
+        onCitation={() => {}}
+      />,
     );
-    expect(html).toContain('<button class="citation">lrn_abcdefghijkl</button>');
+    expect(html).toContain(
+      '<button class="citation">lrn_abcdefghijkl</button>',
+    );
     expect(html).toContain('href="https://example.com"');
   });
 
   it("keeps learning ids as plain text when there is no citation handler", () => {
-    const html = renderToStaticMarkup(<Markdown text="Seen in [lrn_abcdefghijkl]." />);
+    const html = renderToStaticMarkup(
+      <Markdown text="Seen in [lrn_abcdefghijkl]." />,
+    );
     expect(html).not.toContain("<button");
     expect(html).toContain("[lrn_abcdefghijkl]");
   });
 
   it("fills the install snippets with the base URL and the key", () => {
-    const html = renderToStaticMarkup(<InstallSnippets baseUrl="https://hive.example" apiKey="hm_test" />);
-    expect(html).toContain("claude mcp add --transport http hivemind https://hive.example/api/mcp");
+    const html = renderToStaticMarkup(
+      <InstallSnippets baseUrl="https://hive.example" apiKey="hm_test" />,
+    );
+    expect(html).toContain(
+      "claude mcp add --transport http hivemind https://hive.example/api/mcp",
+    );
     expect(html).toContain("Authorization: Bearer hm_test");
-    expect(html).toContain("codex mcp add hivemind --url https://hive.example/api/mcp --bearer-token-env-var HIVEMIND_KEY");
-    expect(renderToStaticMarkup(<InstallSnippets baseUrl="https://hive.example" />)).toContain("&lt;YOUR_KEY&gt;");
+    expect(html).toContain(
+      "codex mcp add hivemind --url https://hive.example/api/mcp --bearer-token-env-var HIVEMIND_KEY",
+    );
+    expect(
+      renderToStaticMarkup(<InstallSnippets baseUrl="https://hive.example" />),
+    ).toContain("&lt;YOUR_KEY&gt;");
   });
 
   it("shows the key once with a warning", () => {
