@@ -70,7 +70,7 @@ function FrictionContent({
   return (
     <Card className="stack">
       <p className="lead">
-        {data.minutes} minutes lost this week · {data.count} friction reports
+        {data.minutes} measured minutes lost this week · {data.count} friction reports
       </p>
       <p className="small muted">
         {data.unmeasured} reports have no measured cost. Minutes include
@@ -88,12 +88,12 @@ function FrictionContent({
                     {area.minutes} min · {area.count} reports
                   </span>
                 </div>
-                <div
-                  className="friction-bar"
-                  style={{
-                    width: `${Math.max(4, (area.minutes / Math.max(data.minutes, 1)) * 100)}%`,
-                  }}
-                />
+                {area.minutes > 0 ? (
+                  <div
+                    className="friction-bar"
+                    style={{ width: `${(area.minutes / data.minutes) * 100}%` }}
+                  />
+                ) : null}
                 <Cited ids={area.ids} onOpen={onOpen} />
               </div>
             ))}
