@@ -6,6 +6,8 @@ Requires Node 20 or later and Claude Code or Codex.
 npx gohive install
 npx gohive doctor
 npx gohive uninstall
+npx gohive install --client executor
+npx gohive doctor --client executor
 ```
 
 The installer registers the Hive MCP server, installs the skill, merges Claude hooks, and adds a small marked block to each agent's instructions. It backs up each changed file first. Existing hooks and other MCP servers stay in place. Repeating install updates Hive without adding duplicate entries. Uninstall removes only owned, unchanged assets and the marked block. It leaves backups and credentials in place.
@@ -28,3 +30,13 @@ The repo root exposes the same `gohive` binary for Git installs. To publish the 
 pnpm --filter gohive build
 npm publish ./packages/cli --access public
 ```
+
+## Executor
+
+Use `npx gohive install --client executor`. It installs the local skill without adding a second direct Hive MCP server. It detects an Executor endpoint in Claude or Codex configuration and opens a URL-prefilled organisation add page when supported. Pass `--executor-url https://executor.sh/<organisation>/mcp` to choose an endpoint. The walkthrough uses OAuth and keeps request headers empty.
+
+Executor v1 exposes `mcp.addServer`, `mcp.probeEndpoint`, `oauth.probe` and `oauth.start` through its management MCP API and `executor call`. The newer Executor CLI manages apps. This installer uses a browser walkthrough for remote setup so the organisation owner chooses the account and permissions. Doctor reads the current v1 CLI profile's Hive integration and connection health; with a newer CLI or only a cloud endpoint it reports that a dashboard check is needed.
+
+The Hive skill works through Executor's discovered tool addresses too. Remote connections and organisation policies stay in Executor when local Hive files are uninstalled.
+
+Setup references: [Executor account connections](https://executor.sh/docs/connect-an-account), [Executor CLI](https://executor.sh/docs/run/cli), [remote add route](https://github.com/UsefulSoftwareCo/executor/blob/main/packages/react/src/routes/integrations.add.%24pluginKey.tsx).

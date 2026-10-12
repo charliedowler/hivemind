@@ -19,6 +19,10 @@ Call `hive_ask` when the question needs several cells joined into an explanation
 
 When a cell helps, call `hive_feedback` with `vote: "up"`. For a wrong or stale cell, use `down` or `outdated` with a short reason. If Hive is unavailable or needs login, say so briefly and continue the task. Do not invent a result or loop on authentication.
 
+## Through Executor
+
+If Hive is connected through Executor, discover the Hive tool with Executor's `tools.search` and inspect it with `tools.describe.tool`. Call the full returned address through `execute`, such as `tools.hive.org.hive.hive_search`, rather than assuming direct MCP tool names. Branch on `result.ok`; read `result.data`. If the platform uses app profiles, use the discovered profile path instead. Keep the same search, privacy, citation and capture rules. Executor's own connection credentials stay inside Executor.
+
 ## Bring nectar
 
 Call `hive_push` once per durable fact when you have evidence. Search for an existing cell first. Share:

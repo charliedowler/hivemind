@@ -14,7 +14,7 @@ type OwnedFile = { hash: string; previous?: string };
 type Manifest = { version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: OwnedHook[] };
 export type Result = { status: number; stdout: string; stderr: string };
 export type Runner = (command: string, args: string[], home: string) => Result;
-export type Options = { home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string };
+export type Options = { home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string; registerMcp?: boolean };
 export const url = 'https://gohive.dev/api/mcp';
 export const startMarker = '<!-- hive:start -->';
 export const endMarker = '<!-- hive:end -->';
@@ -192,7 +192,7 @@ export function install(options: Options): Manifest {
       }
       writes.set(settingsPath, JSON.stringify(merged, null, 2) + '\n');
     }
-    const servers = new Map(agents.map(agent => [agent, server(home, agent, run)]));
+    const servers = options.registerMcp === false ? new Map<Agent, { exists: boolean; compatible: boolean }>() : new Map(agents.map(agent => [agent, server(home, agent, run)]));
     for (const [agent, value] of servers) if (value.exists && !value.compatible) throw new Error(`${agent} already has a different server called hive. No files were changed`);
     const backupDir = options.backupDir || join(home, '.hive/backups', `${Date.now()}-${randomUUID().slice(0, 8)}`);
     const configurationPaths = [join(home, '.claude.json'), join(home, '.claude/settings.json'), join(home, '.claude/CLAUDE.md'), join(home, '.codex/config.toml'), join(home, '.codex/AGENTS.md'), manifestPath(home)];
