@@ -948,3 +948,14 @@ pre:focus-visible {
   .login-panel .hm-tab { padding-inline: 4px; font-size: 12px; }
   .login-panel .hm-tab:last-child { grid-column: auto; }
 }
+
+.decision-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+.decision-reversal > button { align-self: start; }
+@media (max-width: 640px) {
+  .decision-filters { grid-template-columns: minmax(0, 1fr); }
+}

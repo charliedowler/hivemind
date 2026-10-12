@@ -11,6 +11,7 @@ const probability = z.number().finite().min(0).max(1);
 export const eventNames = [
   "access.changed",
   "learning.pushed",
+  "conflict.decided",
   "learning.superseded",
   "learning.lifecycle_changed",
   "learning.feedback",
@@ -101,7 +102,35 @@ export function reportedModel(value: unknown) {
   const result = modelSchema.safeParse(value);
   return result.success ? result.data : null;
 }
+const conflictChoices = z.enum([
+  "supersede",
+  "keep_both",
+  "keep_old",
+  "mark_outdated",
+  "retract_new",
+]);
+const conflictProbabilities = z.object({
+  facts: z.record(z.enum(["same", "different"]), probability),
+  replacement: z.record(z.enum(["yes", "no"]), probability),
+  alongside: z.record(z.enum(["yes", "no"]), probability),
+  specificity: z.record(
+    z.enum(["older", "newer", "equal", "different"]),
+    probability,
+  ),
+  olderEvidence: z.record(z.enum(["0", "1", "2"]), probability),
+  newerEvidence: z.record(z.enum(["0", "1", "2"]), probability),
+  support: z.record(
+    z.enum(["older", "newer", "equal", "neither"]),
+    probability,
+  ),
+  decision: z.record(conflictChoices, probability),
+});
 export const propertiesSchema = z.object({
+  decision: nullable(
+    z.enum([...conflictChoices.options, "undecided", "reversed"]),
+  ),
+  decisionConfidence: nullable(probability),
+  jevProbabilities: nullable(conflictProbabilities),
   actorKind: nullable(z.enum(["member", "anonymous", "system"])),
   role: nullable(z.enum(["admin", "member"])),
   earlyAccessId: nullable(z.string().regex(/^ea_[a-z2-7]{12}$/)),
@@ -175,6 +204,7 @@ export const propertiesSchema = z.object({
       "synthesis",
       "tags",
       "relations",
+      "conflicts",
       "rerank",
     ]),
   ),
@@ -346,7 +376,10 @@ export function withActor<T>(
     parent
       ? {
           ...parent,
-          sessionKind: parent.sessionKind === "anonymous" ? "web_session" : parent.sessionKind,
+          sessionKind:
+            parent.sessionKind === "anonymous"
+              ? "web_session"
+              : parent.sessionKind,
           teamId: ctx.teamId,
           memberId: ctx.memberId,
           apiKeyId:

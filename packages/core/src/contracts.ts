@@ -88,6 +88,10 @@ export type PushResult = {
   pushCount: number;
   redactions: number;
   learning: LearningView;
+  decisions?: Pick<
+    ConflictDecisionRecord,
+    "id" | "decision" | "reason" | "confidence" | "model"
+  >[];
 };
 
 export const askConfidenceLevels = ["high", "medium", "low"] as const;
@@ -244,7 +248,14 @@ export type ConflictDecisionRecord = {
   id: string;
   older: { id: string; title: string };
   newer: { id: string; title: string };
-  decision: "supersede" | "keep_both" | "keep_old" | "mark_outdated" | "retract_new" | "undecided" | "reversed";
+  decision:
+    | "supersede"
+    | "keep_both"
+    | "keep_old"
+    | "mark_outdated"
+    | "retract_new"
+    | "undecided"
+    | "reversed";
   reason: string;
   confidence: number;
   model: string;

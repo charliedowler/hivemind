@@ -42,7 +42,12 @@ import {
   answerLifecycleContext,
   appendLifecycleContext,
 } from "./lifecycle";
-import { prepareConflicts, applyConflictDecision, recordConflictEvent, retryRelatedConflicts } from "./conflict-decisions";
+import {
+  prepareConflicts,
+  applyConflictDecision,
+  recordConflictEvent,
+  retryRelatedConflicts,
+} from "./conflict-decisions";
 import { judgeMemory, rerankMemory } from "./memory-judgments";
 import {
   queueEvidence,
@@ -68,9 +73,7 @@ const minimumLexemeCoverage = 0.5;
 function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
   if (!result.success)
-    throw new HiveInputError(
-      "Check the tool's fields and limits.",
-    );
+    throw new HiveInputError("Check the tool's fields and limits.");
   return result.data;
 }
 
@@ -168,102 +171,171 @@ async function pushLearningAction(
     })),
   );
   tags.push(...judgment.tags.filter((tag) => !tags.includes(tag)));
-  const prepared = data.supersedes ? [] : await prepareConflicts(ctx, judgment.relations.filter(item => ["update", "contradiction"].includes(item.relation) && item.confidence >= 0.7), {
-    id: "incoming", revision: 1, title: title.text, body: body.text, author: ctx.memberName,
-    createdAt: new Date().toISOString(), lastPushedAt: new Date().toISOString(),
-    votes: { up: 0, down: 0, outdated: 0 },
-    evidence: [{ payload: JSON.parse(redactSecrets(JSON.stringify(data)).text), digest: "incoming", createdAt: new Date().toISOString() }],
-  });
-  const preparedById = new Map(prepared.map(item => [item.id, item.judgment]));
-  const applied: NonNullable<Awaited<ReturnType<typeof applyConflictDecision>>>[] = [];
-  const result = await analyticsTransaction(() => sql.begin(async (tx) => {
-    await lockLearningWrites(tx, ctx);
-    const current =
-      await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (id = ANY(${candidateRows.map((row) => row.id)}::text[]) OR lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) ORDER BY created_at DESC FOR UPDATE`;
-    const relations = judgment.relations.filter((item) =>
-      current.some(
-        (row) => row.id === item.id && row.revision === item.revision,
-      ),
-    );
-    const normalize = (text: string) =>
-      text.trim().toLowerCase().replace(/\s+/g, " ");
-    const duplicate = data.supersedes
-      ? undefined
-      : current.find((row) => {
-          const relation = relations.find((item) => item.id === row.id);
-          if (
-            relation &&
-            ["update", "contradiction"].includes(relation.relation)
-          )
-            return false;
-          return (
-            (normalize(row.title) === normalizedTitle &&
-              normalize(row.body) === normalize(body.text)) ||
-            (kind === "friction" && normalize(row.title) === normalizedTitle) ||
-            (relation?.relation === "same" && relation.confidence >= 0.9)
-          );
+  const prepared = data.supersedes
+    ? []
+    : await prepareConflicts(
+        ctx,
+        judgment.relations.filter(
+          (item) =>
+            ["update", "contradiction"].includes(item.relation) &&
+            item.confidence >= 0.7,
+        ),
+        {
+          id: "incoming",
+          revision: 1,
+          title: title.text,
+          body: body.text,
+          author: ctx.memberName,
+          createdAt: new Date().toISOString(),
+          lastPushedAt: new Date().toISOString(),
+          votes: { up: 0, down: 0, outdated: 0 },
+          evidence: [
+            {
+              payload: JSON.parse(redactSecrets(JSON.stringify(data)).text),
+              digest: "incoming",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+      );
+  const preparedById = new Map(
+    prepared.map((item) => [item.id, item.judgment]),
+  );
+  const applied: NonNullable<
+    Awaited<ReturnType<typeof applyConflictDecision>>
+  >[] = [];
+  const result = await analyticsTransaction(() =>
+    sql.begin(async (tx) => {
+      await lockLearningWrites(tx, ctx);
+      const current =
+        await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (id = ANY(${candidateRows.map((row) => row.id)}::text[]) OR lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) ORDER BY created_at DESC FOR UPDATE`;
+      const relations = judgment.relations.filter((item) =>
+        current.some(
+          (row) => row.id === item.id && row.revision === item.revision,
+        ),
+      );
+      const normalize = (text: string) =>
+        text.trim().toLowerCase().replace(/\s+/g, " ");
+      const duplicate = data.supersedes
+        ? undefined
+        : current.find((row) => {
+            const relation = relations.find((item) => item.id === row.id);
+            if (
+              relation &&
+              ["update", "contradiction"].includes(relation.relation)
+            )
+              return false;
+            return (
+              (normalize(row.title) === normalizedTitle &&
+                normalize(row.body) === normalize(body.text)) ||
+              (kind === "friction" &&
+                normalize(row.title) === normalizedTitle) ||
+              (relation?.relation === "same" && relation.confidence >= 0.9)
+            );
+          });
+      let merged = Boolean(duplicate);
+      let id: string = duplicate?.id ?? newId("lrn");
+      if (merged) {
+        await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), lifecycle = 'confirmed', classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround) WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      } else {
+        await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref, area, cost, blocked, workaround, classification, verify_after) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${workaround.text || null}, ${classification ? tx.json(classificationJson(classification)) : null}, ${verificationHorizon(kind, data.area, tags, data.verify_after)})`;
+        if (vector)
+          await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      }
+      if (duplicate && duplicate.lifecycle !== "confirmed")
+        await recordMutation({
+          name: "learning.lifecycle_changed",
+          learningId: id,
+          reasonCode: "duplicate",
+          properties: {
+            previousState: duplicate.lifecycle,
+            state: "confirmed",
+          },
         });
-    let merged = Boolean(duplicate);
-    let id: string = duplicate?.id ?? newId("lrn");
-    if (merged) {
-      await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), lifecycle = 'confirmed', classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround) WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-    } else {
-      await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref, area, cost, blocked, workaround, classification, verify_after) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${workaround.text || null}, ${classification ? tx.json(classificationJson(classification)) : null}, ${verificationHorizon(kind, data.area, tags, data.verify_after)})`;
-      if (vector)
-        await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-    }
-    if (duplicate && duplicate.lifecycle !== "confirmed") await recordMutation({
-      name: "learning.lifecycle_changed", learningId: id, reasonCode: "duplicate",
-      properties: { previousState: duplicate.lifecycle, state: "confirmed" },
-    });
-    const pushId = newId("psh");
-    await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged, area, cost, blocked, classification) VALUES (${pushId}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${merged}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${classification ? tx.json(classificationJson(classification)) : null})`;
-    await queueEvidence(tx, ctx, id, pushId, data);
-    if (!merged) {
-      const proposals = data.supersedes
-        ? [{ id: data.supersedes, relation: "update" as const, confidence: 1 }]
-        : relations.filter(
-            (item) =>
-              ["update", "contradiction"].includes(item.relation) &&
-              item.confidence >= 0.7,
-          );
-      for (const proposal of proposals) {
-        const oldRows =
-          await tx`SELECT * FROM learnings WHERE id = ${proposal.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
-        const old = oldRows[0];
-        if (!old) throw new HiveNotFoundError();
-        if (old.superseded_by || old.lifecycle === "retracted")
-          throw new HiveInputError(
-            "Replace the current cell in the chain instead.",
-          );
-        const edgeId = newId("sup");
-        await tx`INSERT INTO learning_supersessions (id, team_id, older_id, newer_id, older_revision, newer_revision, relation, confidence, reason) VALUES (${edgeId}, ${ctx.teamId}, ${old.id}, ${id}, ${old.revision}, 1, ${proposal.relation}, ${proposal.confidence}, 'Jev proposes a replacement')`;
-        if (data.supersedes) await acceptSupersession(tx, ctx, edgeId, "Pusher explicitly replaces this cell");
-        else {
-          const judgment = preparedById.get(old.id);
-          if (judgment) {
-            const decision = await applyConflictDecision(tx, ctx, edgeId, judgment);
-            if (decision) {
-              applied.push(decision);
-              if (decision.mergedInto) { id = decision.mergedInto; merged = true; break; }
-              if (["retract_new", "mark_outdated"].includes(decision.decision)) break;
+      const pushId = newId("psh");
+      await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged, area, cost, blocked, classification) VALUES (${pushId}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${merged}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${classification ? tx.json(classificationJson(classification)) : null})`;
+      await queueEvidence(tx, ctx, id, pushId, data);
+      if (!merged) {
+        const proposals = data.supersedes
+          ? [
+              {
+                id: data.supersedes,
+                relation: "update" as const,
+                confidence: 1,
+              },
+            ]
+          : relations
+              .filter(
+                (item) =>
+                  ["update", "contradiction"].includes(item.relation) &&
+                  item.confidence >= 0.7,
+              )
+              .sort((a, b) => {
+                const terminal = (id: string) =>
+                  ["keep_old", "mark_outdated", "retract_new"].includes(
+                    preparedById.get(id)?.decision ?? "",
+                  );
+                return (
+                  Number(terminal(b.id)) - Number(terminal(a.id)) ||
+                  b.confidence - a.confidence
+                );
+              });
+        for (const proposal of proposals) {
+          const oldRows =
+            await tx`SELECT * FROM learnings WHERE id = ${proposal.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+          const old = oldRows[0];
+          if (!old) throw new HiveNotFoundError();
+          if (old.superseded_by || old.lifecycle === "retracted")
+            throw new HiveInputError(
+              "Replace the current cell in the chain instead.",
+            );
+          const edgeId = newId("sup");
+          await tx`INSERT INTO learning_supersessions (id, team_id, older_id, newer_id, older_revision, newer_revision, relation, confidence, reason) VALUES (${edgeId}, ${ctx.teamId}, ${old.id}, ${id}, ${old.revision}, 1, ${proposal.relation}, ${proposal.confidence}, 'Jev proposes a replacement')`;
+          if (data.supersedes)
+            await acceptSupersession(
+              tx,
+              ctx,
+              edgeId,
+              "Pusher explicitly replaces this cell",
+            );
+          else {
+            const judgment = preparedById.get(old.id);
+            if (judgment) {
+              const decision = await applyConflictDecision(
+                tx,
+                ctx,
+                edgeId,
+                judgment,
+              );
+              if (decision) {
+                applied.push(decision);
+                if (decision.mergedInto) {
+                  id = decision.mergedInto;
+                  merged = true;
+                  break;
+                }
+                if (
+                  ["retract_new", "mark_outdated"].includes(decision.decision)
+                )
+                  break;
+              }
             }
           }
         }
       }
-    }
-    const rows =
-      await tx`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
-    const learning = view(rows[0]);
-    return {
-      id,
-      pushId,
-      merged,
-      pushCount: learning.pushCount,
-      redactions: title.count + body.count + workaround.count,
-      learning,
-    };
-  }));
+      const rows =
+        await tx`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
+      const learning = view(rows[0]);
+      return {
+        id,
+        pushId,
+        merged,
+        pushCount: learning.pushCount,
+        redactions: title.count + body.count + workaround.count,
+        learning,
+      };
+    }),
+  );
   await recordEvent({
     name: "learning.pushed",
     learningId: result.id,
@@ -283,11 +355,32 @@ async function pushLearningAction(
       blocked: kind === "friction" ? data.blocked : null,
     },
   });
-  await Promise.all(applied.map(decision => recordConflictEvent(ctx, decision)));
-  await retryRelatedConflicts(ctx, result.id);
+  await Promise.all(
+    applied.map((decision) => recordConflictEvent(ctx, decision)),
+  );
+  const retried = await retryRelatedConflicts(
+    ctx,
+    result.id,
+    applied.map((record) => record.edgeId),
+  );
+  if (retried.length) {
+    result.learning = (await getLearning(ctx, result.id)) ?? result.learning;
+    result.pushCount = result.learning.pushCount;
+  }
   if (!classification) scheduleTags(ctx, result.learning);
   scheduleKnowledge(ctx);
-  return result;
+  return {
+    ...result,
+    decisions: [...applied, ...retried].map(
+      ({ id, decision, reason, confidence, model }) => ({
+        id,
+        decision,
+        reason,
+        confidence,
+        model,
+      }),
+    ),
+  };
 }
 
 export function searchLearnings(

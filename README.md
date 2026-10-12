@@ -108,7 +108,7 @@ Both install paths were run for real against production on 12 October 2026: Code
   design/system: @hivemind/design-system, the pixel-art tokens, sprites and components
 ```
 
-**Push.** Validate and redact, classify sharing and kind, embed, then compare up to four nearby current cells in the same team, repo and kind. Jev judges whether each candidate repeats, updates or contradicts the incoming fact. Exact matching facts and confident duplicate judgments merge counts and metadata without replacing the body. Corrections create a separate cell and a proposed supersession. Explicit `supersedes` accepts the replacement atomically; same-author corrections and very confident environment updates can also accept it. Otherwise an admin or two distinct members decide in Conflicts. A Jev outage never authorises an automatic correction. Repeated friction reports retain their measured costs.
+**Push.** Validate and redact, classify sharing and kind, embed, then compare up to four nearby current cells in the same team, repo and kind. Jev judges whether each candidate repeats, updates or contradicts the incoming fact. Exact matching facts and confident duplicate judgments merge counts and metadata without replacing the body. Corrections create a separate cell and a proposed supersession. Explicit `supersedes` accepts the replacement atomically. Other candidates receive typed Jev questions followed by one Sonnet call. Sonnet decides at confidence 0.80; Jev can decide at 0.85 when Sonnet is below its floor or unavailable. If neither reaches its floor, Hive records an undecided attempt and retries on a related push. Both models can fail without retiring a cell. Repeated friction reports retain their measured costs.
 
 **Search.** Candidates come from the nearest vectors and from Postgres full-text search. `rankCandidates` in `packages/core` scores them:
 
@@ -131,7 +131,7 @@ Postgres is the source of truth: typed metadata, a Markdown body, explicit lifec
 
 Cells are fresh, confirmed, superseded, outdated or retracted. Superseded and retracted cells remain readable, but default search and ask use fresh and confirmed cells. Verification horizons range from 14 days for environment facts to 180 days for decisions. Expired cells say “Verify before use” and receive less weight. Authors and admins can edit through the revision-checked API; edits preserve versions. New facts replace old ones through `hive_push({ ..., supersedes: "lrn_existing" })`.
 
-The [Conflicts panel](https://gohive.dev/app/conflicts) compares both sources. The [tree browser](https://gohive.dev/app/tree) exposes repos, topics, people, friction and INDEX.md. Citation chips show titles; IDs are available in tooltips and cell details. Local archives are read-only views, so edits must return through `hive_push`.
+The [Decisions log](https://gohive.dev/app/conflicts) records automatic outcomes, reasons, confidence, Jev probabilities and the newer cell's pusher. Filter by decision or repo, or search titles and reasons. Members need no action. A team admin can reverse a decision with a reason if neither cell has changed. The [tree browser](https://gohive.dev/app/tree) exposes repos, topics, people, friction and INDEX.md. Citation chips show titles; IDs are available in tooltips and cell details. Local archives are read-only views, so edits must return through `hive_push`.
 
 Connect a private Vercel Blob store and set `BLOB_READ_WRITE_TOKEN` on the server. Run `pnpm --filter web knowledge:rebuild` with database and Blob credentials to rebuild every team and drain pending evidence. Changed files use content-addressed object keys. A database revision check prevents an older worker from publishing over a newer tree. Reads retry pending publication, and verification deadlines invalidate the tree even without another push.
 
@@ -221,3 +221,11 @@ New members join an allowed verified work domain as members, or use a valid unex
 `/.well-known/oauth-protected-resource`, its `/api/mcp` alias, authorization-server metadata and `/oauth2/*` aliases reach the Better Auth handler. Its canonical endpoints live under `/api/auth`. DCR requests from older desktop clients that omit `application_type` are normalized to native only for native redirect shapes; Better Auth still validates every redirect and requires PKCE. Hook login clients must request `offline_access` explicitly to obtain a refresh token.
 
 Executor: add a remote MCP server in your executor organisation with server URL `https://gohive.dev/api/mcp` and OAuth authentication. Sign in and allow access to your hive.
+
+## Automatic conflict decisions
+
+Migration `0014_conflict_decisions.sql` stores attempts and reversals with team-scoped edges and before/after state. Sonnet selects `supersede`, `keep_both`, `keep_old`, `mark_outdated` or `retract_new`. Jev answers separate questions about fact scope, replacement, compatibility, specificity and evidence support, plus a fixed action Choice. The initial confidence floors are policy, not measured accuracy guarantees.
+
+Models run before the team write lock. The transaction rechecks revisions and applies lifecycle changes. A weaker duplicate moves its pushes and evidence into the older cell; the newer cell remains retracted history. Both stale cells become outdated and need verification. Undecided comparisons keep both cells current. A related push retries up to three older candidates in the same request; there is no daily job. Existing explicit replacements still work. Admin reversal records a new log entry and refuses changed content, votes or push counts.
+
+`conflict.decided` uses the private analytics ledger after commit. It stores the action, confidence, fixed model, Jev probability distributions and latency, without cell bodies or reasons. The SQL rollback refuses populated decision history. Apply migrations from merged main before deploying application code.
