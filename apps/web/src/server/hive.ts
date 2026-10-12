@@ -390,13 +390,15 @@ export function searchLearnings(
   input: HiveSearchInput,
   options: { publicOnly?: boolean; cellsOnly?: boolean } = {},
 ): Promise<SearchHit[]> {
-  return withOperation(ctx, "search", () => searchLearningsAction(ctx, input, options));
+  return withOperation(ctx, "search", () =>
+    searchLearningsAction(ctx, input, options),
+  );
 }
 
 async function searchLearningsAction(
   ctx: HiveContext,
   input: HiveSearchInput,
-  options: {publicOnly?:boolean;cellsOnly?:boolean} = {},
+  options: { publicOnly?: boolean; cellsOnly?: boolean } = {},
 ): Promise<SearchHit[]> {
   const started = performance.now();
   const data = validate(hiveSearchInput, input);
@@ -447,7 +449,9 @@ async function searchLearningsAction(
   }
   const cells = rankCandidates([...candidates.values()], data.repo);
   const slack =
-    options.cellsOnly || data.kind || data.tags?.length
+    options.cellsOnly ||
+    (data.kind && data.kind !== "learning") ||
+    tags.some((tag) => tag !== "slack")
       ? []
       : await searchSlack(
           ctx,
@@ -491,13 +495,14 @@ export function askHive(
 async function askHiveAction(
   ctx: HiveContext,
   input: HiveAskInput,
-  options: {publicOnly?:boolean} = {},
+  options: { publicOnly?: boolean } = {},
 ): Promise<AskResult> {
   const started = performance.now();
   const data = validate(hiveAskInput, input);
-  const friction = isFrictionAsk(data.question)
-    ? await frictionSummary(ctx, data.repo)
-    : null;
+  const friction =
+    !options.publicOnly && isFrictionAsk(data.question)
+      ? await frictionSummary(ctx, data.repo)
+      : null;
   if (friction && friction.count) {
     const cells =
       await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;

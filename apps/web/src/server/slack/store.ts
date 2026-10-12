@@ -31,6 +31,7 @@ export async function changeChannel(
     await tx`UPDATE slack_channels SET state=${action === "enable" ? "enabled" : action === "stop" ? "paused" : "purged"},generation=${generation},backfill_done=${action !== "enable"},backfill_cursor=NULL,backfill_history_done=false,backfill_threads='[]'::jsonb,last_error=NULL WHERE team_id=${ctx.teamId} AND channel_id=${id}`;
     await tx`UPDATE slack_jobs SET status='cancelled',payload=NULL WHERE team_id=${ctx.teamId} AND channel_id=${id} AND kind IN ('backfill','index') AND status IN ('pending','running')`;
     if (action === "purge") {
+      await tx`DELETE FROM ask_log WHERE team_id=${ctx.teamId} AND cited_ids && ARRAY(SELECT id FROM slack_messages WHERE team_id=${ctx.teamId} AND channel_id=${id})`;
       await tx`DELETE FROM slack_messages WHERE team_id=${ctx.teamId} AND channel_id=${id}`;
       await tx`DELETE FROM slack_ask_history WHERE team_id=${ctx.teamId} AND channel_id=${id}`;
       await tx`UPDATE slack_jobs SET payload=NULL,status='cancelled' WHERE team_id=${ctx.teamId} AND channel_id=${id} AND status IN ('pending','running')`;

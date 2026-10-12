@@ -55,7 +55,12 @@ export function decideSlack(
       decision: "stay_silent",
       reason: "The question is already answered.",
     };
-  if (facts.inRoom && signals.addressed >= 0.9 && signals.answerable >= 0.85)
+  if (
+    facts.confirmedMatch &&
+    facts.inRoom &&
+    signals.addressed >= 0.9 &&
+    signals.answerable >= 0.85
+  )
     return { decision: "reply_now", reason: "A follow-up addressed to Hive." };
   if (facts.threadUsed || facts.hourlyCount >= hourlyCap)
     return {

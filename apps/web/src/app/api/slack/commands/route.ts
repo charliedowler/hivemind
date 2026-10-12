@@ -1,3 +1,4 @@
+import { redactSecrets } from "@hivemind/core";
 import { getSql } from "@/server/db/client";
 import { hashToken } from "@/server/db/ids";
 import { verifySlack } from "@/server/slack/security";
@@ -22,7 +23,12 @@ export async function POST(request: Request) {
       String(rows[0].team_id),
       "command",
       `command:${hashToken(body)}`,
-      payload,
+      {
+        channel_id: payload.channel_id,
+        user_id: payload.user_id,
+        text: redactSecrets(payload.text ?? "").text,
+        thread_ts: payload.thread_ts,
+      },
       payload.channel_id,
     );
     return Response.json({

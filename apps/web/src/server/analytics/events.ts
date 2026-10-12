@@ -173,7 +173,17 @@ export const propertiesSchema = z.object({
   severity: nullable(z.number().finite().min(0).max(4)),
   relevanceProbability: nullable(probability),
   gateDecision: nullable(
-    z.enum(["answer", "gap", "capture", "skip", "reply", "silent", "reply_now", "react_only", "stay_silent"]),
+    z.enum([
+      "answer",
+      "gap",
+      "capture",
+      "skip",
+      "reply",
+      "silent",
+      "reply_now",
+      "react_only",
+      "stay_silent",
+    ]),
   ),
   vote: nullable(z.enum(["up", "down", "outdated"])),
   previousState: nullable(
@@ -259,7 +269,13 @@ export const propertiesSchema = z.object({
 });
 export type Properties = z.input<typeof propertiesSchema>;
 export type EntryPoint =
-  "mcp" | "web" | "slack" | "hook" | "installer" | "scheduled" | "unknown";
+  | "mcp"
+  | "web"
+  | "slack"
+  | "hook"
+  | "installer"
+  | "scheduled"
+  | "unknown";
 export type Origin = {
   teamId: string | null;
   memberId: string | null;
@@ -517,7 +533,7 @@ export async function analyticsTransaction<T>(
   return result;
 }
 export function pushSource(
-  source: "claude-code" | "codex" | "manual",
+  source: "claude-code" | "codex" | "manual" | "slack",
 ): NonNullable<Properties["source"]> {
   const entrypoint = currentOrigin()?.entrypoint;
   if (entrypoint === "hook" || entrypoint === "slack") return entrypoint;

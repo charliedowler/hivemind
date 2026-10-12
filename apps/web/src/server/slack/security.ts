@@ -76,7 +76,10 @@ export function decryptBotToken(
   ]).toString("utf8");
 }
 export function sameOrigin(request: Request) {
-  const expected = new URL(process.env.PUBLIC_URL ?? request.url).origin;
+  const url = process.env.PUBLIC_URL ?? request.url;
+  if (!URL.canParse(url))
+    throw new HiveError("Hive settings URL is invalid.", 503);
+  const expected = new URL(url).origin;
   if (request.headers.get("origin") !== expected)
     throw new HiveError(
       "Open Slack settings in your hive to make this change.",

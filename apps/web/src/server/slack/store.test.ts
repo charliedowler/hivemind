@@ -44,7 +44,11 @@ describe.skipIf(!process.env.DATABASE_URL)(
           if (path.pathname.endsWith("users.info"))
             return Response.json({
               ok: true,
-              user: { profile: { email: `slack-${workspace.toLowerCase()}@example.test` } },
+              user: {
+                profile: {
+                  email: `slack-${workspace.toLowerCase()}@example.test`,
+                },
+              },
             });
           if (path.pathname.endsWith("chat.getPermalink"))
             return Response.json({

@@ -83,6 +83,8 @@ export async function finishInstall(
     }),
     signal: AbortSignal.timeout(12000),
   });
+  if (!response.ok)
+    throw new HiveError("Slack could not complete the connection.", 502);
   const data = z
     .object({
       ok: z.literal(true),
@@ -92,13 +94,14 @@ export async function finishInstall(
       team: z.object({ id: z.string(), name: z.string() }),
     })
     .safeParse(await response.json());
-  if (!response.ok || !data.success)
+  if (!data.success)
     throw new HiveError(
       "Slack did not grant a bot connection. Try connecting again.",
       502,
     );
   const scopes = data.data.scope.split(",");
-  if (botScopes.some((scope) => !scopes.includes(scope)))
+  const granted = new Set(scopes);
+  if (botScopes.some((scope) => !granted.has(scope)))
     throw new HiveError(
       "Slack did not grant all requested bot permissions. Update the app and reconnect.",
       400,
@@ -170,9 +173,23 @@ export async function resolveActor(
 }
 export async function syncChannels(ctx: HiveContext) {
   await requireAdmin(ctx);
-  const inst = await installation(ctx.teamId);
+  const channels = await listSlackChannels(ctx.teamId);
+  const sql = getSql();
+  if (channels.length) {
+    const rows = channels.map((channel) => ({
+      team_id: ctx.teamId,
+      channel_id: channel.id,
+      name: channel.name,
+      private: channel.is_private,
+    }));
+    await sql`INSERT INTO slack_channels ${sql(rows)} ON CONFLICT(team_id,channel_id) DO UPDATE SET name=excluded.name,private=excluded.private,bot_member=true`;
+  }
+  await sql`UPDATE slack_channels SET bot_member=false WHERE team_id=${ctx.teamId} AND NOT(channel_id=ANY(${channels.map((channel) => channel.id)}::text[]))`;
+}
+export async function listSlackChannels(teamId: string) {
+  const inst = await installation(teamId);
+  const channels: z.infer<typeof slackChannel>[] = [];
   let cursor = "";
-  const found = new Set<string>();
   for (let page = 0; page < 20; page++) {
     const data = await slackCall(inst.token, "conversations.list", {
       types: "public_channel,private_channel",
@@ -180,28 +197,21 @@ export async function syncChannels(ctx: HiveContext) {
       limit: 200,
       ...(cursor ? { cursor } : {}),
     });
-    const channels = z
-      .array(slackChannel)
-      .parse(data.channels)
-      .filter(indexable);
-    for (const channel of channels) {
-      found.add(channel.id);
-      await getSql()`INSERT INTO slack_channels(team_id,channel_id,name,private) VALUES(${ctx.teamId},${channel.id},${channel.name},${channel.is_private}) ON CONFLICT(team_id,channel_id) DO UPDATE SET name=excluded.name,private=excluded.private,bot_member=true`;
-    }
+    channels.push(
+      ...z.array(slackChannel).parse(data.channels).filter(indexable),
+    );
     cursor =
       z
         .object({ next_cursor: z.string().optional() })
         .parse(data.response_metadata ?? {}).next_cursor ?? "";
-    if (!cursor) {
-      await getSql()`UPDATE slack_channels SET bot_member=false WHERE team_id=${ctx.teamId} AND NOT(channel_id=ANY(${[...found]}::text[]))`;
-      return;
-    }
+    if (!cursor) return channels;
   }
   throw new HiveError(
     "Slack has more channels than this refresh can read. Existing selections are retained.",
     503,
   );
 }
+
 export async function validateChannel(teamId: string, channelId: string) {
   const inst = await installation(teamId);
   const channel = await channelInfo(inst.token, channelId);

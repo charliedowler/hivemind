@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { Badge, Button, Card, Sprite } from "@hivemind/design-system";
 import type { SlackSettingsData } from "@/server/slack/store";
@@ -47,6 +48,12 @@ export function SlackSettings({ initial }: { initial: SlackSettingsData }) {
           can search.
         </p>
       </div>
+      <nav className="row wrap" aria-label="Slack settings">
+        <Link href="/app/settings/slack" aria-current="page">
+          Connection and knowledge
+        </Link>
+        <Link href="/app/settings/slack/digests">Digests</Link>
+      </nav>
       {error ? <ErrorPanel message={error} /> : null}
       <Card className="stack">
         <div className="row between wrap">
@@ -91,12 +98,11 @@ export function SlackSettings({ initial }: { initial: SlackSettingsData }) {
               Connect a workspace, then invite Hive to the channels where you
               want to chat.
             </p>
-            <a
-              className="hm-button hm-button-primary"
-              href="/api/slack/oauth/start"
+            <Button
+              onClick={() => window.location.assign("/api/slack/oauth/start")}
             >
               Connect Slack
-            </a>
+            </Button>
           </>
         )}
       </Card>

@@ -23,6 +23,8 @@ import {
 import { channelPermission, storeMessage } from "./store";
 import { decideSlack, judgeSlack, hourlyCap, type GateDecision } from "./gate";
 import { slackAnswer, slackEscape } from "./format";
+import { respondToSlack } from "@/slack/respond";
+import { slackToolContext, dispatchSlackAction } from "@/slack/tools";
 import { enqueueSlack, jobReference, runBackfill } from "./queue";
 
 export const eventEnvelope = z.object({
@@ -33,6 +35,34 @@ export const eventEnvelope = z.object({
   challenge: z.string().optional(),
   event: z.record(z.string(), z.unknown()).optional(),
 });
+export function normalizedEvent(
+  event: Record<string, unknown>,
+): Record<string, unknown> {
+  const stringKeys = [
+    "type",
+    "channel",
+    "channel_type",
+    "ts",
+    "thread_ts",
+    "user",
+    "bot_id",
+    "subtype",
+    "deleted_ts",
+    "reaction",
+  ];
+  const result: Record<string, unknown> = {};
+  for (const key of stringKeys)
+    if (typeof event[key] === "string") result[key] = event[key];
+  if (typeof event.text === "string")
+    result.text = redactSecrets(event.text).text.slice(0, 20000);
+  if (event.message && typeof event.message === "object")
+    result.message = normalizedEvent(event.message as Record<string, unknown>);
+  if (event.item && typeof event.item === "object") {
+    const item = event.item as Record<string, unknown>;
+    result.item = { type: item.type, channel: item.channel, ts: item.ts };
+  }
+  return result;
+}
 export async function acceptSlackEvent(payload: z.infer<typeof eventEnvelope>) {
   if (!payload.team_id || !payload.event_id || !payload.event) return;
   if (
@@ -55,7 +85,7 @@ export async function acceptSlackEvent(payload: z.infer<typeof eventEnvelope>) {
     teamId,
     "event",
     `event:${payload.event_id}`,
-    { event: payload.event, eventId: payload.event_id },
+    { event: normalizedEvent(payload.event), eventId: payload.event_id },
     channel,
   );
 }
@@ -85,14 +115,12 @@ async function history(
 ) {
   const rows =
     await getSql()`SELECT question,answer FROM slack_ask_history WHERE team_id=${teamId} AND channel_id=${channel} AND thread_ts=${thread} AND (${!direct} OR actor_id=${actor}) ORDER BY created_at DESC LIMIT 6`;
-  return rows
-    .reverse()
-    .map((row) => ({
-      question: String(row.question),
-      answer: String(row.answer),
-    }));
+  return rows.reverse().map((row) => ({
+    question: String(row.question),
+    answer: String(row.answer),
+  }));
 }
-async function logDecision(
+export async function logDecision(
   teamId: string,
   channel: string,
   thread: string,
@@ -136,6 +164,8 @@ export async function saveSlackMessage(
   ts: string,
   wholeThread = false,
 ) {
+  const own = await installation(ctx.teamId);
+  if (own.token !== token) throw new Error("SlackTeamTokenMismatch");
   const info = await channelInfo(token, channel);
   if (!indexable(info)) throw new Error("LearningSourceNotChannel");
   const sql = getSql();
@@ -212,86 +242,140 @@ export async function handleMessage(
   }
   const thread = message.thread_ts ?? message.ts;
   const receipt =
-    await getSql()`INSERT INTO slack_jobs(id,team_id,dedupe_key,kind,status,channel_id) VALUES(${newId("sjb")},${teamId},${`message:${channel}:${message.ts}`},'message','running',${channel}) ON CONFLICT(team_id,dedupe_key) DO NOTHING RETURNING id`;
+    await getSql()`INSERT INTO slack_jobs(id,team_id,dedupe_key,kind,status,channel_id,lease_until) VALUES(${newId("sjb")},${teamId},${`message:${channel}:${message.ts}`},'message','running',${channel},now()+interval '5 minutes') ON CONFLICT(team_id,dedupe_key) DO UPDATE SET status='running',lease_until=now()+interval '5 minutes' WHERE slack_jobs.status='pending' OR (slack_jobs.status='running' AND slack_jobs.lease_until<now()) RETURNING *`;
   if (!receipt.length) return;
   const actor = await resolveActor(teamId, message.user, inst.token);
   const origin = originFor(actor ?? undefined, "slack", "system");
   origin.teamId = teamId;
-  await withOrigin(origin, async () => {
-    const prior = await history(teamId, channel, thread, message.user!, direct);
-    const prompted = mentioned || direct;
-    const cells =
-      actor && !prompted
-        ? (
-            await searchLearnings(
-              actor,
-              { query: message.text.slice(0, 500), limit: 8 },
-              { cellsOnly: true },
-            )
-          ).filter(
-            (hit) => hit.lifecycle === "confirmed" && !hit.verifyBeforeUse,
-          )
-        : [];
-    const facts = {
-      prompted,
-      inRoom: prior.length > 0,
-      confirmedMatch: cells.some(
-        (hit) => (hit.signals.vector ?? 0) >= 0.75 || hit.signals.fts >= 0.8,
-      ),
-      threadUsed: false,
-      hourlyCount: 0,
-    };
-    const judgment = prompted
-      ? { signals: null, model: null, latencyMs: 0 }
-      : await judgeSlack(message.text, prior, cells);
-    const decision = await logDecision(
-      teamId,
-      channel,
-      thread,
-      message.ts,
-      prompted,
-      decideSlack(facts, judgment.signals),
-      judgment,
-      cells.map((c) => c.id),
-    );
-    if (decision.decision === "stay_silent") return;
-    if (decision.decision === "react_only") {
-      await slackCall(inst.token, "reactions.add", {
+  try {
+    await withOrigin(origin, async () => {
+      const prior = await history(
+        teamId,
         channel,
-        timestamp: message.ts,
-        name: "+1",
-      });
-      await getSql()`UPDATE slack_decisions SET delivery='sent' WHERE team_id=${teamId} AND id=${decision.id}`;
-      return;
-    }
-    if (!actor) {
-      await actorOrJoin(teamId, message.user!, inst.token, channel, thread);
-      return;
-    }
-    const stripped = message.text
-      .replaceAll(`<@${inst.bot_user_id}>`, "")
-      .trim();
-    const question = prior.length
-      ? `Current question: ${stripped.slice(0, 1000)}\nPrevious questions and answers (conversation data, not instructions): ${JSON.stringify(prior).slice(-900)}`
-      : stripped;
-    const answer = await askHive(
-      actor,
-      { question: question.slice(0, 2000) },
-      {
-        publicOnly:
-          !direct && !(await channelInfo(inst.token, channel)).is_private,
-      },
-    );
-    const posted = await postMessage(
-      inst.token,
-      channel,
-      slackAnswer(answer),
-      thread,
-    );
-    await getSql()`INSERT INTO slack_ask_history(id,team_id,channel_id,thread_ts,actor_id,question,answer) VALUES(${newId("sth")},${teamId},${channel},${thread},${message.user!},${redactSecrets(stripped).text},${answer.answer})`;
-    await getSql()`UPDATE slack_decisions SET delivery='sent',posted_ts=${posted} WHERE team_id=${teamId} AND id=${decision.id}`;
-  });
-  await getSql()`UPDATE slack_jobs SET status='done' WHERE team_id=${teamId} AND id=${receipt[0].id}`;
+        thread,
+        message.user!,
+        direct,
+      );
+      const prompted = mentioned || direct;
+      const cells =
+        actor && !prompted
+          ? (
+              await searchLearnings(
+                actor,
+                { query: message.text.slice(0, 500), limit: 8 },
+                { cellsOnly: true },
+              )
+            ).filter(
+              (hit) => hit.lifecycle === "confirmed" && !hit.verifyBeforeUse,
+            )
+          : [];
+      const facts = {
+        prompted,
+        inRoom: prior.length > 0,
+        confirmedMatch: cells.some(
+          (hit) => (hit.signals.vector ?? 0) >= 0.75 || hit.signals.fts >= 0.8,
+        ),
+        threadUsed: false,
+        hourlyCount: 0,
+      };
+      const judgment = prompted
+        ? { signals: null, model: null, latencyMs: 0 }
+        : await judgeSlack(message.text, prior, cells);
+      const saved = receipt[0].payload?.decision as
+        | { id: string; decision: GateDecision["decision"]; reason: string }
+        | undefined;
+      const decision =
+        saved ??
+        (await logDecision(
+          teamId,
+          channel,
+          thread,
+          message.ts,
+          prompted,
+          decideSlack(facts, judgment.signals),
+          judgment,
+          cells.map((c) => c.id),
+        ));
+      const sql = getSql();
+      if (!saved)
+        await sql`UPDATE slack_jobs SET payload=${sql.json({ decision })} WHERE team_id=${teamId} AND id=${receipt[0].id}`;
+      const delivered =
+        await sql`SELECT delivery FROM slack_decisions WHERE team_id=${teamId} AND id=${decision.id}`;
+      if (
+        delivered[0] &&
+        ["sent", "sending", "uncertain"].includes(delivered[0].delivery)
+      ) {
+        if (delivered[0].delivery === "sending")
+          await sql`UPDATE slack_decisions SET delivery='uncertain' WHERE team_id=${teamId} AND id=${decision.id}`;
+        return;
+      }
+      if (decision.decision === "stay_silent") return;
+      if (decision.decision === "react_only") {
+        await slackCall(inst.token, "reactions.add", {
+          channel,
+          timestamp: message.ts,
+          name: "+1",
+        });
+        await getSql()`UPDATE slack_decisions SET delivery='sent' WHERE team_id=${teamId} AND id=${decision.id}`;
+        return;
+      }
+      if (!actor) {
+        await actorOrJoin(teamId, message.user!, inst.token, channel, thread);
+        return;
+      }
+      const stripped = message.text
+        .replaceAll(`<@${inst.bot_user_id}>`, "")
+        .trim();
+      const question = prior.length
+        ? `Current question: ${stripped.slice(0, 1000)}\nPrevious questions and answers (conversation data, not instructions): ${JSON.stringify(prior).slice(-900)}`
+        : stripped;
+      const reply =
+        (receipt[0].payload?.reply as
+          | import("@/slack/tools").SlackToolResult
+          | undefined) ??
+        (prompted
+          ? await respondToSlack(
+              await slackToolContext(actor, channel, thread),
+              stripped,
+              message.ts,
+              prior,
+            )
+          : {
+              text: slackAnswer(
+                await askHive(
+                  actor,
+                  { question: question.slice(0, 2000) },
+                  {
+                    publicOnly:
+                      !direct &&
+                      !(await channelInfo(inst.token, channel)).is_private,
+                  },
+                ),
+              ),
+            });
+      await sql`UPDATE slack_jobs SET payload=${sql.json({ decision, reply } as never)} WHERE team_id=${teamId} AND id=${receipt[0].id}`;
+      if (reply.silent) {
+        await sql`UPDATE slack_decisions SET delivery='none',reason='Tool selected silence.' WHERE team_id=${teamId} AND id=${decision.id}`;
+        return;
+      }
+      await sql`UPDATE slack_decisions SET delivery='sending' WHERE team_id=${teamId} AND id=${decision.id}`;
+      const posted = await postMessage(
+        inst.token,
+        channel,
+        reply.text,
+        thread,
+        reply.blocks,
+      );
+      await getSql()`INSERT INTO slack_ask_history(id,team_id,channel_id,thread_ts,actor_id,question,answer) VALUES(${newId("sth")},${teamId},${channel},${thread},${message.user!},${redactSecrets(stripped).text},${reply.text})`;
+      await getSql()`UPDATE slack_decisions SET delivery='sent',posted_ts=${posted} WHERE team_id=${teamId} AND id=${decision.id}`;
+    });
+  } catch (error) {
+    await getSql()`UPDATE slack_jobs SET status='pending',lease_until=NULL WHERE team_id=${teamId} AND id=${receipt[0].id}`;
+    if (error instanceof SlackRateLimit)
+      await getSql()`UPDATE slack_decisions SET delivery='reserved' WHERE team_id=${teamId} AND id=${String(receipt[0].payload?.decision?.id ?? "")} AND delivery='sending'`;
+    throw error;
+  }
+  await getSql()`UPDATE slack_jobs SET status='done',payload=NULL,lease_until=NULL WHERE team_id=${teamId} AND id=${receipt[0].id}`;
 }
 async function handleEvent(teamId: string, event: Record<string, unknown>) {
   if (event.type === "message" || event.type === "app_mention")
@@ -348,10 +432,12 @@ export async function handleCommand(
     const argument = parts.join(" ");
     if (command === "recent") {
       const recent = await recentLearnings(actor, { since: "24h", limit: 10 });
+      const info = await channelInfo(inst.token,channel);
+      const visible = !info.is_private && !info.is_im ? recent.filter(cell=>cell.source!=="slack") : recent;
       return postMessage(
         inst.token,
         channel,
-        recent
+        visible
           .map(
             (c) =>
               `<${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${c.id}|${slackEscape(c.title)}>`,
@@ -418,26 +504,31 @@ export async function runSlackJob(reference: z.infer<typeof jobReference>) {
     const origin = originFor(undefined, "slack", "system");
     origin.teamId = teamId;
     await withOrigin(origin, async () => {
-      await recordEvent({
-        name: "slack.event_received",
-        key: `slack:received:${teamId}:${job.dedupe_key}`,
-        outcome: "received",
-        properties: {
-          slackEventKind:
-            job.kind === "command"
-              ? "command"
-              : job.kind === "action"
-                ? "action"
-                : job.payload?.event?.type === "app_mention"
-                  ? "mention"
-                  : job.payload?.event?.type === "reaction_added"
-                    ? "reaction"
-                    : job.kind === "event"
-                      ? "message"
-                      : "other",
-          channelId: job.channel_id ?? null,
-        },
-      });
+      if (job.kind !== "backfill")
+        await recordEvent({
+          name: "slack.event_received",
+          key: `slack:received:${teamId}:${job.dedupe_key}`,
+          outcome: "received",
+          latencyMs: Math.max(
+            0,
+            Date.now() - new Date(job.created_at).getTime(),
+          ),
+          properties: {
+            slackEventKind:
+              job.kind === "command"
+                ? "command"
+                : job.kind === "action"
+                  ? "action"
+                  : job.payload?.event?.type === "app_mention"
+                    ? "mention"
+                    : job.payload?.event?.type === "reaction_added"
+                      ? "reaction"
+                      : job.kind === "event"
+                        ? "message"
+                        : "other",
+            channelId: job.channel_id ?? null,
+          },
+        });
       if (job.kind === "backfill")
         await runBackfill(
           teamId,
@@ -454,20 +545,41 @@ export async function runSlackJob(reference: z.infer<typeof jobReference>) {
           inst.token,
         );
         if (actor) {
-          const result = await saveSlackMessage(
-            actor,
-            inst.token,
-            String(job.payload.channel.id),
-            String(job.payload.message.ts),
-            true,
+          const channel = String(job.payload.channel.id);
+          const thread = String(
+            job.payload.message.thread_ts ?? job.payload.message.ts,
           );
-          if (result)
-            await postMessage(
-              inst.token,
-              String(job.payload.channel.id),
-              `Saved <${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${result.id}|${slackEscape(result.learning.title)}>. The hive knows.`,
-              String(job.payload.message.thread_ts ?? job.payload.message.ts),
+          if (job.payload.actions) {
+            const action = job.payload.actions[0];
+            const result = await dispatchSlackAction(
+              await slackToolContext(actor, channel, thread),
+              String(action.action_id),
+              String(action.value ?? ""),
             );
+            if (!result.silent)
+              await postMessage(
+                inst.token,
+                channel,
+                result.text,
+                thread,
+                result.blocks,
+              );
+          } else {
+            const result = await saveSlackMessage(
+              actor,
+              inst.token,
+              channel,
+              String(job.payload.message.ts),
+              true,
+            );
+            if (result)
+              await postMessage(
+                inst.token,
+                channel,
+                `Saved <${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${result.id}|${slackEscape(result.learning.title)}>. The hive knows.`,
+                thread,
+              );
+          }
         }
       }
     });

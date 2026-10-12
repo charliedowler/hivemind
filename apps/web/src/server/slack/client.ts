@@ -60,8 +60,10 @@ export async function slackCall(
     throw new SlackRateLimit(
       Math.max(1, Number(response.headers.get("retry-after")) || 60),
     );
+  if (!response.ok)
+    throw new HiveError("Slack is unavailable. Try again later.", 502);
   const data = (await response.json()) as Record<string, unknown>;
-  if (!response.ok || data.ok !== true)
+  if (data.ok !== true)
     throw new HiveError(
       `Slack could not complete ${method}: ${typeof data.error === "string" ? data.error.replace(/[^a-z_]/g, "") : "unavailable"}.`,
       502,
@@ -123,11 +125,13 @@ export async function postMessage(
   channel: string,
   text: string,
   threadTs?: string,
+  blocks?: Array<Record<string, unknown>>,
 ) {
   const data = await slackCall(token, "chat.postMessage", {
     channel,
     text: text.slice(0, 12000),
     ...(threadTs ? { thread_ts: threadTs } : {}),
+    ...(blocks ? { blocks: JSON.stringify(blocks) } : {}),
     unfurl_links: false,
     unfurl_media: false,
     parse: "none",

@@ -9,5 +9,5 @@ END $$;
 DROP TABLE IF EXISTS slack_decisions,slack_ask_history,slack_jobs,slack_actor_links,slack_messages,slack_channels,slack_oauth_states,slack_installations;
 ALTER TABLE learnings DROP CONSTRAINT IF EXISTS learnings_source_check;
 ALTER TABLE learnings ADD CONSTRAINT learnings_source_check CHECK(source IN ('claude-code','codex','manual'));
-DELETE FROM _migrations WHERE name='0014_slack.sql';
+DELETE FROM _migrations WHERE name='0015_slack.sql';
 COMMIT;

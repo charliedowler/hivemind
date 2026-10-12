@@ -1,4 +1,9 @@
-import { withOrigin, originFor, bindApiKey, bindRole } from "@/server/analytics/events";
+import {
+  withOrigin,
+  originFor,
+  bindApiKey,
+  bindRole,
+} from "@/server/analytics/events";
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -69,7 +74,14 @@ async function reply(action: () => Promise<string>, ctx: ToolContext) {
       content: [
         {
           type: "text" as const,
-          text: await withOrigin(originFor(getContext(ctx), "mcp", contextSchema.parse(ctx.http?.authInfo?.extra).sessionKind), action),
+          text: await withOrigin(
+            originFor(
+              getContext(ctx),
+              "mcp",
+              contextSchema.parse(ctx.http?.authInfo?.extra).sessionKind,
+            ),
+            action,
+          ),
         },
       ],
     };
