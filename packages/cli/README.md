@@ -20,17 +20,14 @@ SessionStart calls `hive_recent` for the current Git remote once per session and
 
 Doctor reports a fixed client, platform and outcome to Hive's authenticated analytics endpoint. SessionStart reports whether it adds context. Stop uses the capture server's existing event, with a local report only if that gate cannot complete. Reports contain no paths, commands, transcripts, queries or terminal output. Unknown push counts stay null. Reporting has a short deadline and no retry queue; failure stays silent. Set `HIVE_TELEMETRY=0` to disable these client reports. The [analytics contract](../../docs/analytics.md) describes delivery and retention.
 
-Before the npm release, use the Git package:
+## Releasing
+
+Maintainer note: `gohive@0.1.0` was published on 2026-10-13.
+
+Build and publish the CLI package. Publishing requires npm 2FA in the browser.
 
 ```sh
-npx --yes --package github:charliedowler/hivemind gohive install
-```
-
-The repo root exposes the same `gohive` binary for Git installs. To publish the standalone package after signing into npm as Charlie:
-
-```sh
-pnpm --filter gohive build
-npm publish ./packages/cli --access public
+pnpm --filter gohive build && npm publish ./packages/cli --access public
 ```
 
 ## Executor
