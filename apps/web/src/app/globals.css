@@ -636,6 +636,10 @@ textarea::placeholder {
 .confidence-medium {
   color: #ddd5ac;
 }
+.confidence-high {
+  color: #b9d5a2;
+  border-color: #47603f;
+}
 .citation {
   display: inline-block;
   border: 1px solid #73643f;
@@ -1163,4 +1167,16 @@ td {
     scroll-behavior: auto !important;
     transition: none !important;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

@@ -3,9 +3,13 @@ import { EarlyAccessForm } from "@/components/early-access";
 import { CopyButton } from "@/components/primitives";
 import { buildInstallSnippets } from "@/lib/install";
 
+const productionUrl =
+  process.env.HIVEMIND_PUBLIC_URL ??
+  `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL ?? "hivemind-hq.vercel.app"}`;
+
 export default function HomePage() {
   const command = buildInstallSnippets({
-    baseUrl: "https://<YOUR_HIVE_URL>",
+    baseUrl: productionUrl,
     apiKey: "<YOUR_KEY>",
   })[0]!.code;
   return (
