@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { createHiveAuth } from "./better-auth";
-import { getSql } from "./db/client";
+import { getDb, getSql } from "./db/client";
 import { createTeam, authenticateApiKey } from "./auth";
 import { hashToken, newId } from "./db/ids";
 import { enrollMember } from "./identity/enrollment";
@@ -115,6 +115,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     const sql = getSql();
     const cellId = newId("lrn");
     await sql`INSERT INTO learnings (id, team_id, member_id, title, body, kind, source, confidence) VALUES (${cellId}, ${teamB}, ${b.memberId}, 'Team Beta private canary', 'A separate hive cell.', 'learning', 'manual', 1)`;
+    await sql`INSERT INTO learnings (id, team_id, member_id, title, body, kind, source, confidence) VALUES (${newId("lrn")}, ${teamA}, ${a.memberId}, 'Team Alpha visible canary', 'This hive can read its own cell.', 'learning', 'manual', 1)`;
   }, 30000);
   afterAll(async () => {
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -127,6 +128,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
       await sql`DELETE FROM teams WHERE id IN ${sql(teamIds)}`;
       await sql`DELETE FROM auth_verification WHERE identifier LIKE ${`%${suffix}%`}`;
       await sql`DELETE FROM rate_limits WHERE bucket LIKE ${`%${suffix}%`}`;
+      await getDb().$client.end();
       await sql.end();
     }
     vi.unstubAllEnvs();
@@ -250,7 +252,11 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     expect(payload).toMatchObject({ hive_member_id: memberA, hive_team_id: teamA, aud: `${baseUrl}/api/mcp` });
     const response = await fetch(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "hive_recent", arguments: { since: "7d", limit: 50 } } }) });
     expect(response.status, await response.clone().text()).toBe(200);
-    expect(await response.text()).not.toContain("Team Beta private canary");
+    const stream = await response.text();
+    const result = JSON.parse(stream.split("\n").find((line) => line.startsWith("data:"))!.slice(5));
+    expect(result.result.isError).not.toBe(true);
+    expect(stream).toContain("Team Alpha visible canary");
+    expect(stream).not.toContain("Team Beta private canary");
   });
   it("rejects cross-team and missing identity claims", async () => {
     expect(await contextFromClaims({ sub: memberA, hive_member_id: memberA, hive_team_id: teamB })).toBeNull();
