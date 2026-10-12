@@ -37,6 +37,17 @@ export function LearningCard({
       onClick={() => onOpen(learning.id)}
       footer={
         <>
+          {learning.kind === "friction" || learning.kind === "insight" ? (
+            <span className={`kind-mark kind-mark-${learning.kind}`}>
+              <Sprite
+                name={
+                  learning.kind === "friction" ? "cell-outdated" : "cell-asked"
+                }
+                scale={1}
+              />
+              {learning.kind}
+            </span>
+          ) : null}
           <Sprite name="thumb" scale={1} />
           {learning.votes.up}
           {learning.pushCount > 1 ? (

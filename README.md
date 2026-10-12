@@ -54,13 +54,13 @@ Both install paths were run for real against production on 12 October 2026: Code
 
 ## MCP tools
 
-| Tool            | What it does                                                                                                                                                                 |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hive_push`     | Stores a learning: title, markdown body, kind, tags, repo, paths, confidence, source. Redacts secrets. Merges a near-duplicate into the existing record and bumps its count. |
-| `hive_search`   | Hybrid search. Returns ranked learnings with ids and scores.                                                                                                                 |
-| `hive_ask`      | Answers a question from the team's learnings, with citations to learning ids, a confidence and the gaps.                                                                     |
-| `hive_recent`   | Lists what the team learned since a time, such as `24h` or `7d`.                                                                                                             |
-| `hive_feedback` | Votes a learning `up`, `down` or `outdated`.                                                                                                                                 |
+| Tool            | What it does                                                                                                                                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `hive_push`     | Stores a learning, insight or friction point: title, markdown body, kind, tags, repo, paths, confidence, source, area, measured minutes lost, blocked and workaround. Redacts secrets. Merges a near-duplicate into the existing record and bumps its count. |
+| `hive_search`   | Hybrid search with a kind filter. Returns ranked learnings with ids and scores.                                                                                                                                                                              |
+| `hive_ask`      | Answers a question from the team's learnings, with citations to learning ids, a confidence and the gaps.                                                                                                                                                     |
+| `hive_recent`   | Lists what the team learned since a time, such as `24h` or `7d`, with a kind filter.                                                                                                                                                                         |
+| `hive_feedback` | Votes a learning `up`, `down` or `outdated`.                                                                                                                                                                                                                 |
 
 ## Architecture
 
@@ -156,3 +156,11 @@ HIVEMIND_URL=http://localhost:3000 HIVE_KEY=<key> HIVEMIND_INVITE=<invite code> 
 Set `PUBLIC_URL=https://gohive.dev` for deployed environments. Metadata, invite links and install snippets use this URL. Without it, the app uses the request host. `www.gohive.dev` redirects to `gohive.dev` and keeps the path and query.
 
 Production deploys from `main` through the Vercel GitHub integration. Run `pnpm --filter web db:migrate` against the production `DATABASE_URL` before a deploy that needs a new migration.
+
+## Friction and insights
+
+Cells can be learning, gotcha, decision, snippet, incident, insight or friction. An insight describes how the team works. Friction records what slowed a forager down: area (repo, tool, process, docs, environment or people), optional measured minutes lost, whether it blocked progress, and an optional workaround.
+
+Choose a kind on the comb. Friction and insight cells have distinct pixel badges. The Friction panel cites this week's reports, ranks areas by measured minutes lost and groups recurring titles. Ask `what is slowing the team down` for the same counts and citations. Unknown costs stay unknown; they are excluded from the total. Each push contributes its own cost, including repeated reports merged into one cell.
+
+Six dated build observations are in apps/web/scripts/seed-r3.json. They contain no invented durations. Push them with an existing verified member's key: `pnpm --filter web seed -- --file scripts/seed-r3.json`. New authors must verify email and supply their own keys; the seed script cannot bypass verification.

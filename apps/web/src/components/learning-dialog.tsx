@@ -74,6 +74,7 @@ export function LearningDetail({
           This cell needs a fresh source. Check the learning before you cite it.
         </p>
       ) : null}
+      <FrictionDetails learning={learning} />
       <Markdown text={learning.body} />
       {learning.tags.length ? (
         <div className="tags">
@@ -220,4 +221,19 @@ function Moderation({ id, onDone }: { id: string; onDone?: () => void }) {
       {error ? <ErrorPanel message={error} /> : null}
     </div>
   );
+}
+
+function FrictionDetails({ learning }: { learning: LearningView }) {
+  return learning.kind === "friction" ? (
+    <div className="stack">
+      <p>
+        Area: {learning.area ?? "Unspecified"} ·{" "}
+        {learning.cost == null
+          ? "Minutes not measured"
+          : `${learning.cost} minutes lost`}{" "}
+        · {learning.blocked ? "Blocked progress" : "Progress continued"}
+      </p>
+      {learning.workaround ? <p>Workaround: {learning.workaround}</p> : null}
+    </div>
+  ) : null;
 }

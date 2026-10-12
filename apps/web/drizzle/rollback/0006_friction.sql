@@ -1,0 +1,16 @@
+BEGIN;
+SET LOCAL lock_timeout = '3s';
+SET LOCAL statement_timeout = '30s';
+UPDATE learnings SET kind = 'learning' WHERE kind IN ('friction', 'insight');
+ALTER TABLE learnings DROP CONSTRAINT IF EXISTS learnings_kind_check;
+ALTER TABLE learnings ADD CONSTRAINT learnings_kind_check CHECK (kind IN ('learning','gotcha','decision','snippet','incident'));
+ALTER TABLE learnings DROP COLUMN IF EXISTS area;
+ALTER TABLE learnings DROP COLUMN IF EXISTS cost;
+ALTER TABLE learnings DROP COLUMN IF EXISTS blocked;
+ALTER TABLE learnings DROP COLUMN IF EXISTS workaround;
+ALTER TABLE learning_pushes DROP COLUMN IF EXISTS area;
+ALTER TABLE learning_pushes DROP COLUMN IF EXISTS cost;
+DROP INDEX IF EXISTS learnings_team_kind_idx;
+DROP INDEX IF EXISTS learning_pushes_team_time_idx;
+DELETE FROM _migrations WHERE name = '0006_friction.sql';
+COMMIT;

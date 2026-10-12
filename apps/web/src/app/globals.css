@@ -824,3 +824,13 @@ pre:focus-visible {
     min-height: 248px;
   }
 }
+
+.kind-mark { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; border: 2px solid var(--ink); font-family: var(--font-pixel); font-size: 10px; }
+.kind-mark-friction { background: var(--clay-300); }
+.kind-mark-insight { background: var(--honey-300); }
+.friction-areas { display: grid; gap: 20px; }
+.friction-area { gap: 8px; }
+.friction-bar { height: 8px; background: var(--clay-700); border: 2px solid var(--ink); }
+.key-row { border-top: 2px solid var(--border-default); padding-top: 12px; }
+
+@media (max-width: 600px) { .app-header nav a { white-space: nowrap; font-size: 13px; padding-inline: 8px; } }

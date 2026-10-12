@@ -6,7 +6,19 @@ export const learningKinds = [
   "decision",
   "snippet",
   "incident",
+  "insight",
+  "friction",
 ] as const;
+export const frictionAreas = [
+  "repo",
+  "tool",
+  "process",
+  "docs",
+  "environment",
+  "people",
+] as const;
+export const frictionAreaSchema = z.enum(frictionAreas);
+export type FrictionArea = z.infer<typeof frictionAreaSchema>;
 export const learningSources = ["claude-code", "codex", "manual"] as const;
 export const feedbackVotes = ["up", "down", "outdated"] as const;
 
@@ -32,6 +44,28 @@ export const hivePushInput = z.object({
   kind: learningKindSchema
     .default("learning")
     .describe("The kind of knowledge being shared."),
+  area: frictionAreaSchema
+    .optional()
+    .describe(
+      "Where friction occurred: repo, tool, process, docs, environment or people.",
+    ),
+  cost: z
+    .number()
+    .int()
+    .min(0)
+    .max(1000000)
+    .optional()
+    .describe("Measured minutes lost. Omit when not measured."),
+  blocked: z
+    .boolean()
+    .default(false)
+    .describe("Whether friction blocked progress."),
+  workaround: z
+    .string()
+    .trim()
+    .max(4000)
+    .optional()
+    .describe("A workaround that helped with the friction."),
   tags: z
     .array(z.string())
     .max(12)
@@ -77,6 +111,9 @@ export const hiveSearchInput = z.object({
     .array(z.string())
     .optional()
     .describe("Limit results to these topic tags."),
+  kind: learningKindSchema
+    .optional()
+    .describe("Limit results to one learning kind."),
   limit: z
     .number()
     .int()
@@ -114,6 +151,9 @@ export const hiveRecentInput = z.object({
     .string()
     .optional()
     .describe("Limit the catch-up to a repository, such as owner/name."),
+  kind: learningKindSchema
+    .optional()
+    .describe("Limit results to one learning kind."),
   limit: z
     .number()
     .int()

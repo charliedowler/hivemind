@@ -25,6 +25,7 @@ import {
   type SearchHit,
   type TeamOverview,
 } from "@hivemind/core";
+import { frictionSummary, frictionAnswer, isFrictionAsk } from "./friction";
 import { after } from "next/server";
 import { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
@@ -71,6 +72,10 @@ function view(row: Record<string, unknown>): LearningView {
       outdated: Number(row.outdated_votes),
     },
     adminOutdated: Boolean(row.admin_outdated),
+    area: row.area as LearningView["area"],
+    cost: row.cost == null ? null : Number(row.cost),
+    blocked: Boolean(row.blocked),
+    workaround: row.workaround as string | null,
     createdAt: date(row.created_at),
     updatedAt: date(row.updated_at),
     lastPushedAt: date(row.last_pushed_at),
@@ -102,6 +107,7 @@ export async function pushLearning(
   ];
   const title = redactSecrets(data.title.trim());
   const body = redactSecrets(data.body.trim());
+  const workaround = redactSecrets(data.workaround ?? "");
   if (!title.text || !body.text)
     throw new HiveInputError("The title and body cannot be blank.");
   const sql = getSql();
@@ -113,21 +119,25 @@ export async function pushLearning(
   const normalizedTitle = title.text.toLowerCase().replace(/\s+/g, " ");
   const result = await sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtext(${ctx.teamId}), hashtext(${repo ?? ""}))`;
-    const duplicates = vector
-      ? await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND repo IS NOT DISTINCT FROM ${repo} AND embedding IS NOT NULL AND 1 - (embedding <=> ${vector}::vector) >= 0.90 ORDER BY embedding <=> ${vector}::vector LIMIT 1 FOR UPDATE`
-      : await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND repo IS NOT DISTINCT FROM ${repo} AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at LIMIT 1 FOR UPDATE`;
+    const sameTitle =
+      await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${data.kind} AND repo IS NOT DISTINCT FROM ${repo} AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at LIMIT 1 FOR UPDATE`;
+    const duplicates = sameTitle.length
+      ? sameTitle
+      : vector && data.kind !== "friction"
+        ? await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${data.kind} AND repo IS NOT DISTINCT FROM ${repo} AND embedding IS NOT NULL AND 1 - (embedding <=> ${vector}::vector) >= 0.90 ORDER BY embedding <=> ${vector}::vector LIMIT 1 FOR UPDATE`
+        : await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${data.kind} AND repo IS NOT DISTINCT FROM ${repo} AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at LIMIT 1 FOR UPDATE`;
     const merged = duplicates.length > 0;
     const id: string = duplicates[0]?.id ?? newId("lrn");
     if (merged) {
-      await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), body = CASE WHEN length(${body.text}) >= 1.5 * length(body) THEN ${body.text} ELSE body END WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround), body = CASE WHEN length(${body.text}) >= 1.5 * length(body) THEN ${body.text} ELSE body END WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       if (vector)
         await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId} AND body = ${body.text}`;
     } else {
-      await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${data.kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ?? null})`;
+      await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref, area, cost, blocked, workaround) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${data.kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ?? null}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${workaround.text || null})`;
       if (vector)
         await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
     }
-    await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged) VALUES (${newId("psh")}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ?? null}, ${merged})`;
+    await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged, area, cost, blocked) VALUES (${newId("psh")}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ?? null}, ${merged}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked})`;
     const rows =
       await tx`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
     const learning = view(rows[0]);
@@ -135,7 +145,7 @@ export async function pushLearning(
       id,
       merged,
       pushCount: learning.pushCount,
-      redactions: title.count + body.count,
+      redactions: title.count + body.count + workaround.count,
       learning,
     };
   });
@@ -156,7 +166,7 @@ export async function searchLearnings(
   const tsquery = sql`replace(plainto_tsquery('english', ${data.query})::text, '&', '|')::tsquery`;
   const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
   const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
-  const filter = sql`l.team_id = ${ctx.teamId} AND (${tags.length === 0} OR l.tags && ${tags}::text[])`;
+  const filter = sql`l.team_id = ${ctx.teamId} AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null})`;
   const ftsRows =
     await sql`SELECT l.*, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
@@ -202,6 +212,14 @@ export async function askHive(
   input: HiveAskInput,
 ): Promise<AskResult> {
   const data = validate(hiveAskInput, input);
+  const friction = isFrictionAsk(data.question)
+    ? await frictionSummary(ctx, data.repo)
+    : null;
+  if (friction && friction.count) {
+    const result = frictionAnswer(friction);
+    await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((c) => c.id)}, false)`;
+    return result;
+  }
   const hits = await searchLearnings(ctx, {
     query: data.question.slice(0, 500),
     repo: data.repo,
@@ -248,7 +266,7 @@ export async function recentLearnings(
   }
   const repo = normalizeRepo(data.repo);
   const rows =
-    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
+    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
   return rows.map(view);
 }
 

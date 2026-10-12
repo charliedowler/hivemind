@@ -10,7 +10,7 @@ const instructions = [
   "## Hive (team memory)",
   "- When you start work in a repo, call `hive_search` with the task in a few words and the repo as `owner/name`.",
   "- When you hit an error you do not understand, call `hive_search` with the error text before you investigate.",
-  "- When you learn something non-obvious that would help a teammate (a gotcha, a fix, a decision, how a flaky thing really works), call `hive_push`. Give a title that states the fact, the repo, 3 to 5 tags and the paths. Never include secrets or customer names.",
+  "- When you learn something non-obvious that would help a teammate (a gotcha, a fix, a decision, an insight about how the team works, or friction: what slowed you down, how long, was there a workaround), call `hive_push`. Give a title that states the fact, the repo, 3 to 5 tags and the paths. Never include secrets or customer names.",
   "- When a result helped, call `hive_feedback` with `up`. When it is wrong or stale, vote `down` or `outdated` and say why.",
   "- Use `hive_ask` for a question that needs several learnings joined into one answer.",
 ].join("\n");
@@ -28,7 +28,7 @@ const stopHook = (url: string) =>
     'if [ "${CLAUDE_CODE_ENTRYPOINT:-cli}" != "cli" ]; then',
     '  ending="This is a headless run and the caller reads only your last message, so finish by repeating your previous final answer word for word and nothing else."',
     "fi",
-    `printf '%s\\n' \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Before you stop: if this session taught you something a teammate's agent would otherwise have to rediscover (a gotcha, a fix, a decision, how this project, its tools or its CI really behave), use the Hive MCP server at ${url}/api/mcp to call hive_push once per learning with a title that states the fact, the repo and 3 to 5 tags. Skip general knowledge any agent already has. $ending\\\"}\"`,
+    `printf '%s\\n' \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Before you stop: if this session taught you something a teammate's agent would otherwise have to rediscover (a gotcha, a fix, a decision, an insight or friction: what slowed you down, how long, was there a workaround), use the Hive MCP server at ${url}/api/mcp to call hive_push once per learning with a title that states the fact, the repo and 3 to 5 tags. For friction include area, measured minutes lost as cost when known, blocked and workaround. Never invent time lost. Skip general knowledge any agent already has. $ending\\\"}\"`,
     "",
   ].join("\n");
 

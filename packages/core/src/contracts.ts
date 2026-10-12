@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LearningKind, LearningSource } from "./schemas";
+import type { LearningKind, LearningSource, FrictionArea } from "./schemas";
 
 export type HiveContext = {
   teamId: string;
@@ -24,6 +24,10 @@ export type LearningView = {
   pushCount: number;
   votes: VoteCounts;
   adminOutdated?: boolean;
+  area?: FrictionArea | null;
+  cost?: number | null;
+  blocked?: boolean;
+  workaround?: string | null;
   createdAt: string;
   updatedAt: string;
   lastPushedAt: string;
@@ -113,3 +117,14 @@ export const signInInput = z.object({
   apiKey: z.string().trim().min(8).max(200),
 });
 export type SignInInput = z.infer<typeof signInInput>;
+
+export type FrictionSummary = {
+  since: string;
+  count: number;
+  minutes: number;
+  unmeasured: number;
+  blocked: number;
+  areas: { area: string; count: number; minutes: number; ids: string[] }[];
+  recurring: { title: string; count: number; minutes: number; ids: string[] }[];
+  cells: { id: string; title: string }[];
+};

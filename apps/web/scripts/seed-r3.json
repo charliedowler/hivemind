@@ -1,0 +1,78 @@
+[
+  {
+    "author": "Charlie",
+    "title": "Claude rate limits interrupt coding sessions",
+    "body": "During the 12 October build, Claude usage limits interrupted coding work. The build moved coding rounds to Codex. No minutes were measured.",
+    "kind": "friction",
+    "repo": "charliedowler/hivemind",
+    "source": "manual",
+    "confidence": 1,
+    "tags": ["launchathon", "build-friction"],
+    "blocked": true,
+    "area": "tool",
+    "workaround": "Move the coding round to Codex when Claude reaches its limit."
+  },
+  {
+    "author": "Charlie",
+    "title": "A forced schema push drops existing tables",
+    "body": "During the 12 October build, a forced schema push dropped tables. Treat schema changes as reviewed migrations, including lock and statement timeouts. Do not use a forced schema push against the production hive.",
+    "kind": "friction",
+    "repo": "charliedowler/hivemind",
+    "source": "manual",
+    "confidence": 1,
+    "tags": ["launchathon", "build-friction"],
+    "blocked": true,
+    "area": "repo",
+    "workaround": "Review SQL migrations and their rollback files. Apply them with the migration runner before the deploy."
+  },
+  {
+    "author": "Charlie",
+    "title": "DNS lag delays a new domain",
+    "body": "During the 12 October build, DNS lag delayed access through a new domain. Domain setup and propagation need a separate verification step. No delay duration was measured.",
+    "kind": "friction",
+    "repo": "charliedowler/hivemind",
+    "source": "manual",
+    "confidence": 1,
+    "tags": ["launchathon", "build-friction"],
+    "blocked": true,
+    "area": "environment",
+    "workaround": "Check the authoritative DNS records and retry after they propagate."
+  },
+  {
+    "author": "Charlie",
+    "title": "Codex exec refuses MCP calls under the default approval policy",
+    "body": "During the 12 October install checks, Codex exec refused Hive MCP tool calls under its default approval policy. The interactive install path worked after approval. This is recorded in the Hive README.",
+    "kind": "friction",
+    "repo": "charliedowler/hivemind",
+    "source": "manual",
+    "confidence": 1,
+    "tags": ["launchathon", "build-friction"],
+    "blocked": true,
+    "area": "tool",
+    "workaround": "Use interactive Codex and approve the MCP call. Use Claude Code headless for unattended checks."
+  },
+  {
+    "author": "Charlie",
+    "title": "The Vercel Hobby queue delays production deploys",
+    "body": "During the 12 October build, the Vercel Hobby deploy queue delayed releases. A push is not evidence that the new code is live. Check both the ready deploy and the commit served by the health endpoint.",
+    "kind": "friction",
+    "repo": "charliedowler/hivemind",
+    "source": "manual",
+    "confidence": 1,
+    "tags": ["launchathon", "build-friction"],
+    "blocked": true,
+    "area": "process",
+    "workaround": "Wait for the deploy to be ready and check the commit from /api/health."
+  },
+  {
+    "author": "Charlie",
+    "title": "A headless Stop hook must preserve the final answer",
+    "body": "The 12 October Claude Code Stop hook check showed that a headless caller reads the final message after the hook. The capture flow asks the agent to repeat its previous answer after bringing nectar. Agents can share useful learnings without losing the answer their caller expects. This was checked on Claude Code 2.1.296.",
+    "kind": "insight",
+    "repo": "charliedowler/hivemind",
+    "source": "manual",
+    "confidence": 1,
+    "tags": ["launchathon", "agent-workflow"],
+    "blocked": false
+  }
+]

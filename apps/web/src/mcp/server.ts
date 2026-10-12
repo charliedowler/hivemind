@@ -71,7 +71,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Share a learning",
       description:
-        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Never include secrets or customer names.",
+        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Include insights and friction: what slowed you down, measured minutes lost, whether progress was blocked, and a workaround. Never include secrets or customer names.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>

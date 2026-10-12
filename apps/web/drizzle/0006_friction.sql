@@ -1,0 +1,12 @@
+SET LOCAL lock_timeout = '3s';
+SET LOCAL statement_timeout = '30s';
+ALTER TABLE learnings DROP CONSTRAINT IF EXISTS learnings_kind_check;
+ALTER TABLE learnings ADD CONSTRAINT learnings_kind_check CHECK (kind IN ('learning','gotcha','decision','snippet','incident','insight','friction'));
+ALTER TABLE learnings ADD COLUMN IF NOT EXISTS area text CHECK (area IN ('repo','tool','process','docs','environment','people'));
+ALTER TABLE learnings ADD COLUMN IF NOT EXISTS cost integer CHECK (cost >= 0);
+ALTER TABLE learnings ADD COLUMN IF NOT EXISTS blocked boolean NOT NULL DEFAULT false;
+ALTER TABLE learnings ADD COLUMN IF NOT EXISTS workaround text;
+ALTER TABLE learning_pushes ADD COLUMN IF NOT EXISTS area text;
+ALTER TABLE learning_pushes ADD COLUMN IF NOT EXISTS cost integer CHECK (cost >= 0);
+CREATE INDEX IF NOT EXISTS learnings_team_kind_idx ON learnings (team_id, kind, last_pushed_at DESC);
+CREATE INDEX IF NOT EXISTS learning_pushes_team_time_idx ON learning_pushes (team_id, created_at DESC);

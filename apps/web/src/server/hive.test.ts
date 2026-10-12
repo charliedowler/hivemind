@@ -21,6 +21,7 @@ import {
   teamOverview,
   submitEarlyAccess,
 } from "./hive";
+import { frictionSummary } from "./friction";
 import { HiveNotFoundError } from "./errors";
 
 vi.mock("./llm/embeddings", () => ({ embedText: vi.fn(async () => null) }));
@@ -290,6 +291,69 @@ describe.skipIf(!enabled)("hive database integration", () => {
     expect(rows[0].cited_ids).toEqual(
       result.citations.map((citation) => citation.id),
     );
+  });
+
+  it("filters kinds and counts only this week's friction observations", async () => {
+    const data = hivePushInput.parse({
+      title: "Slow fixture forager",
+      body: "An observed tool delay.",
+      kind: "friction",
+      area: "tool",
+      cost: 100,
+      blocked: true,
+      repo: "team/friction",
+    });
+    const first = await pushLearning(a, data);
+    await getSql()`UPDATE learning_pushes SET created_at = now() - interval '8 days' WHERE learning_id = ${first.id} AND team_id = ${a.teamId}`;
+    const second = await pushLearning(a, {
+      ...data,
+      title: "slow fixture forager",
+      cost: 7,
+      blocked: false,
+    });
+    const third = await pushLearning(a, { ...data, cost: undefined, blocked: false });
+    expect(second.id).toBe(first.id);
+    expect(third.learning.cost).toBe(107);
+    const insight = await pushLearning(
+      a,
+      hivePushInput.parse({
+        title: data.title,
+        body: "A broader team observation.",
+        kind: "insight",
+        repo: data.repo,
+      }),
+    );
+    expect(insight.merged).toBe(false);
+    expect(
+      (
+        await recentLearnings(a, { since: "1d", kind: "friction", limit: 50 })
+      ).map((item) => item.id),
+    ).toEqual([first.id]);
+    expect(
+      (
+        await searchLearnings(a, {
+          query: "fixture forager",
+          kind: "insight",
+          limit: 25,
+        })
+      ).map((item) => item.id),
+    ).toEqual([insight.id]);
+    const summary = await frictionSummary(a);
+    expect(summary).toMatchObject({
+      count: 2,
+      minutes: 7,
+      unmeasured: 1,
+      blocked: 0,
+      recurring: [{ count: 2, minutes: 7, ids: [first.id] }],
+    });
+    expect((await frictionSummary(b)).count).toBe(0);
+    expect((await frictionSummary(a, "team/other")).count).toBe(0);
+    const answer = await askHive(a, {
+      question: "what is slowing the team down",
+    });
+    expect(answer.answer).toContain("7 measured minutes");
+    expect(answer.citations.map((item) => item.id)).toContain(first.id);
+    expect(answer.gaps).toContain("Unmeasured");
   });
 
   it("handles every recent since form and an early access submission", async () => {

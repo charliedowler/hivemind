@@ -18,6 +18,7 @@ describe("hive_push", () => {
       title: "Build the workspace",
       body: "Run the build from the root.",
       kind: "learning",
+      blocked: false,
       tags: [],
       paths: [],
       confidence: 0.7,
@@ -97,3 +98,37 @@ describe("hive_feedback", () => {
     ).toBe(false);
   });
 });
+
+it.each([
+  "learning",
+  "gotcha",
+  "decision",
+  "snippet",
+  "incident",
+  "insight",
+  "friction",
+])("accepts the %s kind and filters", (kind) => {
+  expect(
+    hivePushInput.parse({
+      title: "Observation",
+      body: "Context",
+      kind,
+      area: "tool",
+      cost: 12,
+      blocked: true,
+      workaround: "Retry",
+    }).kind,
+  ).toBe(kind);
+  expect(hiveSearchInput.parse({ query: "observation", kind }).kind).toBe(kind);
+  expect(hiveRecentInput.parse({ kind }).kind).toBe(kind);
+});
+it.each([-1, 1.5, 1000001])("rejects an invalid measured cost %s", (cost) =>
+  expect(
+    hivePushInput.safeParse({
+      title: "Observation",
+      body: "Context",
+      kind: "friction",
+      cost,
+    }).success,
+  ).toBe(false),
+);

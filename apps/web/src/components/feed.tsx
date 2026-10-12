@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import type { LearningView, SearchHit } from "@hivemind/core";
+import {
+  learningKinds,
+  type LearningKind,
+  type LearningView,
+  type SearchHit,
+} from "@hivemind/core";
 import {
   ActivityFeed,
   Badge,
@@ -17,16 +22,19 @@ import { errorMessage, relativeTime, requestJson } from "@/lib/client";
 import { agentKind, learnedBy } from "@/lib/learning-presentation";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDialog } from "./learning-dialog";
+import { FrictionPanel } from "./friction-panel";
 import { AskPanel } from "./ask-panel";
 import { ErrorPanel, LoadingPanel } from "./primitives";
 
 function SearchResults({
   query,
   repo,
+  kind,
   onOpen,
 }: {
   query: string;
   repo: string;
+  kind: LearningKind | undefined;
   onOpen: (id: string) => void;
 }) {
   const [result, setResult] = useState<{ hits?: SearchHit[]; error?: string }>(
@@ -37,7 +45,7 @@ function SearchResults({
     const timer = setTimeout(() => {
       requestJson<{ hits: SearchHit[] }>(
         "/api/app/search",
-        { query, repo: repo || undefined, limit: 25 },
+        { query, repo: repo || undefined, kind, limit: 25 },
         controller.signal,
       )
         .then(setResult)
@@ -50,7 +58,7 @@ function SearchResults({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, repo]);
+  }, [query, repo, kind]);
   if (result.error) return <ErrorPanel message={result.error} />;
   if (!result.hits)
     return (
@@ -161,6 +169,7 @@ export function Feed() {
   const { state, setState, list } = useHiveFeed();
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
+  const [kind, setKind] = useState<LearningKind>();
   const [searchRevision, setSearchRevision] = useState(0);
   const [selected, setSelected] = useState<string>();
   const repos = [
@@ -168,9 +177,9 @@ export function Feed() {
       state.learnings.flatMap((item) => (item.repo ? [item.repo] : [])),
     ),
   ].sort();
-  const visible = repo
-    ? state.learnings.filter((item) => item.repo === repo)
-    : state.learnings;
+  const visible = state.learnings.filter(
+    (item) => (!repo || item.repo === repo) && (!kind || item.kind === kind),
+  );
   function search(event: FormEvent) {
     event.preventDefault();
     setSearchRevision((value) => value + 1);
@@ -236,6 +245,24 @@ export function Feed() {
               ...repos.map((name) => ({ value: name, label: name })),
             ]}
           />
+          <Select
+            label="Cell kind"
+            value={kind ?? ""}
+            onChange={(event) =>
+              setKind(
+                event.target.value
+                  ? (event.target.value as LearningKind)
+                  : undefined,
+              )
+            }
+            options={[
+              { value: "", label: "All kinds" },
+              ...learningKinds.map((value) => ({
+                value,
+                label: value[0].toUpperCase() + value.slice(1),
+              })),
+            ]}
+          />
           <Button type="submit" variant="secondary" iconLeft="icon-search">
             Search
           </Button>
@@ -248,8 +275,9 @@ export function Feed() {
         <div ref={list}>
           {query.trim() ? (
             <SearchResults
-              key={`${query.trim()}:${repo}:${searchRevision}`}
+              key={`${query.trim()}:${repo}:${kind}:${searchRevision}`}
               query={query.trim()}
+              kind={kind}
               repo={repo}
               onOpen={setSelected}
             />
@@ -264,6 +292,7 @@ export function Feed() {
           )}
         </div>
       </section>
+      <FrictionPanel repo={repo} onOpen={setSelected} />
       <div id="ask">
         <AskPanel repo={repo || undefined} learnings={state.learnings} />
       </div>

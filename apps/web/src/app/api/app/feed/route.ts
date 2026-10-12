@@ -9,6 +9,7 @@ export async function GET(request: Request) {
       since: params.get("since") ?? "30d",
       limit: Number(params.get("limit") ?? 50),
       repo: params.get("repo") || undefined,
+      kind: params.get("kind") || undefined,
     });
     return Response.json({ learnings: await recentLearnings(ctx, input) });
   });

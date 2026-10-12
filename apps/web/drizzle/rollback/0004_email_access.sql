@@ -1,3 +1,4 @@
+BEGIN;
 SET LOCAL lock_timeout = '3s';
 SET LOCAL statement_timeout = '30s';
 DROP TABLE IF EXISTS email_verifications;
@@ -13,3 +14,4 @@ ALTER TABLE members DROP COLUMN IF EXISTS removed_at;
 ALTER TABLE teams DROP COLUMN IF EXISTS invite_expires_at;
 UPDATE teams SET invite_code = 'hive-' || substr(encode(sha256(convert_to(id || clock_timestamp()::text, 'UTF8')), 'hex'), 1, 20);
 DELETE FROM _migrations WHERE name = '0004_email_access.sql';
+COMMIT;
