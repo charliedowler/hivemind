@@ -37,14 +37,14 @@ Share only material the team is allowed to know. Never push secrets, tokens, pri
 
 ## Replace stale knowledge
 
-If new evidence replaces an old cell, read the old cell, then call `hive_push` with the corrected fact and `supersedes: "lrn_old_id"`. Explain what changed and why. Use the actual cell ID. This records the replacement instead of leaving two active contradictory cells. If the connected server does not support `supersedes`, mark the old cell `outdated` with `hive_feedback`, explain the limitation, and defer the replacement rather than silently adding a contradiction. Distinct facts belong in separate cells.
+If new evidence replaces an old cell, read the old cell and check that the connected `hive_push` schema supports `supersedes`, then call `hive_push` with the corrected fact and `supersedes: "lrn_abcdefghijkl"`. Explain what changed and why. Use the actual cell ID. This records the replacement instead of leaving two active contradictory cells. If the connected server does not support `supersedes`, mark the old cell `outdated` with `hive_feedback`, explain the limitation, and defer the replacement rather than silently adding a contradiction. Distinct facts belong in separate cells. For time-sensitive guidance, set `verify_after` to an ISO timestamp when the tool supports it. Verify a cell flagged outdated, superseded, retracted or past its verification date before using it.
 
 ## Examples
 
 - Search before debugging: `hive_search({ query: "migration lock remains after cancelled deploy", repo: "team/widget" })`.
 - Save a gotcha: `hive_push({ title: "Cancelled deploys can leave the migration advisory lock open", body: "Observed in the staging worker. Closing the cancelled worker connection released the lock; rerunning the migration passed. Check the active connection before retrying.", kind: "gotcha", repo: "team/widget", paths: ["scripts/migrate.ts"], tags: ["postgres", "migrations", "deploy"], source: "codex", confidence: 0.9 })`.
 - Save friction: `hive_push({ title: "A stale generated client blocks local typecheck", body: "After switching branches, typecheck used the previous schema. Regenerating the client made the check pass.", kind: "friction", area: "environment", cost: 12, blocked: true, workaround: "Run the repo's client generation command after switching schema branches.", repo: "team/widget", tags: ["typecheck", "generation", "branches"], source: "claude-code" })`. The 12 minutes must have been measured.
-- Replace a decision: `hive_push({ title: "The worker now retries transient timeouts twice", body: "The retry budget changed from one to two after the integration test reproduced a second transient timeout. The third timeout still fails the job.", kind: "decision", repo: "team/widget", tags: ["worker", "timeouts", "retries"], source: "codex", supersedes: "lrn_old_id" })`.
+- Replace a decision: `hive_push({ title: "The worker now retries transient timeouts twice", body: "The retry budget changed from one to two after the integration test reproduced a second transient timeout. The third timeout still fails the job.", kind: "decision", repo: "team/widget", tags: ["worker", "timeouts", "retries"], source: "codex", supersedes: "lrn_abcdefghijkl" })`.
 
 ## Cite cells
 

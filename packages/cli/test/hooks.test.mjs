@@ -133,3 +133,11 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   decision = 'capture';
   assert.equal(JSON.parse(await run('stop.mjs', { session_id: 'jev-capture', transcript_path: transcript }, env)).decision, 'block');
 });
+
+test('recent summaries preserve lifecycle and verification warnings without author data', () => {
+  const context = summary({ content: [{ type: 'text', text: '- lrn_a: Old guidance | superseded, superseded by lrn_b | private author via codex\n- lrn_b: Current guidance | fresh, verify before use | private author via codex' }] }, 'team/widget');
+  assert.ok(context.includes('Old guidance [superseded]'));
+  assert.ok(context.includes('Current guidance [fresh, verify before use]'));
+  assert.ok(!context.includes('private author'));
+  assert.equal(context.split('\n').length, 2);
+});
