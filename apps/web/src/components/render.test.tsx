@@ -225,10 +225,12 @@ describe("dashboard components", () => {
     expect(html).not.toContain("Reverse this decision");
   });
 
-  it("leads with the installer and keeps manual and Git fallbacks available", () => {
+  it("leads with the npm installer and keeps manual setup available", () => {
     const html = renderToStaticMarkup(<InstallPage baseUrl="https://hive.example" />);
     expect(html.indexOf("npx gohive install")).toBeLessThan(html.indexOf("claude mcp add"));
-    expect(html).toContain("github:charliedowler/hivemind gohive install");
+    expect(html).toContain("npx gohive install");
+    expect(html).not.toContain("Install from Git while the npm package is awaiting publication");
+    expect(html).not.toContain("github:charliedowler/hivemind gohive install");
     expect(html).toContain("skills/hive/SKILL.md");
     expect(html).toContain("Manual setup for Claude Code, Codex or Executor");
     expect(html).toContain("npx gohive doctor");

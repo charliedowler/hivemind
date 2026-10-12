@@ -62,6 +62,7 @@ export async function toolActor(ctx: SlackToolContext): Promise<HiveContext> {
   };
 }
 async function publicChannel(ctx: SlackToolContext) {
+  if (ctx.channelId.startsWith("D")) return false;
   const inst = await installation(ctx.teamId);
   const info = await channelInfo(inst.token, ctx.channelId);
   return !info.is_private && !info.is_im;
@@ -118,6 +119,10 @@ export const slackTools: SlackTool[] = [
     input_schema: z.toJSONSchema(save) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       const input = save.parse(args);
+      if (ctx.channelId.startsWith("D"))
+        return {
+          text: "Hive never saves direct messages. Use Save to hive or a bee reaction in an invited channel.",
+        };
       const [inst, actor, { saveSlackMessage }] = await Promise.all([
         installation(ctx.teamId),
         toolActor(ctx),

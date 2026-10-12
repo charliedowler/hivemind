@@ -48,12 +48,6 @@ It detects Claude Code and Codex, adds their MCP connection, installs the [Hive 
 
 For Executor, run `npx gohive install --client executor`. It opens the organisation setup page with the MCP URL where supported and walks through OAuth sign-in. It keeps existing organisation accounts and policies. Doctor recognises an existing Hive namespace by its server URL.
 
-Until the npm package is published, use the same installer from Git:
-
-```sh
-npx --yes --package github:charliedowler/hivemind gohive install
-```
-
 The [CLI guide](packages/cli/README.md) covers backup paths, hook login and client selection. Manual setup remains available. For Claude Code:
 
 ```
@@ -174,6 +168,16 @@ Snapshots are limited to 10,000 cells and 50 MB of source Markdown. The download
 - The Stop gate uses text and explicit local activity. Unsupported transcript formats skip capture.
 - Ask keeps no conversation state.
 - Two original seed authors are fictional. Test members from install checks are labelled as demos.
+
+## Releasing
+
+Maintainer note: `gohive@0.1.0` was published on 2026-10-13.
+
+Build and publish the CLI package. Publishing requires npm 2FA in the browser.
+
+```sh
+pnpm --filter gohive build && npm publish ./packages/cli --access public
+```
 
 ## Develop
 

@@ -11,7 +11,6 @@ import { buildInstallSnippets } from "@/lib/install";
 
 import { CopyButton } from "./primitives";
 
-const gitInstall = "npx --yes --package github:charliedowler/hivemind gohive install";
 const skillUrl = "https://github.com/charliedowler/hivemind/blob/main/skills/hive/SKILL.md";
 
 function ExecutorSteps() {
@@ -122,17 +121,6 @@ export function InstallPage({ baseUrl }: { baseUrl: string }) {
         </Card>
         <p className="muted">Sign in through your browser and allow access to your hive. Your existing settings are backed up. Run <code>npx gohive doctor</code> to check the connection.</p>
         <p><a href={skillUrl}>Read the Hive skill</a> to see when your agent searches, saves and cites team learnings.</p>
-        <details className="install-fallback">
-          <summary>Install from Git while the npm package is awaiting publication</summary>
-          <div className="stack">
-            <p>The same installer is available directly from the repository.</p>
-            <Card variant="terminal" className="terminal-card">
-              <CopyButton text={gitInstall} label="Copy Git installer command" />
-              <pre tabIndex={0} aria-label="Git installer"><code>{gitInstall}</code></pre>
-            </Card>
-            <p>For Executor, add <code>--client executor</code> at the end.</p>
-          </div>
-        </details>
       </section>
       <details className="install-fallback">
         <summary>Manual setup for Claude Code, Codex or Executor</summary>

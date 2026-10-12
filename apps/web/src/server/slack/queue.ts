@@ -54,7 +54,7 @@ export async function runBackfill(
     inst.token,
     channelId,
     thread?.ts,
-    thread ? thread.cursor : permission.backfill_cursor ?? undefined,
+    thread ? thread.cursor : (permission.backfill_cursor ?? undefined),
   );
   for (let offset = 0; offset < page.messages.length; offset += 3)
     await Promise.all(
@@ -86,4 +86,32 @@ export async function runBackfill(
       generation,
       60,
     );
+}
+
+export async function retryPendingSlack(
+  ctx: import("@hivemind/core").HiveContext,
+) {
+  const { requireAdmin } = await import("../identity/access");
+  await requireAdmin(ctx);
+  const rows =
+    await getSql()`SELECT id,dedupe_key FROM slack_jobs WHERE team_id=${ctx.teamId} AND status='pending' AND kind IN ('event','command','action','backfill') ORDER BY created_at LIMIT 100`;
+  for (let offset = 0; offset < rows.length; offset += 5) {
+    const attempts = await Promise.allSettled(
+      rows
+        .slice(offset, offset + 5)
+        .map((row) =>
+          send(
+            "hive-slack",
+            { teamId: ctx.teamId, jobId: String(row.id) },
+            {
+              idempotencyKey: `${ctx.teamId}:${row.dedupe_key}`,
+              retentionSeconds: 604800,
+            },
+          ),
+        ),
+    );
+    const failed = attempts.find((attempt) => attempt.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+  }
+  return rows.length;
 }

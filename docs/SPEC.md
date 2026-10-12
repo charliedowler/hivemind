@@ -382,6 +382,8 @@ Jev is advisory: an explicit request proceeds; an unsolicited answer requires a 
 
 Migration `0015_slack.sql` follows applied analytics 0013 and conflicts 0014. Its rollback refuses populated Slack knowledge. Backfills read 15 messages per page and continue after 60 seconds. Message shortcuts/permalink saves currently capture up to 15 thread messages and state truncation. Slash command payloads do not identify a selected thread, so `/hive save` requires a permalink or the message shortcut. Digest scheduling and capture rules are sibling additions, not stubbed core mutations.
 
+Vercel topics are partitioned by deployment. After a handler fix, an admin can use Retry pending work to republish up to 100 pending event/backfill references to the current deployment. Database leases and message receipts still prevent duplicate delivery. This action also recovers an outbox write whose queue publish failed. Failed job diagnostics contain only kind, error class and HTTP status, never payload text or credentials.
+
 ## Scheduled Slack digests
 
 Admins manage several channel schedules at `/app/settings/slack/digests`. Members can read schedules, preview their content and view the last ten delivery attempts. Saving, disabling, confirming and posting require current team admin membership. Cookie mutations check the page origin. Channel choices use the installed bot's joined channels; posting checks membership again and does not enable indexing.

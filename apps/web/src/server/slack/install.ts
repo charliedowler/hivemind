@@ -213,6 +213,11 @@ export async function listSlackChannels(teamId: string) {
 }
 
 export async function validateChannel(teamId: string, channelId: string) {
+  if (channelId.startsWith("D"))
+    throw new HiveError(
+      "Direct messages cannot be indexed or used for channel deliveries.",
+      403,
+    );
   const inst = await installation(teamId);
   const channel = await channelInfo(inst.token, channelId);
   if (!indexable(channel)) {
