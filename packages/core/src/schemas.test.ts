@@ -5,7 +5,7 @@ import {
   hivePushInput,
   hiveRecentInput,
   hiveSearchInput,
-} from "./index";
+} from "./schemas";
 
 describe("hive_push", () => {
   it("parses a learning and supplies defaults", () => {

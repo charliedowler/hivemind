@@ -6,15 +6,23 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@hivemind/core": "workspace:*",
     "@modelcontextprotocol/server": "^2.0.0",
+    "drizzle-orm": "^0.45.4",
     "mcp-handler": "^2.0.0",
     "next": "^16.4.0",
+    "openai": "^7.32.0",
+    "postgres": "^3.4.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
     "zod": "^4.2.0"
   },
   "devDependencies": {
@@ -22,6 +30,8 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tailwindcss": "^4.0.0"
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.15",
+    "vitest": "^4.1.11"
   }
 }

@@ -168,3 +168,34 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 - `/app/members`: members, the invite code with a copy button.
 - `/app/install`: snippets with copy buttons. A "Create a new key" button issues a key, shows it once and fills the snippets.
 - Web API routes live under `/api/app/*` and authenticate with the session cookie. They call the same service functions as the MCP tools.
+
+## Web HTTP API
+
+All bodies are JSON. Errors are `{ "error": "<one line>" }` with a 4xx or 5xx status. Routes under `/api/app/*` other than `teams`, `join` and `session` need the session cookie and return 401 without it. Every body is validated with the zod schema from core.
+
+| Route | Body | Success |
+| --- | --- | --- |
+| `POST /api/early-access` | `EarlyAccessInput` | 201 `{ ok: true }` |
+| `POST /api/app/teams` | `{ teamName, memberName }` | 201 `{ apiKey, inviteCode, team: { id, name }, member: { id, name } }`, sets the cookie |
+| `POST /api/app/join` | `{ inviteCode, memberName }` | 201 `{ apiKey, team, member }`, sets the cookie. 404 for an unknown code |
+| `POST /api/app/session` | `{ apiKey }` | 200 `{ team, member }`, sets the cookie. 401 for an unknown key |
+| `DELETE /api/app/session` | none | 204, clears the cookie |
+| `GET /api/app/feed?since=7d&repo=&limit=50` | none | 200 `{ learnings: LearningView[] }` |
+| `POST /api/app/search` | `HiveSearchInput` | 200 `{ hits: SearchHit[] }` |
+| `POST /api/app/ask` | `HiveAskInput` | 200 `AskResult` |
+| `POST /api/app/feedback` | `HiveFeedbackInput` | 200 `FeedbackResult` |
+| `GET /api/app/members` | none | 200 `{ members: MemberView[], overview: TeamOverview }` |
+| `POST /api/app/keys` | `{ label? }` | 201 `{ apiKey, prefix }` |
+
+## LLM module (`apps/web/src/server/llm/index.ts`)
+
+```ts
+embedText(text: string): Promise<number[] | null>                       // null when the key is absent or the call fails
+synthesizeAnswer(question: string, hits: SearchHit[]): Promise<AskResult> // never throws; falls back to extractiveAnswer
+extractiveAnswer(hits: SearchHit[]): AskResult
+suggestTags(learning: Pick<LearningView, "title" | "body" | "kind" | "repo">): Promise<string[]> // [] on any failure
+```
+
+## Seed
+
+`apps/web/scripts/seed-data.json` holds the demo learnings; each has an `author` name. `pnpm --filter web seed -- --url <base url> --key <api key of an existing member> --invite <invite code>` joins the other authors through `POST /api/app/join`, then pushes every learning through `tools/call hive_push` on `/api/mcp` with the right author's key. The script prints the ids. It never prints a key.
