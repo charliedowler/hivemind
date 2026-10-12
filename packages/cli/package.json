@@ -1,0 +1,18 @@
+{
+  "name": "gohive",
+  "version": "0.1.0",
+  "description": "Bring your coding agent to the hive",
+  "type": "module",
+  "bin": { "gohive": "dist/bin.js" },
+  "files": ["dist", "assets", "README.md"],
+  "engines": { "node": ">=20" },
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/charliedowler/hivemind.git", "directory": "packages/cli" },
+  "scripts": {
+    "build": "tsc && node scripts/prepare.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm build && node --test test/*.test.mjs",
+    "prepack": "pnpm build"
+  },
+  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.3" }
+}

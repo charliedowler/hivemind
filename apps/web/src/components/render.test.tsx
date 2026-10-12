@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { SearchHit } from "@hivemind/core";
 import { CombGrid } from "@hivemind/design-system";
-import { InstallSnippets, KeyBox } from "./install";
+import { InstallPage, InstallSnippets, KeyBox } from "./install";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
 import { FrictionContent } from "./friction-panel";
@@ -217,7 +217,16 @@ describe("dashboard components", () => {
     expect(html).toContain("Keep both cells");
   });
 
-  it("leads with OAuth commands and keeps the headless key fallback last", () => {
+  it("leads with the installer and keeps manual and Git fallbacks available", () => {
+    const html = renderToStaticMarkup(<InstallPage baseUrl="https://hive.example" />);
+    expect(html.indexOf("npx gohive install")).toBeLessThan(html.indexOf("claude mcp add"));
+    expect(html).toContain("github:charliedowler/hivemind gohive install");
+    expect(html).toContain("skills/hive/SKILL.md");
+    expect(html).toContain("Manual setup for Claude Code, Codex or Executor");
+    expect(html).toContain("npx gohive doctor");
+  });
+
+  it("keeps OAuth commands and the headless key fallback last", () => {
     const html = renderToStaticMarkup(
       <InstallSnippets baseUrl="https://hive.example" apiKey="hm_test" />,
     );
