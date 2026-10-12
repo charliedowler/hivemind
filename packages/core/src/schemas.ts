@@ -70,7 +70,7 @@ export const hiveSearchInput = z.object({
   repo: z
     .string()
     .optional()
-    .describe("Limit results to a repository, such as owner/name."),
+    .describe("Boost results from this repository, such as owner/name. Other repositories can still match."),
   tags: z
     .array(z.string())
     .optional()
