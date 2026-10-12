@@ -2,7 +2,10 @@ import { readFile } from "node:fs/promises";
 import { hivePushInput } from "@hivemind/core";
 import { z } from "zod";
 
-const seedItemsSchema = z.array(hivePushInput.extend({ author: z.string().trim().min(1).max(80) }));
+const seedItemsSchema = z.array(hivePushInput.extend({
+  repo: z.string().nullish().transform((repo) => repo ?? undefined),
+  author: z.string().trim().min(1).max(80),
+}));
 const joinResponseSchema = z.object({ apiKey: z.string().min(1) });
 const rpcResponseSchema = z.object({
   jsonrpc: z.literal("2.0"),
