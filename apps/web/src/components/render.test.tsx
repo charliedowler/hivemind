@@ -6,7 +6,7 @@ import { InstallSnippets, KeyBox } from "./install";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
 import { FrictionContent } from "./friction-panel";
-import { ConflictCard } from "./conflicts-panel";
+import { DecisionCard } from "./conflicts-panel";
 import { Markdown } from "./markdown";
 import { learningStatus } from "@/lib/learning-presentation";
 import { Login } from "./login";
@@ -213,42 +213,19 @@ describe("dashboard components", () => {
     expect(html).toContain("Show version history");
   });
 
-  it("disables acceptance of a conflict after a source changes", () => {
-    const html = renderToStaticMarkup(
-      <ConflictCard
-        conflict={{
-          id: "edge",
-          older: {
-            id: hit.id,
-            title: hit.title,
-            body: hit.body,
-            author: "Maya",
-            revision: 1,
-          },
-          newer: {
-            id: "lrn_replacement",
-            title: "Use an explicit stash ref",
-            body: "Check the stash list first.",
-            author: "Sam",
-            revision: 1,
-          },
-          relation: "update",
-          confidence: 0.9,
-          status: "candidate",
-          reason: "Changed guidance",
-          votes: 0,
-          voted: false,
-          canAdmin: true,
-          stale: true,
-          createdAt: hit.createdAt,
-        }}
-        onOpen={() => {}}
-        onDecision={() => {}}
-      />,
-    );
-    expect(html).toContain("A source changed");
-    expect(html).toMatch(/disabled=""[^>]*>Confirm replacement/);
-    expect(html).toContain("Keep both cells");
+  it("shows automatic decisions without member actions", () => {
+    const html = renderToStaticMarkup(<DecisionCard record={{
+      id: "dec_test", older: { id: hit.id, title: hit.title },
+      newer: { id: "lrn_replacement", title: "Use an explicit stash ref" },
+      decision: "undecided", confidence: 0.4, reason: "Hive retries with more evidence.",
+      model: "jev-1.13.0", jev: null, latencyMs: 100, author: "Sam",
+      repo: "team/repo", canReverse: false, createdAt: hit.createdAt,
+    }} onOpen={() => {}} onDecision={() => {}} />);
+    expect(html).toContain("Retry automatically");
+    expect(html).toContain("40% confidence");
+    expect(html).toContain("Newer cell pushed by Sam");
+    expect(html).not.toContain("Confirm replacement");
+    expect(html).not.toContain("Reverse this decision");
   });
 
   it("leads with OAuth commands and keeps the headless key fallback last", () => {

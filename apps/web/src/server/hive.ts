@@ -35,6 +35,7 @@ import {
   answerLifecycleContext,
   appendLifecycleContext,
 } from "./lifecycle";
+import { prepareConflicts, applyConflictDecision, recordConflictEvent, retryRelatedConflicts } from "./conflict-decisions";
 import { judgeMemory, rerankMemory } from "./memory-judgments";
 import {
   queueEvidence,
@@ -136,6 +137,14 @@ export async function pushLearning(
     })),
   );
   tags.push(...judgment.tags.filter((tag) => !tags.includes(tag)));
+  const prepared = data.supersedes ? [] : await prepareConflicts(ctx, judgment.relations.filter(item => ["update", "contradiction"].includes(item.relation) && item.confidence >= 0.7), {
+    id: "incoming", revision: 1, title: title.text, body: body.text, author: ctx.memberName,
+    createdAt: new Date().toISOString(), lastPushedAt: new Date().toISOString(),
+    votes: { up: 0, down: 0, outdated: 0 },
+    evidence: [{ payload: JSON.parse(redactSecrets(JSON.stringify(data)).text), digest: "incoming", createdAt: new Date().toISOString() }],
+  });
+  const preparedById = new Map(prepared.map(item => [item.id, item.judgment]));
+  const applied: NonNullable<Awaited<ReturnType<typeof applyConflictDecision>>>[] = [];
   const result = await sql.begin(async (tx) => {
     await lockLearningWrites(tx, ctx);
     const current =
@@ -163,8 +172,8 @@ export async function pushLearning(
             (relation?.relation === "same" && relation.confidence >= 0.9)
           );
         });
-    const merged = Boolean(duplicate);
-    const id: string = duplicate?.id ?? newId("lrn");
+    let merged = Boolean(duplicate);
+    let id: string = duplicate?.id ?? newId("lrn");
     if (merged) {
       await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), lifecycle = 'confirmed', classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround) WHERE id = ${id} AND team_id = ${ctx.teamId}`;
     } else {
@@ -194,17 +203,18 @@ export async function pushLearning(
           );
         const edgeId = newId("sup");
         await tx`INSERT INTO learning_supersessions (id, team_id, older_id, newer_id, older_revision, newer_revision, relation, confidence, reason) VALUES (${edgeId}, ${ctx.teamId}, ${old.id}, ${id}, ${old.revision}, 1, ${proposal.relation}, ${proposal.confidence}, 'Jev proposes a replacement')`;
-        const reason = data.supersedes
-          ? "Pusher explicitly replaces this cell"
-          : old.member_id === ctx.memberId && proposal.confidence >= 0.9
-            ? "Original author corrects this cell"
-            : data.area === "environment" &&
-                old.area === "environment" &&
-                proposal.confidence >= 0.98 &&
-                data.confidence >= 0.95
-              ? "High-confidence environment correction"
-              : null;
-        if (reason) await acceptSupersession(tx, ctx, edgeId, reason);
+        if (data.supersedes) await acceptSupersession(tx, ctx, edgeId, "Pusher explicitly replaces this cell");
+        else {
+          const judgment = preparedById.get(old.id);
+          if (judgment) {
+            const decision = await applyConflictDecision(tx, ctx, edgeId, judgment);
+            if (decision) {
+              applied.push(decision);
+              if (decision.mergedInto) { id = decision.mergedInto; merged = true; break; }
+              if (["retract_new", "mark_outdated"].includes(decision.decision)) break;
+            }
+          }
+        }
       }
     }
     const rows =
@@ -218,6 +228,8 @@ export async function pushLearning(
       learning,
     };
   });
+  for (const decision of applied) recordConflictEvent(ctx, decision);
+  await retryRelatedConflicts(ctx, result.id);
   if (!classification) scheduleTags(ctx, result.learning);
   scheduleKnowledge(ctx);
   return result;
