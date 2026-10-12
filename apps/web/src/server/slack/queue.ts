@@ -54,7 +54,7 @@ export async function runBackfill(
     inst.token,
     channelId,
     thread?.ts,
-    thread ? thread.cursor : permission.backfill_cursor ?? undefined,
+    thread ? thread.cursor : (permission.backfill_cursor ?? undefined),
   );
   for (let offset = 0; offset < page.messages.length; offset += 3)
     await Promise.all(

@@ -53,6 +53,17 @@ describe("Slack tool routing", () => {
     await respondToSlack(ctx, "Do two things", ctx.threadTs, []);
     expect(handler).not.toHaveBeenCalled();
   });
+  it("refuses to save a DM without asking Slack for extra scopes", async () => {
+    const tool = slackTools.find((tool) => tool.name === "hive_save")!;
+    expect(
+      (
+        await tool.handler(
+          { ...ctx, channelId: "D123" },
+          { messageTs: "1800000000.001", wholeThread: false },
+        )
+      ).text,
+    ).toContain("never saves direct messages");
+  });
   it("routes a confirmation to the named tool with the clicking member context", async () => {
     const handleAction = vi.fn().mockResolvedValue({ text: "Done" });
     slackTools.push({

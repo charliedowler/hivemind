@@ -432,8 +432,11 @@ export async function handleCommand(
     const argument = parts.join(" ");
     if (command === "recent") {
       const recent = await recentLearnings(actor, { since: "24h", limit: 10 });
-      const info = await channelInfo(inst.token,channel);
-      const visible = !info.is_private && !info.is_im ? recent.filter(cell=>cell.source!=="slack") : recent;
+      const info = await channelInfo(inst.token, channel);
+      const visible =
+        !info.is_private && !info.is_im
+          ? recent.filter((cell) => cell.source !== "slack")
+          : recent;
       return postMessage(
         inst.token,
         channel,
@@ -471,7 +474,9 @@ export async function handleCommand(
       );
     }
     if (command === "ask" && argument) {
-      const info = await channelInfo(inst.token, channel);
+      const info = channel.startsWith("D")
+        ? { is_private: true, is_im: true }
+        : await channelInfo(inst.token, channel);
       const result = await askHive(
         actor,
         { question: argument },
@@ -585,6 +590,18 @@ export async function runSlackJob(reference: z.infer<typeof jobReference>) {
     });
     await sql`UPDATE slack_jobs SET status='done',payload=NULL,lease_until=NULL,error=NULL WHERE team_id=${teamId} AND id=${jobId}`;
   } catch (error) {
+    const failure = error as { name?: string; status?: number };
+    console.warn(
+      JSON.stringify({
+        event: "slack_job_failed",
+        kind: job.kind,
+        errorClass:
+          typeof failure?.name === "string"
+            ? failure.name.replace(/[^a-zA-Z]/g, "").slice(0, 60)
+            : "UnknownError",
+        status: typeof failure?.status === "number" ? failure.status : null,
+      }),
+    );
     await sql`UPDATE slack_jobs SET status='pending',lease_until=NULL,error='slack_job_failed' WHERE team_id=${teamId} AND id=${jobId}`;
     if (job.kind === "backfill")
       await sql`UPDATE slack_channels SET last_error='Slack backfill is retrying. Refresh later.' WHERE team_id=${teamId} AND channel_id=${job.channel_id} AND generation=${job.generation}`;
