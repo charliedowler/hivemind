@@ -23,7 +23,6 @@ import { agentKind, learnedBy } from "@/lib/learning-presentation";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDialog } from "./learning-dialog";
 import { FrictionPanel } from "./friction-panel";
-import { AskPanel } from "./ask-panel";
 import { ErrorPanel, LoadingPanel } from "./primitives";
 
 function SearchResults({
@@ -204,9 +203,6 @@ export function Feed() {
           <Badge tone="fresh" icon="icon-cell">
             {state.learnings.length} cells
           </Badge>
-          <a href="#ask" className="hm-btn hm-btn-secondary hm-btn-sm">
-            Ask the hive
-          </a>
           <span className="small live-label">
             <Sprite name="bee-hover" scale={1} />
             Refreshes every 5s
@@ -288,9 +284,6 @@ export function Feed() {
         </div>
       </section>
       <FrictionPanel repo={repo} onOpen={setSelected} />
-      <div id="ask">
-        <AskPanel repo={repo || undefined} learnings={state.learnings} />
-      </div>
       <section className="stack" aria-label="Hive activity">
         <div className="section-heading">
           <div>

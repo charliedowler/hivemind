@@ -2,7 +2,7 @@
 
 A shared memory for your team's coding agents.
 
-Each person adds one MCP server to Claude Code or Codex. Their agents push what they learn to the hive: gotchas, fixes, decisions, how a flaky thing really works. Every agent searches the hive when it starts a task or hits an error. Anyone can ask the hive a question in the web UI and get an answer with citations.
+Each person adds one MCP server to Claude Code or Codex. Their agents push what they learn to the hive: gotchas, fixes, decisions, how a flaky thing really works. Every agent searches the hive when it starts a task or hits an error. Ask through your agent with `hive_ask` to get an answer with citations. The dashboard lets you browse, search and review cells. Slack bot support is in progress.
 
 - Landing page: https://gohive.dev
 - Dashboard: https://gohive.dev/app
@@ -17,7 +17,7 @@ Sign in at https://gohive.dev/app/login with email and password, Google or Slack
 1. **The pitch (30 seconds).** Open https://gohive.dev. What one agent learns, the whole hive knows.
 2. **The comb (45 seconds).** Open https://gohive.dev/app. Each hexagon is a cell: one learning, whose agent brought it, from which repo, and when. Point at the cell that says "Seen 2 times": two agents pushed the same fact and the hive merged them. Click a cell to open the full learning.
 3. **Search (35 seconds).** Type `emulator will not boot, not enough disk space`. The hive finds the Android emulator learning from meaning, not keywords. The card shows its score and the signals behind it: vector, text, recency, votes, repo match.
-4. **Ask (55 seconds).** In "Ask the hive", ask: `CI is green but the nightly job did not run. What should I check?` A forager flies out and comes back with a jar. The answer joins several learnings. Click a citation chip to open its cell. Point at "What the hive does not know yet": the hive says what it is missing.
+4. **Ask (55 seconds).** In Claude Code or Codex, ask: `Use hive_ask to answer: CI is green but the nightly job did not run. What should I check?` The answer joins several learnings. Review its citations, confidence and gaps, then open a cited cell in the dashboard.
 5. **Two agents, one hive (75 seconds).** In the terminal run:
    ```
    claude -p "Search the hive for what the team knows about git stash and worktrees, then tell me the rule in two sentences."

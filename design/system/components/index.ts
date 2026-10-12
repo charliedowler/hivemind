@@ -3,7 +3,6 @@ export { Sprite, type SpriteProps } from "./sprites/Sprite";
 export { spriteData, type SpriteArt, type SpriteName } from "./sprites/spriteData";
 export { LearningCell, EmptyCell, type LearningCellProps, type EmptyCellProps, type LearningStatus } from "./hive/LearningCell";
 export { CombGrid, type CombGridProps } from "./hive/CombGrid";
-export { AskBox, type AskBoxProps, type AskState } from "./hive/AskBox";
 export { AnswerCard, CitationChip, CiteRef, type AnswerCardProps, type Citation } from "./hive/AnswerCard";
 export { MemberBee, type MemberBeeProps, type AgentKind, type MemberBeeSize } from "./hive/MemberBee";
 export { InstallSnippet, type InstallSnippetProps, type InstallOption } from "./hive/InstallSnippet";
