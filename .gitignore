@@ -7,3 +7,8 @@ dist/
 *.tsbuildinfo
 apps/web/next-env.d.ts
 .vercel
+
+packages/cli/dist/
+packages/cli/assets/
+packages/cli/package-lock.json
+*.tgz
