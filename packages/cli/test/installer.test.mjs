@@ -173,3 +173,24 @@ test('the runner uses the selected home for all child configuration', () => {
   assert.equal(result.status, 0);
   assert.deepEqual(JSON.parse(result.stdout), { home, codex: join(home, '.codex'), cwd: realpathSync(home) });
 });
+
+test('uninstall keeps a matching Hive hook that predates the installer', () => {
+  const f = fixture();
+  const settings = mergeHooks(originalSettings, f.home);
+  f.write('.claude/settings.json', JSON.stringify(settings));
+  install(f.options);
+  uninstall(f.options);
+  assert.deepEqual(JSON.parse(f.read('.claude/settings.json')), settings);
+});
+
+test('uninstall validates recorded paths before changing settings', () => {
+  const f = fixture();
+  install(f.options);
+  const settings = f.read('.claude/settings.json');
+  const record = JSON.parse(f.read('.hive/install.json'));
+  record.files['../unowned-file'] = { hash: 'invalid' };
+  f.write('.hive/install.json', JSON.stringify(record));
+  assert.throws(() => uninstall(f.options), /unexpected path/);
+  assert.equal(f.read('.claude/settings.json'), settings);
+  assert.equal(f.calls.filter(call => call[2] === 'remove').length, 0);
+});

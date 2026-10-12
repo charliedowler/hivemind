@@ -9,7 +9,7 @@ type Hook = { type?: string; command?: string; [key: string]: unknown };
 type HookGroup = { hooks: Hook[]; [key: string]: unknown };
 type Settings = { hooks?: Record<string, HookGroup[]>; [key: string]: unknown };
 type OwnedFile = { hash: string; previous?: string };
-type Manifest = { version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[] };
+type Manifest = { version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: { event: string; command: string }[] };
 export type Result = { status: number; stdout: string; stderr: string };
 export type Runner = (command: string, args: string[], home: string) => Result;
 export type Options = { home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string };
@@ -39,7 +39,7 @@ export function validateSettings(value: unknown): asserts value is Settings {
   }
 }
 
-export function mergeHooks(value: unknown, home: string, remove = false): Settings {
+export function mergeHooks(value: unknown, home: string, remove = false, ownedHooks?: { event: string; command: string }[]): Settings {
   validateSettings(value);
   const settings: Settings = structuredClone(value);
   const hooks = settings.hooks || {};
@@ -47,6 +47,7 @@ export function mergeHooks(value: unknown, home: string, remove = false): Settin
     const command = hookCommand(home, script);
     const groups = hooks[event] || [];
     if (remove) {
+      if (ownedHooks && !ownedHooks.some(hook => hook.event === event && hook.command === command)) continue;
       const kept = groups.flatMap(group => {
         const remaining = group.hooks.filter(hook => !(hook.type === 'command' && hook.command === command));
         return remaining.length ? [{ ...group, hooks: remaining }] : [];
@@ -84,9 +85,14 @@ function atomicWrite(path: string, content: string | Buffer) {
 
 function loadManifest(home: string): Manifest {
   const content = read(manifestPath(home));
-  if (!content) return { version: 1, agents: [], files: {}, registered: [], backupDirectories: [] };
+  if (!content) return { version: 1, agents: [], files: {}, registered: [], backupDirectories: [], ownedHooks: [] };
   const manifest = JSON.parse(content) as Manifest;
   if (manifest.version !== 1 || !manifest.files || !Array.isArray(manifest.agents) || !Array.isArray(manifest.registered)) throw new Error('The Hive install record is not supported');
+  if (!manifest.ownedHooks) {
+    const originalPath = manifest.backupDirectories?.[0] ? join(manifest.backupDirectories[0], '.claude/settings.json') : undefined;
+    const original: Settings = JSON.parse(originalPath ? read(originalPath) || '{}' : '{}');
+    manifest.ownedHooks = manifest.agents.includes('claude') ? [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']].filter(([event, script]) => !(original.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.command === hookCommand(home, script)))).map(([event, script]) => ({ event, command: hookCommand(home, script) })) : [];
+  }
   return manifest;
 }
 
@@ -160,7 +166,15 @@ export function install(options: Options): Manifest {
         }
       }
     }
-    if (agents.includes('claude')) writes.set(settingsPath, JSON.stringify(mergeHooks(JSON.parse(read(settingsPath) || '{}'), home), null, 2) + '\n');
+    if (agents.includes('claude')) {
+      const existing = JSON.parse(read(settingsPath) || '{}') as Settings;
+      const merged = mergeHooks(existing, home);
+      for (const [event, script] of [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']]) {
+        const command = hookCommand(home, script);
+        if (!(existing.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.type === 'command' && hook.command === command))) manifest.ownedHooks.push({ event, command });
+      }
+      writes.set(settingsPath, JSON.stringify(merged, null, 2) + '\n');
+    }
     const servers = new Map(agents.map(agent => [agent, server(home, agent, run)]));
     for (const [agent, value] of servers) if (value.exists && !value.compatible) throw new Error(`${agent} already has a different server called hive. No files were changed`);
     const backupDir = options.backupDir || join(home, '.hive/backups', `${Date.now()}-${randomUUID().slice(0, 8)}`);
@@ -258,7 +272,7 @@ export function uninstall(options: Options) {
       if (text !== undefined) writes.set(path, markInstructions(text, agent, true));
     }
     const settingsPath = join(home, '.claude/settings.json');
-    if (manifest.agents.includes('claude') && existsSync(settingsPath)) writes.set(settingsPath, JSON.stringify(mergeHooks(JSON.parse(read(settingsPath)!), home, true), null, 2) + '\n');
+    if (manifest.agents.includes('claude') && existsSync(settingsPath)) writes.set(settingsPath, JSON.stringify(mergeHooks(JSON.parse(read(settingsPath)!), home, true, manifest.ownedHooks), null, 2) + '\n');
     const backupDir = options.backupDir || join(home, '.hive/backups', `${Date.now()}-uninstall`);
     backUp(home, [...writes.keys(), join(home, '.claude.json'), join(home, '.codex/config.toml'), manifestPath(home)], backupDir);
     for (const [path, content] of writes) atomicWrite(path, content);
@@ -280,6 +294,7 @@ export function uninstall(options: Options) {
     }
     if (remaining.length) atomicWrite(manifestPath(home), JSON.stringify({ ...manifest, registered: remaining }, null, 2) + '\n');
     else unlinkSync(manifestPath(home));
+    if (remaining.length) throw new Error('Hive removal needs another pass. Your backups and install record are saved');
     log(`Hive is uninstalled. Your other hooks and servers are still there. Backups are in ${backupDir}`);
   });
 }

@@ -54,7 +54,7 @@ test('repository scope handles HTTPS, SSH and trailing slashes without the hostn
   assert.equal(repository('https://github.com/team/widget.git'), 'team/widget');
   assert.equal(repository('ssh://git@github.com/team/widget'), 'team/widget');
   assert.equal(repository('https://github.com/team/widget/'), 'team/widget');
-  assert.equal(repository('/tmp/repo'), 'tmp/repo');
+  assert.equal(repository('/tmp/repo'), undefined);
 });
 
 test('the summary keeps at most two short lines and stays silent for no cells', () => {

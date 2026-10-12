@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { bearerToken, callTool, endpoint, homeDirectory } from './mcp.mjs';
 
 export function repository(remote) {
+  if (!/^(?:https?:\/\/|ssh:\/\/|[^/\s]+@[^:\s]+:)/.test(remote.trim())) return;
   const match = remote.trim().replace(/\.git$/, '').replace(/\/$/, '').match(/(?:[:/])([^/:\s]+)\/([^/\s]+)$/);
   return match ? `${match[1]}/${match[2]}` : undefined;
 }
