@@ -1,0 +1,5 @@
+ALTER TABLE early_access
+  ALTER COLUMN name DROP NOT NULL,
+  ALTER COLUMN company DROP NOT NULL,
+  ALTER COLUMN team_size DROP NOT NULL,
+  ALTER COLUMN source SET DEFAULT 'landing';

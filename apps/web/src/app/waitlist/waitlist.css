@@ -1,0 +1,109 @@
+.waitlist-page {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
+  border-top: 8px solid var(--honey-400);
+}
+
+.waitlist-content {
+  width: 100%;
+  max-width: 600px;
+}
+
+.waitlist-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  font-family: var(--font-display);
+  font-size: 28px;
+}
+
+.waitlist-mark {
+  position: relative;
+  width: 96px;
+  height: 92px;
+}
+
+.waitlist-mark > :last-child {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+}
+
+.waitlist-page h1 {
+  max-width: 540px;
+  font-size: 48px;
+  line-height: 1;
+  text-wrap: balance;
+}
+
+.waitlist-lead {
+  margin-top: 20px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--text-subtle);
+}
+
+.waitlist-benefits {
+  display: grid;
+  gap: 14px;
+  margin: 24px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.waitlist-benefits li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.waitlist-page .sprite {
+  flex-shrink: 0;
+}
+
+.waitlist-signup {
+  max-width: 440px;
+}
+
+.waitlist-form {
+  display: grid;
+  gap: 16px;
+}
+
+.waitlist-form [role="alert"] {
+  color: var(--sting-700);
+}
+
+.waitlist-success {
+  padding: 20px;
+  border: 2px solid var(--teal-700);
+  background: var(--teal-100);
+}
+
+.waitlist-success p {
+  margin-top: 12px;
+}
+
+.waitlist-note {
+  margin-top: 16px;
+  color: var(--text-subtle);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .waitlist-page {
+    padding: 48px 32px;
+  }
+
+  .waitlist-page h1 {
+    font-size: 64px;
+  }
+
+  .waitlist-lead {
+    font-size: 18px;
+  }
+}

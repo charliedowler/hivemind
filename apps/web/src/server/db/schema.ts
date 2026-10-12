@@ -143,10 +143,10 @@ export const askLog = pgTable("ask_log", {
 
 export const earlyAccess = pgTable("early_access", {
   id: text("id").primaryKey(),
-  name: text("name").notNull(),
+  name: text("name"),
   email: text("email").notNull(),
-  company: text("company").notNull(),
-  teamSize: text("team_size").notNull(),
-  source: text("source"),
+  company: text("company"),
+  teamSize: text("team_size"),
+  source: text("source").default("landing"),
   createdAt: createdAt(),
 });

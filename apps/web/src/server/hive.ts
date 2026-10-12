@@ -29,6 +29,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
 import { newId } from "./db/ids";
+import { saveEarlyAccess } from "./early-access";
 import { HiveInputError, HiveNotFoundError } from "./errors";
 import {
   embedText,
@@ -313,7 +314,5 @@ export async function submitEarlyAccess(
   input: EarlyAccessInput,
 ): Promise<{ id: string }> {
   const data = validate(earlyAccessInput, input);
-  const id = newId("ea");
-  await getSql()`INSERT INTO early_access (id, name, email, company, team_size, source) VALUES (${id}, ${data.name}, ${data.email}, ${data.company}, ${data.teamSize}, ${data.source ?? null})`;
-  return { id };
+  return saveEarlyAccess(data);
 }
