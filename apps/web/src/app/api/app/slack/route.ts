@@ -7,9 +7,9 @@ import {
   disconnectSlack,
 } from "@/server/slack/store";
 import { syncChannels } from "@/server/slack/install";
-import { enqueueSlack } from "@/server/slack/queue";
+import { enqueueSlack, retryPendingSlack } from "@/server/slack/queue";
 const input = z.object({
-  action: z.enum(["refresh", "enable", "stop", "purge", "disconnect"]),
+  action: z.enum(["refresh", "enable", "stop", "purge", "disconnect", "retry"]),
   channel: z.string().optional(),
 });
 export async function GET() {
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     sameOrigin(request);
     const data = input.parse(await readJson(request));
     if (data.action === "refresh") await syncChannels(ctx);
+    else if (data.action === "retry") await retryPendingSlack(ctx);
     else if (data.action === "disconnect") await disconnectSlack(ctx);
     else {
       const channel = z.string().min(1).parse(data.channel);

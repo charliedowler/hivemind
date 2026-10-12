@@ -80,6 +80,14 @@ export function SlackSettings({ initial }: { initial: SlackSettingsData }) {
                 Refresh channels
               </Button>
               <Button
+                variant="secondary"
+                disabled={Boolean(pending)}
+                loading={pending === "retry"}
+                onClick={() => change("retry")}
+              >
+                Retry pending work
+              </Button>
+              <Button
                 variant="ghost"
                 disabled={Boolean(pending)}
                 onClick={() => change("disconnect")}
