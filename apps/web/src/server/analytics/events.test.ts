@@ -24,11 +24,17 @@ afterEach(() => {
 describe("analytics envelope", () => {
   it("keeps key creation and revocation distinct while deduplicating each outcome", async () => {
     const rows: EventRow[] = [];
-    await withOrigin(originFor(ctx), async () => {
-      await accessEvent(ctx, "key_created", {}, "key_aaaaaaaaaaaa");
-      await accessEvent(ctx, "key_revoked", {}, "key_aaaaaaaaaaaa");
-      await accessEvent(ctx, "key_revoked", {}, "key_aaaaaaaaaaaa");
-    }, async (row) => { rows.push(row); });
+    await withOrigin(
+      originFor(ctx),
+      async () => {
+        await accessEvent(ctx, "key_created", {}, "key_aaaaaaaaaaaa");
+        await accessEvent(ctx, "key_revoked", {}, "key_aaaaaaaaaaaa");
+        await accessEvent(ctx, "key_revoked", {}, "key_aaaaaaaaaaaa");
+      },
+      async (row) => {
+        rows.push(row);
+      },
+    );
     expect(rows[0].event_key).not.toBe(rows[1].event_key);
     expect(rows[1].event_key).toBe(rows[2].event_key);
   });
@@ -172,4 +178,24 @@ describe("analytics envelope", () => {
     expect(rows[0].properties.operationId).toBe(rows[1].properties.operationId);
     expect(JSON.stringify(rows)).not.toContain("private");
   });
+});
+
+it("keeps conflict analytics bounded and excludes reasons and bodies", () => {
+  const properties = {
+    decision: "supersede" as const,
+    decisionConfidence: 0.9,
+    model: "claude-sonnet-5-5" as const,
+    body: "private body",
+    reason: "private reason",
+  };
+  const row = eventRow({ name: "conflict.decided", latencyMs: 20, properties });
+  expect(row.properties.decision).toBe("supersede");
+  expect(row.properties.decisionConfidence).toBe(0.9);
+  expect(JSON.stringify(row)).not.toContain("private");
+  expect(() =>
+    eventRow({
+      name: "conflict.decided",
+      properties: { decisionConfidence: 2 },
+    }),
+  ).toThrow();
 });

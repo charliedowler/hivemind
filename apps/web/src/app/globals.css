@@ -980,3 +980,13 @@ pre:focus-visible {
 .slack-signals dd { margin: 0; font-family: var(--font-mono); }
 .slack-decision a { overflow-wrap: anywhere; }
 @media(max-width:600px) { .slack-settings .hm-card { padding: 16px; } .slack-channel .row { align-items: flex-start; } }
+.decision-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+.decision-reversal > button { align-self: start; }
+@media (max-width: 640px) {
+  .decision-filters { grid-template-columns: minmax(0, 1fr); }
+}

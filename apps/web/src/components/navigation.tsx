@@ -43,7 +43,7 @@ export function Navigation({
         <nav aria-label="Dashboard">
           {[
             ["/app", "The comb"],
-            ["/app/conflicts", "Conflicts"],
+            ["/app/conflicts", "Decisions"],
             ["/app/tree", "Tree"],
             ["/app/members", "Members"],
             ["/app/install", "Install"],

@@ -19,6 +19,11 @@ import {
   resolveConflict,
   verificationHorizon,
 } from "./lifecycle";
+import { judgeConflict } from "./conflict-judgments";
+vi.mock("./conflict-judgments", async importOriginal => {
+  const module = await importOriginal<typeof import("./conflict-judgments")>();
+  return { ...module, judgeConflict: vi.fn(async () => ({ decision: "undecided", reason: "Both models remain uncertain.", confidence: 0.4, model: "unavailable", jev: null, latencyMs: 0 })) };
+});
 import { judgeMemory } from "./memory-judgments";
 vi.mock("./llm/embeddings", () => ({ embedText: async () => null }));
 vi.mock("./memory-judgments", () => ({
@@ -250,7 +255,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
         status: "rejected",
       });
     });
-    it("automatically accepts confident author and environment corrections", async () => {
+    it("applies automatic decisions for author and environment corrections", async () => {
+      vi.mocked(judgeConflict).mockResolvedValue({ decision: "supersede", reason: "New evidence replaces earlier guidance.", confidence: 0.99, model: "claude-sonnet-5-5", jev: null, latencyMs: 10 });
       vi.mocked(judgeMemory).mockImplementation(async (_, candidates) => ({
         tags: [],
         relations: candidates.map((item) => ({
