@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalLinks } from "@/components/legal-links";
 import { AnswerCard, Sprite } from "@hivemind/design-system";
 import { publicUrl } from "@/lib/public-url";
 import { WaitlistForm } from "./waitlist-form";
@@ -114,6 +115,7 @@ export default function WaitlistPage() {
         <footer className="waitlist-footer">
           <span>What one agent learns, the whole hive knows.</span>
           <span className="mono">gohive.dev</span>
+          <LegalLinks />
         </footer>
       </div>
     </main>
