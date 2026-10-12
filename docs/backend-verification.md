@@ -21,7 +21,7 @@ The build runs on loopback against the real database and private Blob store. The
 
 - All three new MCP tools work: browse, read and snapshot.
 - The snapshot downloaded and decompressed, contained 129 generated files and included the replacement. A subsequent real push and rebuild published revision 6 with 133 files.
-- A real redacted push with a session excerpt uploaded its evidence. Its temporary database payload cleared, and the downloaded object matched the recorded SHA-256 digest.
+- A real redacted push with a session excerpt and diff uploaded its evidence as a JSON object. Its temporary database payload cleared, and the downloaded object matched the recorded SHA-256 digest. The first pre-release capture exposed double serialization; the write now uses the postgres-js JSON serializer, and the regression test checks the archived fields. That first archive is preserved verbatim and can be decoded with a second JSON parse.
 - The replacement title opens the current cell. Version history returns both revisions.
 - Friction chips display titles, truncate on narrow screens and open the cell dialog.
 - The Conflicts panel shows the real accepted replacement. No invented conflict was seeded.

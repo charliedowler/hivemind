@@ -164,7 +164,7 @@ export async function queueEvidence(
   const payload = canonicalJson(redactEvidence(input));
   const hash = digest(payload);
   const key = `teams/${ctx.teamId}/evidence/${pushId}-${hash}.json`;
-  await tx`INSERT INTO learning_evidence (push_id, team_id, learning_id, payload, object_key, digest, bytes) VALUES (${pushId}, ${ctx.teamId}, ${learningId}, ${payload}::jsonb, ${key}, ${hash}, ${Buffer.byteLength(payload)})`;
+  await tx`INSERT INTO learning_evidence (push_id, team_id, learning_id, payload, object_key, digest, bytes) VALUES (${pushId}, ${ctx.teamId}, ${learningId}, ${tx.json(JSON.parse(payload))}, ${key}, ${hash}, ${Buffer.byteLength(payload)})`;
 }
 
 async function withStorageWorkers<T>(

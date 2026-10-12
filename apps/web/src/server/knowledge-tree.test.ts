@@ -146,6 +146,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(evidence.uploaded_at).not.toBeNull();
       expect(evidence.payload).toBeNull();
       const raw = (await readPrivateObject(evidence.object_key)).toString();
+      expect(JSON.parse(raw).evidence.session_excerpt).toBe("Token [redacted]");
+      expect(JSON.parse(raw).evidence.diff).toBe("+ recorded fact");
       expect(raw).toContain("[redacted]");
       expect(raw).not.toContain(secret);
       expect(createHash("sha256").update(raw).digest("hex")).toBe(
