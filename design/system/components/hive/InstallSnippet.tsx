@@ -19,7 +19,7 @@ export interface InstallSnippetProps {
 
 export function InstallSnippet({
   options,
-  footnote = "One line. Your agent joins the hive.",
+  footnote = "Your agent joins the hive.",
   className,
 }: InstallSnippetProps) {
   const panelId = useId();

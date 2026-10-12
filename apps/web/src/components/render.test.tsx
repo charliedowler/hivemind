@@ -169,6 +169,8 @@ describe("dashboard components", () => {
     expect(html).toContain(
       "codex mcp add hivemind --url https://hive.example/api/mcp --bearer-token-env-var HIVEMIND_KEY",
     );
+    expect(html).toContain("Your agent joins the hive.");
+    expect(html).not.toContain("One line.");
     expect(html).toContain("Agent instructions");
     expect(html).toContain("claude mcp list");
     expect(
