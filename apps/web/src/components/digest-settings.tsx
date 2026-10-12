@@ -92,7 +92,7 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
       </div>
       <nav className="digest-tabs" aria-label="Slack settings">
         <Link href="/app/settings/slack">Connection and channels</Link>
-        <Link href="/app/settings/digests" aria-current="page">
+        <Link href="/app/settings/slack/digests" aria-current="page">
           Digests
         </Link>
       </nav>

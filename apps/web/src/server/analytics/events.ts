@@ -15,6 +15,7 @@ export const eventNames = [
   "digest_skipped_empty",
   "digest_failed",
   "learning.pushed",
+  "conflict.decided",
   "learning.superseded",
   "learning.lifecycle_changed",
   "learning.feedback",
@@ -105,6 +106,29 @@ export function reportedModel(value: unknown) {
   const result = modelSchema.safeParse(value);
   return result.success ? result.data : null;
 }
+const conflictChoices = z.enum([
+  "supersede",
+  "keep_both",
+  "keep_old",
+  "mark_outdated",
+  "retract_new",
+]);
+const conflictProbabilities = z.object({
+  facts: z.record(z.enum(["same", "different"]), probability),
+  replacement: z.record(z.enum(["yes", "no"]), probability),
+  alongside: z.record(z.enum(["yes", "no"]), probability),
+  specificity: z.record(
+    z.enum(["older", "newer", "equal", "different"]),
+    probability,
+  ),
+  olderEvidence: z.record(z.enum(["0", "1", "2"]), probability),
+  newerEvidence: z.record(z.enum(["0", "1", "2"]), probability),
+  support: z.record(
+    z.enum(["older", "newer", "equal", "neither"]),
+    probability,
+  ),
+  decision: z.record(conflictChoices, probability),
+});
 export const propertiesSchema = z.object({
   digestScheduleId: nullable(z.string().regex(/^dgs_[a-z2-7]{12}$/)),
   digestPostId: nullable(z.string().regex(/^dgp_[a-z2-7]{12}$/)),
@@ -114,6 +138,11 @@ export const propertiesSchema = z.object({
   insightCount: nullable(count),
   frictionCount: nullable(count),
   decisionCount: nullable(count),
+  decision: nullable(
+    z.enum([...conflictChoices.options, "undecided", "reversed"]),
+  ),
+  decisionConfidence: nullable(probability),
+  jevProbabilities: nullable(conflictProbabilities),
   actorKind: nullable(z.enum(["member", "anonymous", "system"])),
   role: nullable(z.enum(["admin", "member"])),
   earlyAccessId: nullable(z.string().regex(/^ea_[a-z2-7]{12}$/)),
@@ -156,7 +185,17 @@ export const propertiesSchema = z.object({
   severity: nullable(z.number().finite().min(0).max(4)),
   relevanceProbability: nullable(probability),
   gateDecision: nullable(
-    z.enum(["answer", "gap", "capture", "skip", "reply", "silent"]),
+    z.enum([
+      "answer",
+      "gap",
+      "capture",
+      "skip",
+      "reply",
+      "silent",
+      "reply_now",
+      "react_only",
+      "stay_silent",
+    ]),
   ),
   vote: nullable(z.enum(["up", "down", "outdated"])),
   previousState: nullable(
@@ -187,6 +226,7 @@ export const propertiesSchema = z.object({
       "synthesis",
       "tags",
       "relations",
+      "conflicts",
       "rerank",
     ]),
   ),
@@ -234,13 +274,20 @@ export const propertiesSchema = z.object({
   revision: nullable(count),
   files: nullable(count),
   bytes: nullable(count),
+  channelId: nullable(z.string().regex(/^[CGD][A-Z0-9]{2,30}$/)),
   slackEventKind: nullable(
     z.enum(["mention", "message", "reaction", "action", "command", "other"]),
   ),
 });
 export type Properties = z.input<typeof propertiesSchema>;
 export type EntryPoint =
-  "mcp" | "web" | "slack" | "hook" | "installer" | "scheduled" | "unknown";
+  | "mcp"
+  | "web"
+  | "slack"
+  | "hook"
+  | "installer"
+  | "scheduled"
+  | "unknown";
 export type Origin = {
   teamId: string | null;
   memberId: string | null;
@@ -358,7 +405,10 @@ export function withActor<T>(
     parent
       ? {
           ...parent,
-          sessionKind: parent.sessionKind === "anonymous" ? "web_session" : parent.sessionKind,
+          sessionKind:
+            parent.sessionKind === "anonymous"
+              ? "web_session"
+              : parent.sessionKind,
           teamId: ctx.teamId,
           memberId: ctx.memberId,
           apiKeyId:
@@ -495,7 +545,7 @@ export async function analyticsTransaction<T>(
   return result;
 }
 export function pushSource(
-  source: "claude-code" | "codex" | "manual",
+  source: "claude-code" | "codex" | "manual" | "slack",
 ): NonNullable<Properties["source"]> {
   const entrypoint = currentOrigin()?.entrypoint;
   if (entrypoint === "hook" || entrypoint === "slack") return entrypoint;

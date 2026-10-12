@@ -98,7 +98,51 @@ export function LearningDetail({
           ))}
         </div>
       ) : null}
-      <div className="detail-footer">
+      {learning.permalink ? (
+        <a href={learning.permalink} target="_blank" rel="noreferrer">
+          Open the source message in Slack
+        </a>
+      ) : null}
+      <LearningFooter
+        learning={learning}
+        votes={votes}
+        selectedVote={feedback?.vote}
+        pending={pending}
+        onVote={vote}
+      />
+      {learning.revision ? (
+        <LearningHistory id={learning.id} revision={learning.revision} />
+      ) : null}
+      {canModerate &&
+      !learning.id.startsWith("slk_") &&
+      learning.lifecycle !== "superseded" ? (
+        <Moderation id={learning.id} onDone={onModerated} />
+      ) : null}
+      {error ? <ErrorPanel message={error} /> : null}
+    </div>
+  );
+}
+
+function LearningFooter({
+  learning,
+  votes,
+  selectedVote,
+  pending,
+  onVote,
+}: {
+  learning: LearningView;
+  votes: LearningView["votes"];
+  selectedVote?: FeedbackVote;
+  pending: boolean;
+  onVote: (vote: FeedbackVote) => Promise<void>;
+}) {
+  return (
+    <div className="detail-footer">
+      {learning.id.startsWith("slk_") ? (
+        <p className="small">
+          Indexed Slack evidence. Save the message as a learning to review it.
+        </p>
+      ) : (
         <div className="votes">
           {(
             [
@@ -109,29 +153,22 @@ export function LearningDetail({
           ).map((item) => (
             <Button
               key={item.id}
-              variant={feedback?.vote === item.id ? "primary" : "secondary"}
+              variant={selectedVote === item.id ? "primary" : "secondary"}
               size="sm"
               disabled={pending}
-              aria-pressed={feedback?.vote === item.id}
-              onClick={() => void vote(item.id)}
+              aria-pressed={selectedVote === item.id}
+              onClick={() => void onVote(item.id)}
               aria-label={`${item.label}, ${votes[item.id]} votes`}
             >
               {item.label} {votes[item.id]}
             </Button>
           ))}
         </div>
-        <div className="row wrap">
-          <code className="small breakable">{learning.id}</code>
-          <CopyButton text={learning.id} label="Copy id" />
-        </div>
+      )}
+      <div className="row wrap">
+        <code className="small breakable">{learning.id}</code>
+        <CopyButton text={learning.id} label="Copy id" />
       </div>
-      {learning.revision ? (
-        <LearningHistory id={learning.id} revision={learning.revision} />
-      ) : null}
-      {canModerate && learning.lifecycle !== "superseded" ? (
-        <Moderation id={learning.id} onDone={onModerated} />
-      ) : null}
-      {error ? <ErrorPanel message={error} /> : null}
     </div>
   );
 }

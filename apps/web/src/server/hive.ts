@@ -42,6 +42,12 @@ import {
   answerLifecycleContext,
   appendLifecycleContext,
 } from "./lifecycle";
+import {
+  prepareConflicts,
+  applyConflictDecision,
+  recordConflictEvent,
+  retryRelatedConflicts,
+} from "./conflict-decisions";
 import { judgeMemory, rerankMemory } from "./memory-judgments";
 import {
   queueEvidence,
@@ -61,15 +67,15 @@ import {
   suggestTags,
 } from "@/server/llm";
 
+import { searchSlack, getSlackMessage } from "./slack/search";
+
 const minimumVectorSimilarity = 0.3;
 const minimumLexemeCoverage = 0.5;
 
 function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
   if (!result.success)
-    throw new HiveInputError(
-      "Check the tool's fields and limits.",
-    );
+    throw new HiveInputError("Check the tool's fields and limits.");
   return result.data;
 }
 
@@ -167,6 +173,39 @@ async function pushLearningAction(
     })),
   );
   tags.push(...judgment.tags.filter((tag) => !tags.includes(tag)));
+  const prepared = data.supersedes
+    ? []
+    : await prepareConflicts(
+        ctx,
+        judgment.relations.filter(
+          (item) =>
+            ["update", "contradiction"].includes(item.relation) &&
+            item.confidence >= 0.7,
+        ),
+        {
+          id: "incoming",
+          revision: 1,
+          title: title.text,
+          body: body.text,
+          author: ctx.memberName,
+          createdAt: new Date().toISOString(),
+          lastPushedAt: new Date().toISOString(),
+          votes: { up: 0, down: 0, outdated: 0 },
+          evidence: [
+            {
+              payload: JSON.parse(redactSecrets(JSON.stringify(data)).text),
+              digest: "incoming",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+      );
+  const preparedById = new Map(
+    prepared.map((item) => [item.id, item.judgment]),
+  );
+  const applied: NonNullable<
+    Awaited<ReturnType<typeof applyConflictDecision>>
+  >[] = [];
   const result = await analyticsTransaction(() =>
     sql.begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
@@ -196,8 +235,8 @@ async function pushLearningAction(
               (relation?.relation === "same" && relation.confidence >= 0.9)
             );
           });
-      const merged = Boolean(duplicate);
-      const id: string = duplicate?.id ?? newId("lrn");
+      let merged = Boolean(duplicate);
+      let id: string = duplicate?.id ?? newId("lrn");
       if (merged) {
         await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), lifecycle = 'confirmed', classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround) WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       } else {
@@ -227,11 +266,22 @@ async function pushLearningAction(
                 confidence: 1,
               },
             ]
-          : relations.filter(
-              (item) =>
-                ["update", "contradiction"].includes(item.relation) &&
-                item.confidence >= 0.7,
-            );
+          : relations
+              .filter(
+                (item) =>
+                  ["update", "contradiction"].includes(item.relation) &&
+                  item.confidence >= 0.7,
+              )
+              .sort((a, b) => {
+                const terminal = (id: string) =>
+                  ["keep_old", "mark_outdated", "retract_new"].includes(
+                    preparedById.get(id)?.decision ?? "",
+                  );
+                return (
+                  Number(terminal(b.id)) - Number(terminal(a.id)) ||
+                  b.confidence - a.confidence
+                );
+              });
         for (const proposal of proposals) {
           const oldRows =
             await tx`SELECT * FROM learnings WHERE id = ${proposal.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
@@ -243,17 +293,36 @@ async function pushLearningAction(
             );
           const edgeId = newId("sup");
           await tx`INSERT INTO learning_supersessions (id, team_id, older_id, newer_id, older_revision, newer_revision, relation, confidence, reason) VALUES (${edgeId}, ${ctx.teamId}, ${old.id}, ${id}, ${old.revision}, 1, ${proposal.relation}, ${proposal.confidence}, 'Jev proposes a replacement')`;
-          const reason = data.supersedes
-            ? "Pusher explicitly replaces this cell"
-            : old.member_id === ctx.memberId && proposal.confidence >= 0.9
-              ? "Original author corrects this cell"
-              : data.area === "environment" &&
-                  old.area === "environment" &&
-                  proposal.confidence >= 0.98 &&
-                  data.confidence >= 0.95
-                ? "High-confidence environment correction"
-                : null;
-          if (reason) await acceptSupersession(tx, ctx, edgeId, reason);
+          if (data.supersedes)
+            await acceptSupersession(
+              tx,
+              ctx,
+              edgeId,
+              "Pusher explicitly replaces this cell",
+            );
+          else {
+            const judgment = preparedById.get(old.id);
+            if (judgment) {
+              const decision = await applyConflictDecision(
+                tx,
+                ctx,
+                edgeId,
+                judgment,
+              );
+              if (decision) {
+                applied.push(decision);
+                if (decision.mergedInto) {
+                  id = decision.mergedInto;
+                  merged = true;
+                  break;
+                }
+                if (
+                  ["retract_new", "mark_outdated"].includes(decision.decision)
+                )
+                  break;
+              }
+            }
+          }
         }
       }
       const rows =
@@ -261,6 +330,7 @@ async function pushLearningAction(
       const learning = view(rows[0]);
       return {
         id,
+        pushId,
         merged,
         pushCount: learning.pushCount,
         redactions: title.count + body.count + workaround.count,
@@ -287,21 +357,48 @@ async function pushLearningAction(
       blocked: kind === "friction" ? data.blocked : null,
     },
   });
+  await Promise.all(
+    applied.map((decision) => recordConflictEvent(ctx, decision)),
+  );
+  const retried = await retryRelatedConflicts(
+    ctx,
+    result.id,
+    applied.map((record) => record.edgeId),
+  );
+  if (retried.length) {
+    result.learning = (await getLearning(ctx, result.id)) ?? result.learning;
+    result.pushCount = result.learning.pushCount;
+  }
   if (!classification) scheduleTags(ctx, result.learning);
   scheduleKnowledge(ctx);
-  return result;
+  return {
+    ...result,
+    decisions: [...applied, ...retried].map(
+      ({ id, decision, reason, confidence, model }) => ({
+        id,
+        decision,
+        reason,
+        confidence,
+        model,
+      }),
+    ),
+  };
 }
 
 export function searchLearnings(
   ctx: HiveContext,
   input: HiveSearchInput,
+  options: { publicOnly?: boolean; cellsOnly?: boolean } = {},
 ): Promise<SearchHit[]> {
-  return withOperation(ctx, "search", () => searchLearningsAction(ctx, input));
+  return withOperation(ctx, "search", () =>
+    searchLearningsAction(ctx, input, options),
+  );
 }
 
 async function searchLearningsAction(
   ctx: HiveContext,
   input: HiveSearchInput,
+  options: { publicOnly?: boolean; cellsOnly?: boolean } = {},
 ): Promise<SearchHit[]> {
   const started = performance.now();
   const data = validate(hiveSearchInput, input);
@@ -313,7 +410,7 @@ async function searchLearningsAction(
   const tsquery = sql`replace(plainto_tsquery('english', ${data.query})::text, '&', '|')::tsquery`;
   const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
   const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
-  const filter = sql`l.team_id = ${ctx.teamId} AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null})`;
+  const filter = sql`l.team_id = ${ctx.teamId} AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND (${!options.publicOnly} OR l.source <> 'slack' OR EXISTS(SELECT 1 FROM slack_channels sc WHERE sc.team_id=l.team_id AND sc.private=false AND sc.bot_member=true AND l.session_ref LIKE '%' || '/archives/' || sc.channel_id || '/%'))`;
   const ftsRows =
     await sql`SELECT l.*, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
@@ -350,10 +447,20 @@ async function searchLearningsAction(
         });
     }
   }
-  const hits = rankCandidates([...candidates.values()], data.repo).slice(
-    0,
-    data.limit,
-  );
+  const cells = rankCandidates([...candidates.values()], data.repo);
+  const slack =
+    options.cellsOnly ||
+    (data.kind && data.kind !== "learning") ||
+    tags.some((tag) => tag !== "slack")
+      ? []
+      : await searchSlack(
+          ctx,
+          { query: data.query, limit: data.limit },
+          options.publicOnly,
+        );
+  const hits = [...cells, ...slack]
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+    .slice(0, data.limit);
   await recordEvent({
     name: "search.performed",
     latencyMs: performance.now() - started,
@@ -380,19 +487,22 @@ async function searchLearningsAction(
 export function askHive(
   ctx: HiveContext,
   input: HiveAskInput,
+  options: { publicOnly?: boolean } = {},
 ): Promise<AskResult> {
-  return withOperation(ctx, "ask", () => askHiveAction(ctx, input));
+  return withOperation(ctx, "ask", () => askHiveAction(ctx, input, options));
 }
 
 async function askHiveAction(
   ctx: HiveContext,
   input: HiveAskInput,
+  options: { publicOnly?: boolean } = {},
 ): Promise<AskResult> {
   const started = performance.now();
   const data = validate(hiveAskInput, input);
-  const friction = isFrictionAsk(data.question)
-    ? await frictionSummary(ctx, data.repo)
-    : null;
+  const friction =
+    !options.publicOnly && isFrictionAsk(data.question)
+      ? await frictionSummary(ctx, data.repo)
+      : null;
   if (friction && friction.count) {
     const cells =
       await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
@@ -418,11 +528,15 @@ async function askHiveAction(
   }
   const hits = await rerankMemory(
     data.question,
-    await searchLearnings(ctx, {
-      query: data.question.slice(0, 500),
-      repo: data.repo,
-      limit: 8,
-    }),
+    await searchLearnings(
+      ctx,
+      {
+        query: data.question.slice(0, 500),
+        repo: data.repo,
+        limit: 8,
+      },
+      options,
+    ),
   );
   const [context, relevance] = await Promise.all([
     answerLifecycleContext(ctx, hits),
@@ -451,6 +565,32 @@ async function askHiveAction(
     };
   }
   if (result.citations.length) result = appendLifecycleContext(result, context);
+  const slackHits = hits.filter((h) => h.id.startsWith("slk_"));
+  const permitted = await Promise.all(
+    slackHits.map((h) => getSlackMessage(ctx, h.id)),
+  );
+  if (permitted.some((h) => !h))
+    result = {
+      answer:
+        "Slack source permissions changed while the hive was answering. Ask again with the current sources.",
+      citations: [],
+      confidence: "low",
+      gaps: "Some retrieved Slack evidence is no longer available.",
+      synthesized: false,
+    };
+  const sources = new Map(
+    hits
+      .filter((h) => h.source === "slack" && h.permalink)
+      .map((h) => [h.id, h.permalink!]),
+  );
+  result = {
+    ...result,
+    citations: result.citations.map((c) =>
+      sources.has(c.id)
+        ? { ...c, source: "slack", permalink: sources.get(c.id) }
+        : c,
+    ),
+  };
   await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized, classification) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((citation) => citation.id)}, ${result.synthesized}, ${relevance.classification ? getSql().json(classificationJson(relevance.classification)) : null})`;
   await recordEvent({
     name: "ask.performed",
@@ -562,6 +702,7 @@ export async function getLearning(
   ctx: HiveContext,
   id: string,
 ): Promise<LearningView | null> {
+  if (id.startsWith("slk_")) return getSlackMessage(ctx, id);
   const rows =
     await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
   return rows[0] ? view(rows[0]) : null;

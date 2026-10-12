@@ -55,6 +55,8 @@ export type LearningView = {
   verifyBeforeUse?: boolean;
   supersededBy?: string | null;
   sessionRef?: string | null;
+  permalink?: string | null;
+  slackChannel?: string;
   classification?: JevClassification | null;
   adminOutdated?: boolean;
   area?: FrictionArea | null;
@@ -88,12 +90,22 @@ export type PushResult = {
   pushCount: number;
   redactions: number;
   learning: LearningView;
+  decisions?: Pick<
+    ConflictDecisionRecord,
+    "id" | "decision" | "reason" | "confidence" | "model"
+  >[];
 };
 
 export const askConfidenceLevels = ["high", "medium", "low"] as const;
 export type AskConfidence = (typeof askConfidenceLevels)[number];
 
-export type AskCitation = { id: string; title: string; why: string };
+export type AskCitation = {
+  id: string;
+  title: string;
+  why: string;
+  source?: "slack";
+  permalink?: string;
+};
 
 export type AskResult = {
   answer: string;
@@ -239,3 +251,26 @@ export type KnowledgeListing = {
   entries: KnowledgeEntry[];
 };
 export type KnowledgeFile = { path: string; revision: number; content: string };
+
+export type ConflictDecisionRecord = {
+  id: string;
+  older: { id: string; title: string };
+  newer: { id: string; title: string };
+  decision:
+    | "supersede"
+    | "keep_both"
+    | "keep_old"
+    | "mark_outdated"
+    | "retract_new"
+    | "undecided"
+    | "reversed";
+  reason: string;
+  confidence: number;
+  model: string;
+  jev: Record<string, JevAnswer> | null;
+  latencyMs: number;
+  author: string;
+  repo: string | null;
+  canReverse: boolean;
+  createdAt: string;
+};

@@ -43,12 +43,12 @@ export function Navigation({
         <nav aria-label="Dashboard">
           {[
             ["/app", "The comb"],
-            ["/app/conflicts", "Conflicts"],
+            ["/app/conflicts", "Decisions"],
             ["/app/tree", "Tree"],
             ["/app/members", "Members"],
             ["/app/install", "Install"],
             ["/app/account", "Account"],
-            ["/app/settings/digests", "Digests"],
+            ["/app/settings/slack", "Slack"],
             ...(isAdmin ? [["/app/admin/analytics", "Analytics"]] : []),
           ].map(([href, label]) => (
             <Link

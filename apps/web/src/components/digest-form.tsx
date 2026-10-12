@@ -109,6 +109,7 @@ export function DigestForm({
           await requestJson<ComposedDigest>("/api/app/digests", {
             action,
             schedule: data,
+            id: schedule?.id,
           }),
         );
       else {

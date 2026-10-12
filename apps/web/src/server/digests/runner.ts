@@ -12,6 +12,7 @@ import { originFor, recordEvent, withOrigin } from "../analytics/events";
 import { gatherDigest } from "./data";
 import { scheduleView, type DigestSchedule } from "./store";
 export type DigestTransport = {
+  publicOnly?(schedule: DigestSchedule): Promise<boolean>;
   authors(teamId: string): Promise<Map<string, string>>;
   send(
     schedule: DigestSchedule,
@@ -79,9 +80,20 @@ export async function postDigest(
   return withOrigin(origin, async () => {
     let sending = false;
     try {
-      const authors = await transport.authors(teamId);
+      const [authors, publicOnly] = await Promise.all([
+        transport.authors(teamId),
+        transport.publicOnly?.(schedule) ?? Promise.resolve(false),
+      ]);
       const data = await getSql().begin((tx) =>
-        gatherDigest(teamId, new Date(schedule.coverageStart), tx, authors, schedule.id, new Date(schedule.lastCursor)),
+        gatherDigest(
+          teamId,
+          new Date(schedule.coverageStart),
+          tx,
+          authors,
+          schedule.id,
+          new Date(schedule.lastCursor),
+          publicOnly,
+        ),
       );
       const digest = composeDigest(data, schedule, schedule.timezone);
       if (digest.empty && schedule.skipEmpty) {
@@ -101,8 +113,16 @@ export async function postDigest(
         const rows =
           await tx`UPDATE slack_digest_posts SET status='posted',posted_at=clock_timestamp(),slack_ts=${sent.ts},permalink=${sent.permalink},until_cursor=${new Date(data.until)},counts=${tx.json(digest.counts)},error=NULL WHERE id=${postId} AND team_id=${teamId} AND status='running' RETURNING posted_at`;
         if (!rows[0]) throw new Error("Digest claim was lost.");
-        const sourceKeys = [...(schedule.learnings ? data.learnings : []), ...(schedule.insights ? data.insights : []), ...(schedule.friction ? data.friction : []), ...(schedule.decisions ? data.decisions : [])].map((item) => item.sourceKey).filter((key): key is string => Boolean(key));
-        if (sourceKeys.length) await tx`INSERT INTO slack_digest_receipts(schedule_id,team_id,source_key,post_id) SELECT ${id},${teamId},key,${postId} FROM unnest(${sourceKeys}::text[]) AS key ON CONFLICT DO NOTHING`;
+        const sourceKeys = [
+          ...(schedule.learnings ? data.learnings : []),
+          ...(schedule.insights ? data.insights : []),
+          ...(schedule.friction ? data.friction : []),
+          ...(schedule.decisions ? data.decisions : []),
+        ]
+          .map((item) => item.sourceKey)
+          .filter((key): key is string => Boolean(key));
+        if (sourceKeys.length)
+          await tx`INSERT INTO slack_digest_receipts(schedule_id,team_id,source_key,post_id) SELECT ${id},${teamId},key,${postId} FROM unnest(${sourceKeys}::text[]) AS key ON CONFLICT DO NOTHING`;
         await tx`UPDATE slack_digest_schedules SET last_posted_at=${rows[0].posted_at},last_cursor=${new Date(data.until)} WHERE id=${id} AND team_id=${teamId}`;
       });
       await digestEvent("digest_posted", schedule, postId, trigger, digest);

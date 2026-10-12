@@ -25,11 +25,12 @@ export const teams = pgTable("teams", {
 
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
-  teamId: text("team_id")
-    .references(() => teams.id),
+  teamId: text("team_id").references(() => teams.id),
   name: text("name").notNull(),
   createdAt: createdAt(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   image: text("image"),
   hiveRegistration: text("hive_registration"),
   email: text("email").unique(),
@@ -60,11 +61,12 @@ export const webSessions = pgTable("web_sessions", {
   memberId: text("member_id")
     .notNull()
     .references(() => members.id),
-  teamId: text("team_id")
-    .references(() => teams.id),
+  teamId: text("team_id").references(() => teams.id),
   tokenHash: text("token_hash").notNull().unique(),
   token: text("token").unique(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   createdAt: createdAt(),
@@ -256,7 +258,9 @@ export const knowledgeSnapshots = pgTable("knowledge_snapshots", {
 
 export const slackDigestSchedules = pgTable("slack_digest_schedules", {
   id: text("id").primaryKey(),
-  teamId: text("team_id").notNull().references(() => teams.id),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
   channelId: text("channel_id").notNull(),
   channelName: text("channel_name").notNull(),
   cadence: text("cadence").notNull(),
@@ -272,12 +276,16 @@ export const slackDigestSchedules = pgTable("slack_digest_schedules", {
   skipEmpty: boolean("skip_empty").notNull().default(true),
   lastPostedAt: timestamp("last_posted_at", { withTimezone: true }),
   lastCursor: timestamp("last_cursor", { withTimezone: true }).notNull(),
-  coverageStartAt: timestamp("coverage_start_at", { withTimezone: true }).notNull(),
+  coverageStartAt: timestamp("coverage_start_at", {
+    withTimezone: true,
+  }).notNull(),
   nextDueAt: timestamp("next_due_at", { withTimezone: true }).notNull(),
   lastSlotAt: timestamp("last_slot_at", { withTimezone: true }),
   createdBy: text("created_by").notNull(),
   createdAt: createdAt(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 export const slackDigestPosts = pgTable("slack_digest_posts", {
   id: text("id").primaryKey(),
@@ -286,7 +294,9 @@ export const slackDigestPosts = pgTable("slack_digest_posts", {
   slotAt: timestamp("slot_at", { withTimezone: true }).notNull(),
   trigger: text("trigger").notNull(),
   status: text("status").notNull(),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   postedAt: timestamp("posted_at", { withTimezone: true }),
   slackTs: text("slack_ts"),
   permalink: text("permalink"),
@@ -295,9 +305,24 @@ export const slackDigestPosts = pgTable("slack_digest_posts", {
   counts: jsonb("counts").notNull().default({}),
   error: text("error"),
 });
-export const slackDigestReceipts = pgTable("slack_digest_receipts", {
-  scheduleId: text("schedule_id").notNull(), teamId: text("team_id").notNull(), sourceKey: text("source_key").notNull(), postId: text("post_id").notNull(),
-}, (table) => [primaryKey({ columns: [table.scheduleId, table.sourceKey] })]);
+export const slackDigestReceipts = pgTable(
+  "slack_digest_receipts",
+  {
+    scheduleId: text("schedule_id").notNull(),
+    teamId: text("team_id").notNull(),
+    sourceKey: text("source_key").notNull(),
+    postId: text("post_id").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scheduleId, table.sourceKey] })],
+);
 export const slackDigestProposals = pgTable("slack_digest_proposals", {
-  id: text("id").primaryKey(), teamId: text("team_id").notNull(), memberId: text("member_id").notNull(), channelId: text("channel_id").notNull(), schedule: jsonb("schedule").notNull(), restatement: text("restatement").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), confirmedScheduleId: text("confirmed_schedule_id"), createdAt: createdAt(),
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  memberId: text("member_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  schedule: jsonb("schedule").notNull(),
+  restatement: text("restatement").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  confirmedScheduleId: text("confirmed_schedule_id"),
+  createdAt: createdAt(),
 });

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { authenticated, readJson } from "@/lib/http";
 import { requireAdmin, account } from "@/server/identity/access";
-import { HiveError } from "@/server/errors";
+import { validateChannel } from "@/server/slack/install";
+import { sameOrigin } from "@/server/slack/security";
 import {
   digestChannels,
   digestChannel,
@@ -34,11 +35,7 @@ export async function GET() {
 }
 export async function POST(request: Request) {
   return authenticated(async (ctx) => {
-    if (request.headers.get("origin") !== new URL(request.url).origin)
-      throw new HiveError(
-        "Open this page in Hive before changing a schedule.",
-        403,
-      );
+    sameOrigin(request);
     const data = z
       .object({
         action: z.enum(["save", "preview", "post"]),
@@ -47,13 +44,15 @@ export async function POST(request: Request) {
       })
       .parse(await readJson(request));
     if (data.action === "preview") {
-      const schedule = data.id
-        ? await getSchedule(ctx.teamId, data.id)
-        : digestScheduleInput.parse(data.schedule);
-      const since =
-        "lastCursor" in schedule
-          ? new Date(String(schedule.lastCursor))
-          : new Date(Date.now() - 7 * 86400000);
+      const stored = data.id ? await getSchedule(ctx.teamId, data.id) : null;
+      const schedule = data.schedule
+        ? digestScheduleInput.parse(data.schedule)
+        : stored;
+      if (!schedule) throw new Error("Provide a schedule to preview.");
+      const since = stored
+        ? new Date(stored.lastCursor)
+        : new Date(Date.now() - 7 * 86400000);
+      const { channel } = await validateChannel(ctx.teamId, schedule.channelId);
       return Response.json(
         await digestPreview(
           ctx.teamId,
@@ -62,7 +61,8 @@ export async function POST(request: Request) {
           schedule.timezone,
           await digestTransport.authors(ctx.teamId),
           data.id,
-          "coverageStart" in schedule ? new Date(String(schedule.coverageStart)) : since,
+          stored ? new Date(stored.coverageStart) : since,
+          !channel.is_private,
         ),
       );
     }

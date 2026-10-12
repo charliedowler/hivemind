@@ -6,13 +6,15 @@ import { InstallPage, InstallSnippets, KeyBox } from "./install";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
 import { FrictionContent } from "./friction-panel";
-import { ConflictCard } from "./conflicts-panel";
+import { DecisionCard } from "./conflicts-panel";
 import { Markdown } from "./markdown";
 import { learningStatus } from "@/lib/learning-presentation";
 import { Login } from "./login";
 import { enabledSignInProviders } from "@/lib/auth-providers";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push() {}, refresh() {} }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push() {}, refresh() {} }),
+}));
 
 const hit: SearchHit = {
   id: "lrn_abcdefghijkl",
@@ -36,15 +38,30 @@ const hit: SearchHit = {
 
 describe("dashboard components", () => {
   it("hides unconfigured providers and removes API keys from web sign-in", () => {
-    const providers = enabledSignInProviders({ GOOGLE_CLIENT_ID: "fixture", SLACK_CLIENT_SECRET: "fixture" });
+    const providers = enabledSignInProviders({
+      GOOGLE_CLIENT_ID: "fixture",
+      SLACK_CLIENT_SECRET: "fixture",
+    });
     expect(providers).toEqual([]);
-    const html = renderToStaticMarkup(<Login invite="" providers={providers} />);
+    const html = renderToStaticMarkup(
+      <Login invite="" providers={providers} />,
+    );
     expect(html).toContain('name="email"');
     expect(html).toContain('name="password"');
     expect(html).not.toContain('name="apiKey"');
     expect(html).not.toContain("Sign in with Google");
     expect(html).not.toContain("Sign in with Slack");
-    const configured = renderToStaticMarkup(<Login invite="" providers={enabledSignInProviders({ GOOGLE_CLIENT_ID: "fixture", GOOGLE_CLIENT_SECRET: "fixture", SLACK_CLIENT_ID: "fixture", SLACK_CLIENT_SECRET: "fixture" })} />);
+    const configured = renderToStaticMarkup(
+      <Login
+        invite=""
+        providers={enabledSignInProviders({
+          GOOGLE_CLIENT_ID: "fixture",
+          GOOGLE_CLIENT_SECRET: "fixture",
+          SLACK_CLIENT_ID: "fixture",
+          SLACK_CLIENT_SECRET: "fixture",
+        })}
+      />,
+    );
     expect(configured).toContain("Sign in with Google");
     expect(configured).toContain("Sign in with Slack");
   });
@@ -179,42 +196,33 @@ describe("dashboard components", () => {
     expect(html).toContain("Show version history");
   });
 
-  it("disables acceptance of a conflict after a source changes", () => {
+  it("shows automatic decisions without member actions", () => {
     const html = renderToStaticMarkup(
-      <ConflictCard
-        conflict={{
-          id: "edge",
-          older: {
-            id: hit.id,
-            title: hit.title,
-            body: hit.body,
-            author: "Maya",
-            revision: 1,
-          },
-          newer: {
-            id: "lrn_replacement",
-            title: "Use an explicit stash ref",
-            body: "Check the stash list first.",
-            author: "Sam",
-            revision: 1,
-          },
-          relation: "update",
-          confidence: 0.9,
-          status: "candidate",
-          reason: "Changed guidance",
-          votes: 0,
-          voted: false,
-          canAdmin: true,
-          stale: true,
+      <DecisionCard
+        record={{
+          id: "dec_test",
+          older: { id: hit.id, title: hit.title },
+          newer: { id: "lrn_replacement", title: "Use an explicit stash ref" },
+          decision: "undecided",
+          confidence: 0.4,
+          reason: "Hive retries with more evidence.",
+          model: "jev-1.13.0",
+          jev: null,
+          latencyMs: 100,
+          author: "Sam",
+          repo: "team/repo",
+          canReverse: false,
           createdAt: hit.createdAt,
         }}
         onOpen={() => {}}
         onDecision={() => {}}
       />,
     );
-    expect(html).toContain("A source changed");
-    expect(html).toMatch(/disabled=""[^>]*>Confirm replacement/);
-    expect(html).toContain("Keep both cells");
+    expect(html).toContain("Retry automatically");
+    expect(html).toContain("40% confidence");
+    expect(html).toContain("Newer cell pushed by Sam");
+    expect(html).not.toContain("Confirm replacement");
+    expect(html).not.toContain("Reverse this decision");
   });
 
   it("leads with the installer and keeps manual and Git fallbacks available", () => {

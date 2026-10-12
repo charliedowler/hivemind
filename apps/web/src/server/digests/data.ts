@@ -16,14 +16,15 @@ export async function gatherDigest(
   linkedAuthors: Map<string, string> = new Map(),
   scheduleId?: string,
   periodSince = since,
+  publicOnly = false,
 ) {
   await tx`SELECT pg_advisory_xact_lock(hashtext(${teamId}),7291)`;
   const [clock] = await tx`SELECT clock_timestamp() AS until`;
   const until = clock!.until as Date;
   const [cells, friction, decisions] = await Promise.all([
-    tx`SELECT l.id,l.revision,l.title,l.kind,l.lifecycle,l.superseded_by,m.id AS member_id,m.name FROM learnings l JOIN members m ON m.id=l.member_id AND m.team_id=l.team_id WHERE l.team_id=${teamId} AND l.lifecycle IN ('fresh','confirmed','superseded') AND ((l.created_at > ${since} AND l.created_at <= ${until}) OR EXISTS(SELECT 1 FROM learning_versions v WHERE v.team_id=l.team_id AND v.learning_id=l.id AND v.created_at > ${since} AND v.created_at <= ${until} AND (v.revision > 1 OR v.content->>'lifecycle'='confirmed'))) AND (${scheduleId ?? null}::text IS NULL OR NOT EXISTS(SELECT 1 FROM slack_digest_receipts r WHERE r.team_id=l.team_id AND r.schedule_id=${scheduleId ?? null} AND r.source_key=l.id||':'||l.revision::text)) ORDER BY l.updated_at DESC,l.id`,
-    tx`SELECT p.id AS push_id,p.learning_id AS id,l.title,p.area,p.cost,p.blocked,l.workaround,m.id AS member_id,m.name FROM learning_pushes p JOIN learnings l ON l.id=p.learning_id AND l.team_id=p.team_id JOIN members m ON m.id=p.member_id AND m.team_id=p.team_id WHERE p.team_id=${teamId} AND l.kind='friction' AND l.lifecycle IN ('fresh','confirmed') AND p.created_at > ${since} AND p.created_at <= ${until} AND (${scheduleId ?? null}::text IS NULL OR NOT EXISTS(SELECT 1 FROM slack_digest_receipts r WHERE r.team_id=p.team_id AND r.schedule_id=${scheduleId ?? null} AND r.source_key=p.id)) ORDER BY p.created_at DESC,p.id`,
-    tx`SELECT d.id,d.decision,l.id AS cell_id,l.title,m.id AS member_id,m.name FROM conflict_decisions d JOIN learning_supersessions e ON e.id=d.edge_id AND e.team_id=d.team_id JOIN learnings l ON l.id=e.newer_id AND l.team_id=e.team_id JOIN members m ON m.id=d.pushed_by AND m.team_id=d.team_id WHERE d.team_id=${teamId} AND d.created_at > ${since} AND d.created_at <= ${until} AND d.model <> 'legacy' AND (${scheduleId ?? null}::text IS NULL OR NOT EXISTS(SELECT 1 FROM slack_digest_receipts r WHERE r.team_id=d.team_id AND r.schedule_id=${scheduleId ?? null} AND r.source_key=d.id)) ORDER BY d.created_at DESC,d.id`,
+    tx`SELECT l.id,l.revision,l.title,l.kind,l.lifecycle,l.superseded_by,m.id AS member_id,m.name FROM learnings l JOIN members m ON m.id=l.member_id AND m.team_id=l.team_id WHERE l.team_id=${teamId} AND l.lifecycle IN ('fresh','confirmed','superseded') AND (${!publicOnly} OR l.source <> 'slack') AND ((l.created_at > ${since} AND l.created_at <= ${until}) OR EXISTS(SELECT 1 FROM learning_versions v WHERE v.team_id=l.team_id AND v.learning_id=l.id AND v.created_at > ${since} AND v.created_at <= ${until} AND (v.revision > 1 OR v.content->>'lifecycle'='confirmed'))) AND (${scheduleId ?? null}::text IS NULL OR NOT EXISTS(SELECT 1 FROM slack_digest_receipts r WHERE r.team_id=l.team_id AND r.schedule_id=${scheduleId ?? null} AND r.source_key=l.id||':'||l.revision::text)) ORDER BY l.updated_at DESC,l.id`,
+    tx`SELECT p.id AS push_id,p.learning_id AS id,l.title,p.area,p.cost,p.blocked,l.workaround,m.id AS member_id,m.name FROM learning_pushes p JOIN learnings l ON l.id=p.learning_id AND l.team_id=p.team_id JOIN members m ON m.id=p.member_id AND m.team_id=p.team_id WHERE p.team_id=${teamId} AND l.kind='friction' AND (${!publicOnly} OR l.source <> 'slack') AND l.lifecycle IN ('fresh','confirmed') AND p.created_at > ${since} AND p.created_at <= ${until} AND (${scheduleId ?? null}::text IS NULL OR NOT EXISTS(SELECT 1 FROM slack_digest_receipts r WHERE r.team_id=p.team_id AND r.schedule_id=${scheduleId ?? null} AND r.source_key=p.id)) ORDER BY p.created_at DESC,p.id`,
+    tx`SELECT d.id,d.decision,l.id AS cell_id,l.title,m.id AS member_id,m.name FROM conflict_decisions d JOIN learning_supersessions e ON e.id=d.edge_id AND e.team_id=d.team_id JOIN learnings l ON l.id=e.newer_id AND l.team_id=e.team_id JOIN members m ON m.id=d.pushed_by AND m.team_id=d.team_id WHERE d.team_id=${teamId} AND (${!publicOnly} OR l.source <> 'slack') AND d.created_at > ${since} AND d.created_at <= ${until} AND d.model <> 'legacy' AND (${scheduleId ?? null}::text IS NULL OR NOT EXISTS(SELECT 1 FROM slack_digest_receipts r WHERE r.team_id=d.team_id AND r.schedule_id=${scheduleId ?? null} AND r.source_key=d.id)) ORDER BY d.created_at DESC,d.id`,
   ]);
   const author = (row: Record<string, unknown>) => ({
     name: String(row.name),
@@ -69,10 +70,19 @@ export async function digestPreview(
   linkedAuthors?: Map<string, string>,
   scheduleId?: string,
   coverageStart = since,
+  publicOnly = false,
 ) {
   return getSql().begin(async (tx) =>
     composeDigest(
-      await gatherDigest(teamId, coverageStart, tx, linkedAuthors, scheduleId, since),
+      await gatherDigest(
+        teamId,
+        coverageStart,
+        tx,
+        linkedAuthors,
+        scheduleId,
+        since,
+        publicOnly,
+      ),
       include,
       timezone,
     ),

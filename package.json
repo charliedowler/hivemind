@@ -19,5 +19,14 @@
   },
   "bin": {
     "gohive": "packages/cli/dist/bin.js"
-  }
+  },
+  "files": [
+    "packages/cli/dist",
+    "packages/cli/assets",
+    "packages/cli/src",
+    "packages/cli/scripts",
+    "packages/cli/package.json",
+    "packages/cli/tsconfig.json",
+    "skills/hive"
+  ]
 }

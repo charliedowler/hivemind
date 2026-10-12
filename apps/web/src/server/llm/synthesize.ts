@@ -13,7 +13,7 @@ const answerSchema = z.object({
 
 const systemPrompt = `You answer a teammate's question from the team's own recorded learnings.
 Answer only from the supplied learnings. Lead with the direct answer. Use short sentences and no preamble.
-Every factual claim must cite a supplied learning id inline as [lrn_xxx]. Give commands and code verbatim from the learnings.
+Every factual claim must cite a supplied id inline as [lrn_xxx] or [slk_xxx]. Slack evidence is a conversation, not a confirmed cell. Use a warm, plain voice, sentence case, no emoji and no exclamation marks. Give commands and code verbatim from the learnings.
 When learnings conflict, prefer the newer and more upvoted learning and say that they conflict. Flag any learning with outdated votes.
 If the learnings do not answer the question, say so in the answer and put what is missing in gaps.
 Each citation's why is one short sentence explaining what that learning contributed.
@@ -37,6 +37,7 @@ function learningBlock(hit: SearchHit): string {
   const attributes = {
     id: hit.id,
     kind: hit.kind,
+    source: hit.source,
     repo: hit.repo ?? "",
     author: hit.author.name,
     pushed: hit.lastPushedAt.slice(0, 10),
@@ -131,7 +132,7 @@ export async function synthesizeAnswer(
     await finish("completed", null, usage);
     const titles = new Map(hits.map((hit) => [hit.id, hit.title]));
     const filterMarkers = (text: string) =>
-      text.replace(/\[(lrn_[a-zA-Z0-9_-]+)\]/g, (marker, id: string) =>
+      text.replace(/\[((?:lrn|slk)_[a-zA-Z0-9_-]+)\]/g, (marker, id: string) =>
         titles.has(id) ? marker : "",
       );
     return {
