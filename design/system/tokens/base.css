@@ -1,0 +1,12 @@
+html{-webkit-text-size-adjust:100%}
+*,::before,::after{corner-shape:bevel}
+body{margin:0;background:var(--surface-page);color:var(--text-body);font-family:var(--font-body);font-size:var(--text-md);line-height:var(--leading-normal);-webkit-font-smoothing:antialiased}
+a{color:var(--text-accent);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:2px}a:hover{color:var(--accent-active)}
+h1,h2,h3,.display{font-family:var(--font-display);font-weight:400;letter-spacing:var(--tracking-display);line-height:var(--leading-tight);margin:0}
+.eyebrow{font-family:var(--font-pixel);font-size:var(--text-eyebrow);letter-spacing:var(--tracking-eyebrow);text-transform:uppercase;font-weight:400;-webkit-font-smoothing:none}
+.pixel{font-family:var(--font-pixel);font-weight:400;-webkit-font-smoothing:none}
+.sprite{image-rendering:pixelated;shape-rendering:crispEdges}
+.count{font-family:var(--font-display);font-variant-numeric:tabular-nums;font-weight:400;line-height:1}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.outlined{border:var(--outline-ink);box-shadow:var(--shadow-hard);border-radius:var(--radius-md)}
+::selection{background:var(--pollen-500);color:var(--ink)}

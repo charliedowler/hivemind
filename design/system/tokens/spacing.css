@@ -1,0 +1,10 @@
+:root{
+--space-0:0;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;--space-20:80px;--space-24:96px;
+--radius-xs:3px;--radius-sm:4px;--radius-md:6px;--radius-lg:8px;--radius-xl:10px;--radius-pill:10px;--radius-round:30%;--px:2px;
+--size-control-sm:36px;--size-control-md:46px;--size-control-lg:58px;
+--container-sm:640px;--container-md:960px;--container-lg:1200px;--container-mobile:390px;
+--gutter-mobile:16px;--gutter-desktop:32px;
+--outline-w:2px;--outline-w-thick:3px;
+--cell-w:232px;--cell-h:264px;--cell-gap:10px;--cell-wall:3px;
+--hex:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+}
