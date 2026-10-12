@@ -1,6 +1,7 @@
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
+  hiveSlackSearchInput,
   hiveBrowseInput,
   hiveReadInput,
   hiveAskInput,
@@ -23,6 +24,8 @@ import {
   snapshotKnowledge,
 } from "@/server/knowledge-tree";
 import { HiveError } from "@/server/errors";
+
+import { searchSlack } from "@/server/slack/search";
 
 const contextSchema = z.object({
   teamId: z.string(),
@@ -73,6 +76,27 @@ async function reply(action: () => Promise<string>) {
 }
 
 export function registerHiveTools(server: McpServer) {
+  server.registerTool(
+    "hive_slack_search",
+    {
+      title: "Search permitted Slack channels",
+      description:
+        "Search messages from Slack channels the hive admin selected. Never searches direct messages. Returns original permalinks.",
+      inputSchema: hiveSlackSearchInput,
+    },
+    async (input, ctx) =>
+      reply(async () => {
+        const hits = await searchSlack(getContext(ctx), input);
+        return (
+          hits
+            .map(
+              (h) =>
+                `${h.id}: ${h.title}\nsource: slack | #${h.slackChannel} | ${h.author.name} | score ${h.score.toFixed(2)}\n${h.permalink}\n${h.body.slice(0, 1000)}`,
+            )
+            .join("\n\n") || "No matching messages in permitted Slack channels."
+        );
+      }),
+  );
   server.registerTool(
     "hive_browse",
     {
@@ -158,7 +182,7 @@ export function registerHiveTools(server: McpServer) {
         return hits
           .map(
             (hit, index) =>
-              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
+              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.permalink ? `Source: slack ${hit.permalink}\n` : ""}${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
           )
           .join("\n\n");
       }),
@@ -175,7 +199,7 @@ export function registerHiveTools(server: McpServer) {
     async (input, ctx) =>
       reply(async () => {
         const result = await askHive(getContext(ctx), input);
-        return `${result.answer}\n\nSources:\n${result.citations.map((citation) => `- ${citation.id}: ${citation.title}`).join("\n") || "None."}\n\nConfidence: ${result.confidence}\nGaps: ${result.gaps ?? "None reported."}`;
+        return `${result.answer}\n\nSources:\n${result.citations.map((citation) => `- ${citation.id}: ${citation.title}${citation.permalink ? ` (source: slack) ${citation.permalink}` : ""}`).join("\n") || "None."}\n\nConfidence: ${result.confidence}\nGaps: ${result.gaps ?? "None reported."}`;
       }),
   );
 

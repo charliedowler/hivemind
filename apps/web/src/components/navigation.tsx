@@ -46,6 +46,7 @@ export function Navigation({
             ["/app/members", "Members"],
             ["/app/install", "Install"],
             ["/app/account", "Account"],
+            ["/app/settings/slack", "Slack"],
           ].map(([href, label]) => (
             <Link
               key={href}

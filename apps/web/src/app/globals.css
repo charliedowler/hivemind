@@ -999,3 +999,12 @@ pre:focus-visible {
   .login-panel .hm-tab { padding-inline: 4px; font-size: 12px; }
   .login-panel .hm-tab:last-child { grid-column: auto; }
 }
+
+.slack-settings { max-width: 960px; margin: 0 auto; }
+.slack-channel,.slack-decision { border-top: 1px solid var(--border-default); padding-top: 20px; }
+.slack-channel h3,.slack-decision p { margin: 0; }
+.slack-purge { background: var(--danger-soft); padding: 16px; border: 2px solid var(--ink); }
+.slack-signals { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 12px; }
+.slack-signals dd { margin: 0; font-family: var(--font-mono); }
+.slack-decision a { overflow-wrap: anywhere; }
+@media(max-width:600px) { .slack-settings .hm-card { padding: 16px; } .slack-channel .row { align-items: flex-start; } }

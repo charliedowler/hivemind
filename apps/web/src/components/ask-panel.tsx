@@ -47,7 +47,7 @@ export function AskPanel({
       const knownIds = new Set(learnings.map((learning) => learning.id));
       const citedLearnings = await Promise.all(
         result.citations
-          .filter((source) => !knownIds.has(source.id))
+          .filter((source) => !source.permalink && !knownIds.has(source.id))
           .map((source) =>
             requestJson<LearningView>(
               `/api/app/learnings/${encodeURIComponent(source.id)}`,
@@ -159,11 +159,14 @@ function HiveAnswer({
         const learning = sources.get(source.id);
         return {
           id: source.id,
-          title: source.title,
+          title: source.permalink ? `Slack: ${source.title}` : source.title,
           learnedBy: learning ? learnedBy(learning) : source.why,
           repo: learning?.repo ?? undefined,
           outdated: learning ? learningStatus(learning) === "outdated" : false,
-          onClick: () => onCitation(source.id),
+          onClick: () =>
+            source.permalink
+              ? window.open(source.permalink, "_blank", "noopener,noreferrer")
+              : onCitation(source.id),
         };
       })}
     >
