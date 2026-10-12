@@ -1,5 +1,6 @@
 import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
+import { LegalLinks } from "@/components/legal-links";
 import {
   AnswerCard,
   Badge,
@@ -238,6 +239,7 @@ export default async function HomePage() {
         </Link>
         <span>The hive knows.</span>
         <Link href="/app/login">Create your hive</Link>
+        <LegalLinks />
       </footer>
     </main>
   );
