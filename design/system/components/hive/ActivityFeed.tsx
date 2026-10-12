@@ -1,8 +1,10 @@
+import { Badge } from "../core/Badge";
 import { cx } from "../cx";
 import { Sprite } from "../sprites/Sprite";
 import type { SpriteName } from "../sprites/spriteData";
 
-export type ActivityKind = "learned" | "asked" | "confirmed" | "answered" | "outdated";
+export type ActivityKind =
+  "learned" | "asked" | "confirmed" | "answered" | "outdated";
 
 export interface ActivityItem {
   id: string;
@@ -11,6 +13,7 @@ export interface ActivityItem {
   title: string;
   when: string;
   repo?: string;
+  source?: "claude" | "codex" | "manual";
 }
 
 export interface ActivityFeedProps {
@@ -52,8 +55,25 @@ export function ActivityFeed({ items, className }: ActivityFeedProps) {
           </span>
           <div className="hm-feed-text">
             <span className="hm-feed-who">{item.who}</span> {verb[item.kind]}
-            {takesRepo[item.kind] && item.repo ? <> <span className="hm-feed-repo">{item.repo}</span></> : null}
+            {takesRepo[item.kind] && item.repo ? (
+              <>
+                {" "}
+                <span className="hm-feed-repo">{item.repo}</span>
+              </>
+            ) : null}
             <div className="hm-feed-title">{item.title}</div>
+            {item.source ? (
+              <Badge
+                tone={item.source === "manual" ? "neutral" : item.source}
+                icon="icon-terminal"
+              >
+                {item.source === "claude"
+                  ? "Claude"
+                  : item.source === "codex"
+                    ? "Codex"
+                    : "Manual"}
+              </Badge>
+            ) : null}
           </div>
           <time className="hm-feed-time">{item.when}</time>
         </li>

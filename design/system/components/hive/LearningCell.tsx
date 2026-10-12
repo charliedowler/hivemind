@@ -14,6 +14,7 @@ export interface LearningCellProps {
   status?: LearningStatus;
   filling?: boolean;
   href?: string;
+  onClick?: () => void;
   footer?: ReactNode;
   className?: string;
 }
@@ -41,6 +42,7 @@ export function LearningCell({
   status = "fresh",
   filling = false,
   href,
+  onClick,
   footer,
   className,
 }: LearningCellProps) {
@@ -49,7 +51,10 @@ export function LearningCell({
       <div className="hm-cell-wall">
         <div className="hm-cell-face">
           <div className="hm-cell-status">
-            <Sprite name={filling ? "cell-filling" : statusSprite[status]} scale={2} />
+            <Sprite
+              name={filling ? "cell-filling" : statusSprite[status]}
+              scale={2}
+            />
             {statusLabel[status]}
           </div>
           <div className="hm-cell-main">
@@ -74,7 +79,16 @@ export function LearningCell({
   );
   const classes = cx("hm-cell", `hm-cell-${status}`, className);
 
-  return href ? (
+  return onClick ? (
+    <button
+      type="button"
+      className={classes}
+      onClick={onClick}
+      aria-label={title}
+    >
+      {body}
+    </button>
+  ) : href ? (
     <a className={classes} href={href}>
       {body}
     </a>
@@ -88,7 +102,10 @@ export interface EmptyCellProps {
   className?: string;
 }
 
-export function EmptyCell({ label = "Room for one more", className }: EmptyCellProps) {
+export function EmptyCell({
+  label = "Room for one more",
+  className,
+}: EmptyCellProps) {
   return (
     <div className={cx("hm-cell", "hm-cell-empty", className)}>
       <div className="hm-cell-edge">

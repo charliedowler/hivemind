@@ -122,8 +122,8 @@
 .hm-tab-active { background: var(--brand); box-shadow: var(--shadow-hard-sm); }
 .hm-tab-count { padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-xs); background: var(--wax-50); color: var(--ink); }
 .hm-tab-active .hm-tab-count { background: var(--brand-soft); }
-.hm-dialog-scrim { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; box-sizing: border-box; padding: var(--space-4); overflow-y: auto; background: var(--scrim); backdrop-filter: blur(var(--blur-glass)); }
-.hm-dialog { box-sizing: border-box; width: 100%; max-width: 480px; max-height: calc(100dvh - var(--space-8)); overflow: auto; border: var(--outline-ink); border-radius: var(--radius-lg); background: var(--surface-card); color: var(--text-body); box-shadow: var(--shadow-hard-lg); font-family: var(--font-body); }
+.hm-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(var(--blur-glass)); }
+.hm-dialog { margin: auto; padding: 0; box-sizing: border-box; width: calc(100% - 32px); max-width: 480px; max-height: calc(100dvh - var(--space-8)); overflow: auto; border: var(--outline-ink); border-radius: var(--radius-lg); background: var(--surface-card); color: var(--text-body); box-shadow: var(--shadow-hard-lg); font-family: var(--font-body); }
 .hm-dialog-header { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-5) var(--space-5) 0 var(--space-6); }
 .hm-dialog-heading { flex: 1; display: grid; gap: var(--space-1); min-width: 0; }
 .hm-dialog-eyebrow { color: var(--text-brand); font-family: var(--font-pixel); font-size: var(--text-eyebrow); text-transform: uppercase; -webkit-font-smoothing: none; }
@@ -160,3 +160,5 @@
 .hm-btn-primary[data-preview-state="hover"], .hm-iconbtn-primary[data-preview-state="hover"] { background: var(--brand-hover); }
 .hm-btn[data-preview-state="pressed"], .hm-iconbtn[data-preview-state="pressed"] { transform: translate(2px, 2px); box-shadow: var(--shadow-hard-sm); }
 .hm-btn[data-preview-state="focus"], .hm-iconbtn[data-preview-state="focus"], .hm-input[data-preview-state="focus"], .hm-select[data-preview-state="focus"], .hm-switch-track[data-preview-state="focus"] { box-shadow: var(--shadow-focus); }
+
+.hm-dialog[data-inline] { position: static; margin: 0; width: 100%; }
