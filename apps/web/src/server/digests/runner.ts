@@ -8,7 +8,12 @@ import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { requireAdmin } from "../identity/access";
 import { HiveError } from "../errors";
-import { originFor, recordEvent, withOrigin } from "../analytics/events";
+import {
+  currentOrigin,
+  originFor,
+  recordEvent,
+  withOrigin,
+} from "../analytics/events";
 import { gatherDigest } from "./data";
 import { scheduleView, type DigestSchedule } from "./store";
 export type DigestTransport = {
@@ -62,11 +67,12 @@ export async function postDigest(
   id: string,
   transport: DigestTransport,
   manual = false,
+  manualActor?: HiveContext,
 ) {
   const claim = await claimDigest(teamId, id, manual);
   if (!claim) return { status: "not_due" };
   const { schedule, postId, trigger } = claim;
-  const ctx: HiveContext = {
+  const ctx: HiveContext = manualActor ?? {
     teamId,
     teamName: "Hive",
     memberId: schedule.createdBy,
@@ -74,7 +80,7 @@ export async function postDigest(
   };
   const origin = originFor(
     ctx,
-    manual ? "web" : "scheduled",
+    manual ? (currentOrigin()?.entrypoint ?? "web") : "scheduled",
     manual ? "web_session" : "system",
   );
   return withOrigin(origin, async () => {
@@ -114,10 +120,10 @@ export async function postDigest(
           await tx`UPDATE slack_digest_posts SET status='posted',posted_at=clock_timestamp(),slack_ts=${sent.ts},permalink=${sent.permalink},until_cursor=${new Date(data.until)},counts=${tx.json(digest.counts)},error=NULL WHERE id=${postId} AND team_id=${teamId} AND status='running' RETURNING posted_at`;
         if (!rows[0]) throw new Error("Digest claim was lost.");
         const sourceKeys = [
-          ...(schedule.learnings ? data.learnings : []),
-          ...(schedule.insights ? data.insights : []),
-          ...(schedule.friction ? data.friction : []),
-          ...(schedule.decisions ? data.decisions : []),
+          ...data.learnings,
+          ...data.insights,
+          ...data.friction,
+          ...data.decisions,
         ]
           .map((item) => item.sourceKey)
           .filter((key): key is string => Boolean(key));
@@ -179,7 +185,7 @@ export async function postNow(
   transport: DigestTransport,
 ) {
   await requireAdmin(ctx);
-  const result = await postDigest(ctx.teamId, id, transport, true);
+  const result = await postDigest(ctx.teamId, id, transport, true, ctx);
   if (result.status === "not_due")
     throw new HiveError(
       "An update is already being posted. Wait for it to finish.",

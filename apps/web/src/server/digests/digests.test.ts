@@ -150,7 +150,7 @@ describe.skipIf(!enabled)(
       const confirmed = await getSql().begin((tx) =>
         gatherDigest(a.teamId, before, tx),
       );
-      expect(confirmed.learnings[0]).toMatchObject({
+      expect(confirmed.learnings.find((r) => r.id === cell)).toMatchObject({
         id: cell,
         state: "confirmed",
       });
@@ -163,6 +163,38 @@ describe.skipIf(!enabled)(
       expect((await postDigest(a.teamId, s.id, transport, true)).status).toBe(
         "skipped_empty",
       );
+    });
+    it("delivers a late commit that predates the last successful watermark", async () => {
+      const saved = await schedule();
+      expect(
+        (await postDigest(a.teamId, saved.id, transport, true)).status,
+      ).toBe("posted");
+      const posted = await getSchedule(a.teamId, saved.id);
+      const late = newId("lrn");
+      const earlier = new Date(new Date(posted.lastCursor).getTime() - 60_000);
+      await getSql()`INSERT INTO learnings(id,team_id,member_id,title,body,kind,source,confidence,created_at) VALUES(${late},${a.teamId},${a.memberId},'A transaction that committed late','Body','learning','codex',0.9,${earlier})`;
+      expect(
+        (await postDigest(a.teamId, saved.id, transport, true)).status,
+      ).toBe("posted");
+      const receipts =
+        await getSql()`SELECT source_key FROM slack_digest_receipts WHERE team_id=${a.teamId} AND schedule_id=${saved.id} AND source_key=${late + ":1"}`;
+      expect(receipts).toHaveLength(1);
+      expect(
+        (await postDigest(a.teamId, saved.id, transport, true)).status,
+      ).toBe("skipped_empty");
+    });
+    it("keeps private Slack-sourced cells out of public digests", async () => {
+      const privateCell = newId("lrn");
+      await getSql()`INSERT INTO learnings(id,team_id,member_id,title,body,kind,source,confidence)VALUES(${privateCell},${a.teamId},${a.memberId},'Private source fixture','Body','insight','slack',0.9)`;
+      const since = new Date(Date.now() - 86400000);
+      const publicData = await getSql().begin((tx) =>
+        gatherDigest(a.teamId, since, tx, new Map(), undefined, since, true),
+      );
+      const privateData = await getSql().begin((tx) =>
+        gatherDigest(a.teamId, since, tx),
+      );
+      expect(publicData.insights.some((r) => r.id === privateCell)).toBe(false);
+      expect(privateData.insights.some((r) => r.id === privateCell)).toBe(true);
     });
     it("keeps the watermark on failure and records uncertain sends", async () => {
       const s = await schedule();

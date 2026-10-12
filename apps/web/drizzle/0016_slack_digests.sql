@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS slack_digest_posts (
  until_cursor timestamptz,
  counts jsonb NOT NULL DEFAULT '{}',
  error text,
+ UNIQUE(id,team_id),
  UNIQUE(schedule_id,slot_at),
  FOREIGN KEY(schedule_id,team_id) REFERENCES slack_digest_schedules(id,team_id)
 );
@@ -66,7 +67,8 @@ CREATE TABLE IF NOT EXISTS slack_digest_receipts (
  schedule_id text NOT NULL,
  team_id text NOT NULL,
  source_key text NOT NULL,
- post_id text NOT NULL REFERENCES slack_digest_posts(id),
+ post_id text NOT NULL,
  PRIMARY KEY(schedule_id,source_key),
- FOREIGN KEY(schedule_id,team_id) REFERENCES slack_digest_schedules(id,team_id)
+ FOREIGN KEY(schedule_id,team_id) REFERENCES slack_digest_schedules(id,team_id),
+ FOREIGN KEY(post_id,team_id) REFERENCES slack_digest_posts(id,team_id)
 );

@@ -23,6 +23,19 @@ async function actor(ctx: SlackToolContext) {
     memberName: String(rows[0].name),
   };
 }
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+function scheduleDate(timezone: string, next: string) {
+  let formatter = dateFormats.get(timezone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    dateFormats.set(timezone, formatter);
+  }
+  return formatter.format(new Date(next));
+}
 const textInput = z.strictObject({ text: z.string().min(1).max(2000) });
 const listInput = z.strictObject({
   disableId: z
@@ -95,7 +108,7 @@ export const digestTools: SlackTool[] = [
         value,
       );
       return {
-        text: `Schedule saved for #${slackEscape(schedule.channelName)}. The next update is ${new Intl.DateTimeFormat("en-GB", { timeZone: schedule.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(schedule.nextDueAt))} (${schedule.timezone}). <https://gohive.dev/app/settings/slack/digests|Manage schedules>`,
+        text: `Schedule saved for #${slackEscape(schedule.channelName)}. The next update is ${scheduleDate(schedule.timezone, schedule.nextDueAt)} (${schedule.timezone}). <https://gohive.dev/app/settings/slack/digests|Manage schedules>`,
       };
     },
   },
