@@ -90,6 +90,10 @@ export const learnings = pgTable("learnings", {
   pushCount: integer("push_count").notNull().default(1),
   upVotes: integer("up_votes").notNull().default(0),
   downVotes: integer("down_votes").notNull().default(0),
+  lifecycle: text("lifecycle").notNull().default("fresh"),
+  verifyAfter: timestamp("verify_after", { withTimezone: true }),
+  revision: integer("revision").notNull().default(1),
+  supersededBy: text("superseded_by"),
   adminOutdated: boolean("admin_outdated").notNull().default(false),
   outdatedVotes: integer("outdated_votes").notNull().default(0),
   createdAt: createdAt(),
@@ -169,3 +173,36 @@ export const earlyAccess = pgTable("early_access", {
   source: text("source").default("landing"),
   createdAt: createdAt(),
 });
+
+export const learningVersions = pgTable("learning_versions", {
+  learningId: text("learning_id").notNull(),
+  teamId: text("team_id").notNull(),
+  revision: integer("revision").notNull(),
+  memberId: text("member_id").notNull(),
+  content: jsonb("content").notNull(),
+  diff: jsonb("diff").notNull(),
+  createdAt: createdAt(),
+}, (table) => [primaryKey({ columns: [table.learningId, table.teamId, table.revision] })]);
+
+export const learningSupersessions = pgTable("learning_supersessions", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  olderId: text("older_id").notNull(),
+  newerId: text("newer_id").notNull(),
+  olderRevision: integer("older_revision").notNull(),
+  newerRevision: integer("newer_revision").notNull(),
+  relation: text("relation").notNull(),
+  confidence: real("confidence").notNull(),
+  status: text("status").notNull().default("candidate"),
+  reason: text("reason").notNull(),
+  decidedBy: text("decided_by"),
+  createdAt: createdAt(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+});
+
+export const learningConflictVotes = pgTable("learning_conflict_votes", {
+  edgeId: text("edge_id").notNull(),
+  teamId: text("team_id").notNull(),
+  memberId: text("member_id").notNull(),
+  createdAt: createdAt(),
+}, (table) => [primaryKey({ columns: [table.edgeId, table.teamId, table.memberId] })]);
