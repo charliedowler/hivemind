@@ -109,3 +109,27 @@ test('Stop skips quiet sessions and asks at most once without losing headless ou
   assert.equal(await run('stop.mjs', input, env), '');
   assert.equal(await run('stop.mjs', { ...input, session_id: 'active', stop_hook_active: true }, env), '');
 });
+
+test('the packaged Stop hook honours the Jev capture decision and sends bounded facts', async t => {
+  const home = scratchRepo();
+  const transcript = join(home, 'capture.jsonl');
+  writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Discovered that the installer must track the origin of matching hooks.' }] } }));
+  let decision = 'skip';
+  let captured;
+  const server = createServer(async (request, response) => {
+    assert.equal(request.url, '/api/app/capture');
+    assert.equal(request.headers.authorization, 'Bearer fixture');
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    captured = JSON.parse(body);
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ decision }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
+  assert.equal(await run('stop.mjs', { session_id: 'jev-skip', transcript_path: transcript }, env), '');
+  assert.equal(captured.observations, 1);
+  assert.ok(captured.text.length <= 6000);
+  decision = 'capture';
+  assert.equal(JSON.parse(await run('stop.mjs', { session_id: 'jev-capture', transcript_path: transcript }, env)).decision, 'block');
+});
