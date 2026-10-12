@@ -1,0 +1,13 @@
+interface:
+  display_name: "Hive"
+  short_description: "Consult and share the team's memory"
+  default_prompt: "Use $hive to consult team memory and save verified learnings."
+policy:
+  allow_implicit_invocation: true
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "hive"
+      description: "Shared memory for your team's coding agents"
+      transport: "streamable_http"
+      url: "https://gohive.dev/api/mcp"
