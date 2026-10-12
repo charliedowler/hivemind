@@ -1,3 +1,5 @@
+import { buildStopHook } from "./stop-hook";
+
 export type InstallSnippet = {
   id: string;
   title: string;
@@ -14,23 +16,6 @@ const instructions = [
   "- When a result helped, call `hive_feedback` with `up`. When it is wrong or stale, vote `down` or `outdated` and say why.",
   "- Use `hive_ask` for a question that needs several learnings joined into one answer.",
 ].join("\n");
-
-const stopHook = (url: string) =>
-  [
-    "#!/usr/bin/env bash",
-    "input=$(cat)",
-    "if printf '%s' \"$input\" | grep -q '\"stop_hook_active\"[[:space:]]*:[[:space:]]*true'; then exit 0; fi",
-    'session=$(printf \'%s\' "$input" | sed -n \'s/.*"session_id"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p\')',
-    'marker="${TMPDIR:-/tmp}/hive-stop-${session:-unknown}"',
-    '[ -e "$marker" ] && exit 0',
-    ': > "$marker"',
-    'ending="If nothing qualifies, stop now without comment."',
-    'if [ "${CLAUDE_CODE_ENTRYPOINT:-cli}" != "cli" ]; then',
-    '  ending="This is a headless run and the caller reads only your last message, so finish by repeating your previous final answer word for word and nothing else."',
-    "fi",
-    `printf '%s\\n' \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Before you stop: if this session taught you something a teammate's agent would otherwise have to rediscover (a gotcha, a fix, a decision, an insight or friction: what slowed you down, how long, was there a workaround), use the Hive MCP server at ${url}/api/mcp to call hive_push once per learning with a title that states the fact, the repo and 3 to 5 tags. For friction include area, measured minutes lost as cost when known, blocked and workaround. Never invent time lost. Skip general knowledge any agent already has. $ending\\\"}\"`,
-    "",
-  ].join("\n");
 
 export function buildInstallSnippets({
   baseUrl,
@@ -66,15 +51,15 @@ export function buildInstallSnippets({
       id: "stop-script",
       title: "Claude Code Stop hook · script",
       description:
-        "Save as ~/.claude/hooks/hive-stop.sh, then run chmod +x ~/.claude/hooks/hive-stop.sh.",
+        "Save as ~/.claude/hooks/hive-stop.sh, then run chmod +x ~/.claude/hooks/hive-stop.sh. Requires Node 20 or later.",
       language: "bash",
-      code: stopHook(url),
+      code: buildStopHook(url),
     },
     {
       id: "stop-settings",
       title: "Claude Code Stop hook · settings",
       description:
-        "Merge into ~/.claude/settings.json. The hook asks once per session.",
+        "Merge into ~/.claude/settings.json. Quiet sessions skip capture. The hook asks at most once per session.",
       language: "json",
       code: '{\n  "hooks": {\n    "Stop": [\n      { "hooks": [ { "type": "command", "command": "$HOME/.claude/hooks/hive-stop.sh" } ] }\n    ]\n  }\n}',
     },

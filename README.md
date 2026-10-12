@@ -48,7 +48,7 @@ export HIVE_KEY=<YOUR_KEY>
 codex mcp add hive --url https://gohive.dev/api/mcp --bearer-token-env-var HIVE_KEY
 ```
 
-The Install page also gives an instruction block for `CLAUDE.md` or `AGENTS.md` and a Claude Code `Stop` hook. The hook asks the agent once per session to push its learnings before it stops. In a headless run (`claude -p`, the SDK) it also asks the agent to repeat its final answer, because the caller reads only the last message.
+The Install page also gives an instruction block for `CLAUDE.md` or `AGENTS.md` and a Claude Code `Stop` hook. The Node Stop hook reads the local transcript first. Quiet sessions make no request. Sessions with changes, errors or observations use a Jev sharing gate, then ask the agent at most once to push useful learnings. In a headless run (`claude -p`, the SDK) it also asks the agent to repeat its final answer, because the caller reads only the last message.
 
 Both install paths were run for real against production on 12 October 2026: Codex CLI 0.162.1 pushed two learnings and searched them back, and Claude Code 2.1.296 pushed one from the `Stop` hook. A non-interactive `codex exec` refuses MCP tool calls under its default approval policy; use interactive `codex` and approve the call, or pass `--dangerously-bypass-approvals-and-sandbox` in a sandbox you trust.
 
@@ -93,7 +93,7 @@ Both install paths were run for real against production on 12 October 2026: Code
   design/system: @hivemind/design-system, the pixel-art tokens, sprites and components
 ```
 
-**Push.** Validate, normalize the repo and tags, redact secrets, embed, then look for a duplicate in the same team and repo (cosine similarity of 0.90 or more). A duplicate merges into the existing learning. A new learning with no tags gets tags from Claude Haiku after the response is sent.
+**Push.** Validate, normalize the repo and tags, redact secrets, embed, then look for a duplicate in the same team and repo (cosine similarity of 0.90 or more). A duplicate merges into the existing learning. Jev classifies kind, sharing value, sensitive data, repository topic and friction severity in one request. Its probabilities and latency are stored on the cell and each push. A high sensitive-data probability refuses the push before embedding or storage. Caller-supplied kinds take priority. Haiku tags an untagged learning after the response only when Jev is unavailable.
 
 **Search.** Candidates come from the nearest vectors and from Postgres full-text search. `rankCandidates` in `packages/core` scores them:
 
@@ -105,9 +105,9 @@ score = 0.55 * vector + 0.25 * text + 0.10 * recency + 0.10 * votes
 
 Without embeddings the text signal takes the vector weight, so the hive still works with only Postgres.
 
-**Ask.** The top 8 search hits go to Claude Sonnet with a structured output schema. The model answers only from those learnings and cites ids inline. The server drops any citation that is not in the retrieved set. If the model call fails or refuses, the hive returns the top hits as a plain list.
+**Ask.** Jev checks whether the top 8 search hits directly answer the question before they go to Claude Sonnet with a structured output schema. Weak evidence returns an honest gap. When Jev is unavailable, a conservative vector or lexical coverage check gates synthesis. Friction summaries use counted reports directly. The model answers only from those learnings and cites ids inline. The server drops any citation that is not in the retrieved set. If the model call fails or refuses, the hive returns the top hits as a plain list.
 
-The full contract is in [docs/SPEC.md](docs/SPEC.md).
+TypeSafe Jev 1.13.0 supplies typed judgments for push, capture and ask. The server pins the version, sets a 500 ms timeout and makes no retries. Decision logs contain no cell text. The current [TypeSafe API](https://docs.typesafe.ai/api) and [JavaScript SDK](https://docs.typesafe.ai/sdk/javascript) define the request and probability contracts. The full Hive contract is in [docs/SPEC.md](docs/SPEC.md).
 
 ## Security notes
 
@@ -124,7 +124,9 @@ The full contract is in [docs/SPEC.md](docs/SPEC.md).
 - The comb polls every five seconds.
 - No Codex Stop hook equivalent. Codex uses the AGENTS.md instruction block.
 - No password recovery or email sign-in. Keep a saved key or a live web session.
-- No audit log or usage quotas.
+- No product audit-log view or general usage quotas. Classifier decisions are logged and push/ask evidence is stored.
+- Jev thresholds have a small policy eval and live smoke check, not a calibrated team dataset.
+- The Stop gate uses text and explicit local activity. Unsupported transcript formats skip capture.
 - Ask keeps no conversation state.
 - Two original seed authors are fictional. Test members from install checks are labelled as demos.
 
@@ -147,10 +149,10 @@ pnpm test          # integration tests run when DATABASE_URL is set
 pnpm build
 ```
 
-Seed a team with the demo learnings (the key belongs to a member named Charlie; the script joins the other authors with the invite code):
+Seed the six build observations with an existing member key. The default author label is Charlie. The older multi-author seed requires verified member keys and cannot create authors through an unverified invite:
 
 ```
-HIVEMIND_URL=http://localhost:3000 HIVE_KEY=<key> HIVEMIND_INVITE=<invite code> pnpm --filter web seed
+HIVEMIND_URL=http://localhost:3000 HIVE_KEY=<key> pnpm --filter web seed -- --file scripts/seed-r3.json
 ```
 
 Set `PUBLIC_URL=https://gohive.dev` for deployed environments. Metadata, invite links and install snippets use this URL. Without it, the app uses the request host. `www.gohive.dev` redirects to `gohive.dev` and keeps the path and query.
@@ -164,3 +166,11 @@ Cells can be learning, gotcha, decision, snippet, incident, insight or friction.
 Choose a kind on the comb. Friction and insight cells have distinct pixel badges. The Friction panel cites this week's reports, ranks areas by measured minutes lost and groups recurring titles. Ask `what is slowing the team down` for the same counts and citations. Unknown costs stay unknown; they are excluded from the total. Each push contributes its own cost, including repeated reports merged into one cell.
 
 Six dated build observations are in apps/web/scripts/seed-r3.json. They contain no invented durations. Push them with an existing verified member's key: `pnpm --filter web seed -- --file scripts/seed-r3.json`. New authors must verify email and supply their own keys; the seed script cannot bypass verification.
+
+Run the opt-in Jev smoke test with a server key in the environment:
+
+```
+TYPESAFE_LIVE_TEST=1 pnpm --filter web test src/server/classify.live.test.ts
+```
+
+The normal test suite makes no TypeSafe calls. `classify.test.ts` checks pure decision mapping, quiet-session gates, one request, no retries and invalid-response fallback. The capture route requires a member key and has a per-member rate limit. Update an installed Stop script from the Install page to get the new gate.

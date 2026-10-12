@@ -1,5 +1,6 @@
 import {
   pgTable,
+  jsonb,
   text,
   timestamp,
   integer,
@@ -72,6 +73,7 @@ export const learnings = pgTable("learnings", {
   memberId: text("member_id")
     .notNull()
     .references(() => members.id),
+  classification: jsonb("classification"),
   title: text("title").notNull(),
   body: text("body").notNull(),
   kind: text("kind").notNull(),
@@ -115,6 +117,7 @@ export const learningPushes = pgTable("learning_pushes", {
   area: text("area"),
   cost: integer("cost"),
   blocked: boolean("blocked").notNull().default(false),
+  classification: jsonb("classification"),
   merged: boolean("merged").notNull(),
   createdAt: createdAt(),
 });
@@ -152,6 +155,7 @@ export const askLog = pgTable("ask_log", {
   question: text("question").notNull(),
   answer: text("answer").notNull(),
   citedIds: text("cited_ids").array().notNull().default([]),
+  classification: jsonb("classification"),
   synthesized: boolean("synthesized").notNull(),
   createdAt: createdAt(),
 });

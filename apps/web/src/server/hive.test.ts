@@ -21,6 +21,7 @@ import {
   teamOverview,
   submitEarlyAccess,
 } from "./hive";
+import * as classifier from "./classify";
 import { frictionSummary } from "./friction";
 import { HiveNotFoundError } from "./errors";
 
@@ -311,7 +312,11 @@ describe.skipIf(!enabled)("hive database integration", () => {
       cost: 7,
       blocked: false,
     });
-    const third = await pushLearning(a, { ...data, cost: undefined, blocked: false });
+    const third = await pushLearning(a, {
+      ...data,
+      cost: undefined,
+      blocked: false,
+    });
     expect(second.id).toBe(first.id);
     expect(third.learning.cost).toBe(107);
     const insight = await pushLearning(
@@ -354,6 +359,84 @@ describe.skipIf(!enabled)("hive database integration", () => {
     expect(answer.answer).toContain("7 measured minutes");
     expect(answer.citations.map((item) => item.id)).toContain(first.id);
     expect(answer.gaps).toContain("Unmeasured");
+  });
+
+  it("refuses sensitive pushes before writing a learning or embedding", async () => {
+    const before =
+      await getSql()`SELECT count(*)::int AS count FROM learnings WHERE team_id = ${a.teamId}`;
+    const spy = vi
+      .spyOn(classifier, "classifyPush")
+      .mockResolvedValueOnce({
+        classification: null,
+        decision: {
+          action: "refuse",
+          kind: "learning",
+          tags: [],
+          worthSharing: true,
+          severity: null,
+        },
+      });
+    try {
+      await expect(
+        pushLearning(
+          a,
+          hivePushInput.parse({
+            title: "Private fixture",
+            body: "Private contact details.",
+          }),
+        ),
+      ).rejects.toThrow("personal data");
+      const after =
+        await getSql()`SELECT count(*)::int AS count FROM learnings WHERE team_id = ${a.teamId}`;
+      expect(after[0].count).toBe(before[0].count);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stores classifier evidence and refuses an unsupported ask before synthesis", async () => {
+    const pushSpy = vi
+      .spyOn(classifier, "classifyPush")
+      .mockResolvedValueOnce({
+        classification: null,
+        decision: {
+          action: "accept",
+          kind: "insight",
+          tags: ["process"],
+          worthSharing: true,
+          severity: null,
+        },
+      });
+    const learning = await pushLearning(
+      a,
+      hivePushInput.parse({
+        title: "Classifier porcupine",
+        body: "Porcupine team workflow.",
+      }),
+    );
+    expect(learning.learning.kind).toBe("insight");
+    pushSpy.mockRestore();
+    const evidence = {
+      model: "jev-1.13.0",
+      latencyMs: 45,
+      answers: { relevant: { type: "noul" as const, noul: 0.03 } },
+    };
+    const askSpy = vi
+      .spyOn(classifier, "classifyAsk")
+      .mockResolvedValueOnce({ decision: "gap", classification: evidence });
+    try {
+      const result = await askHive(a, { question: "porcupine" });
+      expect(result).toMatchObject({
+        synthesized: false,
+        confidence: "low",
+        citations: [],
+      });
+      const rows =
+        await getSql()`SELECT classification FROM ask_log WHERE team_id = ${a.teamId} AND question = 'porcupine'`;
+      expect(rows[0].classification).toEqual(evidence);
+    } finally {
+      askSpy.mockRestore();
+    }
   });
 
   it("handles every recent since form and an early access submission", async () => {

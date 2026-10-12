@@ -17,7 +17,6 @@ describe("hive_push", () => {
     ).toEqual({
       title: "Build the workspace",
       body: "Run the build from the root.",
-      kind: "learning",
       blocked: false,
       tags: [],
       paths: [],

@@ -42,8 +42,8 @@ export const hivePushInput = z.object({
     .max(20000)
     .describe("The learning in Markdown, including context and evidence."),
   kind: learningKindSchema
-    .default("learning")
-    .describe("The kind of knowledge being shared."),
+    .optional()
+    .describe("The kind of knowledge being shared. Omit to use the hive classifier."),
   area: frictionAreaSchema
     .optional()
     .describe(

@@ -10,6 +10,27 @@ export type HiveContext = {
 
 export type VoteCounts = { up: number; down: number; outdated: number };
 
+export type JevAnswer =
+  | { type: "noul"; noul: number }
+  | {
+      type: "choice";
+      choice: string;
+      probabilities: Record<string, number>;
+      confidence: number;
+    }
+  | {
+      type: "score";
+      score: number;
+      probabilities: Record<string, number>;
+      legend: Record<string, string>;
+      confidence: number;
+    };
+export type JevClassification = {
+  model: string;
+  latencyMs: number;
+  answers: Record<string, JevAnswer>;
+};
+
 export type LearningView = {
   id: string;
   title: string;
@@ -23,6 +44,7 @@ export type LearningView = {
   author: { id: string; name: string };
   pushCount: number;
   votes: VoteCounts;
+  classification?: JevClassification | null;
   adminOutdated?: boolean;
   area?: FrictionArea | null;
   cost?: number | null;

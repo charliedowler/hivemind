@@ -16,6 +16,7 @@
     "@hivemind/core": "workspace:*",
     "@hivemind/design-system": "workspace:*",
     "@modelcontextprotocol/server": "^2.0.0",
+    "@typesafe-ai/sdk": "0.6.0",
     "company-email-validator": "^1.2.7",
     "drizzle-orm": "^0.45.4",
     "mcp-handler": "^2.0.0",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildInstallSnippets } from "./install";
@@ -41,20 +41,104 @@ describe("install snippets", () => {
       false,
     );
   });
+  it("leaves quiet sessions alone without a network call or marker", () => {
+    const directory = mkdtempSync(join(tmpdir(), "hive-quiet-test-"));
+    const transcript = join(directory, "quiet.jsonl");
+    writeFileSync(
+      transcript,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "The repository uses TypeScript." }],
+        },
+      }),
+    );
+    try {
+      const script =
+        'globalThis.fetch = () => { throw new Error("Quiet session called network"); };\n' +
+        snippets[3]!.code.replace(/^#![^\n]*\n/, "");
+      const result = execFileSync("node", ["-e", script], {
+        input: JSON.stringify({
+          session_id: "quiet",
+          transcript_path: transcript,
+        }),
+        encoding: "utf8",
+        env: { ...process.env, TMPDIR: directory, HIVE_KEY: "fixture" },
+      });
+      expect(result).toBe("");
+      expect(readdirSync(directory)).toEqual(["quiet.jsonl"]);
+    } finally {
+      rmSync(directory, { recursive: true });
+    }
+  });
+  it("obeys the server's noise decision before asking the agent", () => {
+    const directory = mkdtempSync(join(tmpdir(), "hive-noise-test-"));
+    const transcript = join(directory, "noise.jsonl");
+    writeFileSync(
+      transcript,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "text",
+              text: "Learned the general rule that tests can fail.",
+            },
+          ],
+        },
+      }),
+    );
+    try {
+      const script =
+        'globalThis.fetch = async () => ({ ok: true, json: async () => ({ decision: "skip" }) });\n' +
+        snippets[3]!.code.replace(/^#![^\n]*\n/, "");
+      expect(
+        execFileSync("node", ["-e", script], {
+          input: JSON.stringify({
+            session_id: "noise",
+            transcript_path: transcript,
+          }),
+          encoding: "utf8",
+          env: { ...process.env, TMPDIR: directory, HIVE_KEY: "fixture" },
+        }),
+      ).toBe("");
+    } finally {
+      rmSync(directory, { recursive: true });
+    }
+  });
   it.each(["cli", "sdk-cli", "sdk-test", undefined])(
     "uses the correct ending and guards for entrypoint %s",
     (entrypoint) => {
       const directory = mkdtempSync(join(tmpdir(), "hivemind-hook-test-"));
-      const run = (input: object) =>
-        execFileSync("bash", ["-c", snippets[3]!.code], {
-          input: JSON.stringify(input),
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            TMPDIR: directory,
-            CLAUDE_CODE_ENTRYPOINT: entrypoint,
+      const transcript = join(directory, "transcript.jsonl");
+      writeFileSync(
+        transcript,
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "text",
+                text: "Discovered a specific workaround for the migration lock.",
+              },
+            ],
           },
-        });
+        }),
+      );
+      const run = (input: object) =>
+        execFileSync(
+          "node",
+          ["-e", snippets[3]!.code.replace(/^#![^\n]*\n/, "")],
+          {
+            input: JSON.stringify({ transcript_path: transcript, ...input }),
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              TMPDIR: directory,
+              CLAUDE_CODE_ENTRYPOINT: entrypoint,
+            },
+          },
+        );
       try {
         expect(run({ session_id: "active", stop_hook_active: true })).toBe("");
         const first = JSON.parse(run({ session_id: "first" }));
@@ -71,7 +155,9 @@ describe("install snippets", () => {
           );
         }
         expect(run({ session_id: "first" })).toBe("");
-        expect(JSON.parse(run({ session_id: "second" })).decision).toBe("block");
+        expect(JSON.parse(run({ session_id: "second" })).decision).toBe(
+          "block",
+        );
         expect(JSON.parse(run({ session_id: "active" }))).toEqual(first);
       } finally {
         rmSync(directory, { recursive: true });

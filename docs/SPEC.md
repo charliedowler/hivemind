@@ -47,22 +47,22 @@ Driver: `postgres` (postgres.js) with `drizzle-orm/postgres-js`, `prepare: false
 
 - Ids are text with a prefix and 12 lowercase base32 characters: `team_`, `mem_`, `key_`, `lrn_`, `psh_`, `ses_`, `ea_`, `ask_`.
 - API key format: `hm_` + 32 random bytes as base64url. The database stores `sha256(key)` as hex and a display prefix (first 10 characters). The raw key is shown once.
-- Invite code: `hive-` + 10 base32 characters. Stored in plaintext so the Members page can show it. It only allows joining a team.
+- Invite code: `hive-` plus random bytes. Only its SHA-256 hash is stored. It expires after seven days. The Members page shows a rotated code once.
 - Web session: random 32 byte token in the `hm_session` cookie (httpOnly, secure in production, sameSite lax, 30 days). The database stores the sha256 hash.
 
 ## Tables
 
-- `teams` (id, name, invite_code unique, created_at)
-- `members` (id, team_id, name, created_at, last_seen_at)
+- `teams` (id, name, invite_code unique hash, invite_expires_at, created_at)
+- `members` (id, team_id, name, email unique nullable, email_verified, role, removed_at, created_at, last_seen_at)
 - `api_keys` (id, team_id, member_id, key_hash unique, prefix, label, created_at, last_used_at, revoked_at)
 - `web_sessions` (id, member_id, team_id, token_hash unique, created_at, expires_at)
-- `learnings` (id, team_id, member_id, title, body, kind, tags text[], repo, paths text[], confidence real, source, session_ref, push_count int default 1, up_votes, down_votes, outdated_votes, created_at, updated_at, last_pushed_at)
+- `learnings` (id, team_id, member_id, title, body, kind, tags text[], repo, paths text[], area, cost, blocked, workaround, classification jsonb, confidence real, source, session_ref, push_count int default 1, up_votes, down_votes, outdated_votes, created_at, updated_at, last_pushed_at)
   - plus `search tsvector` generated from title (weight A), tags (B), body (C); GIN index. Not in the Drizzle schema; raw SQL only.
   - plus `embedding vector(1536)` nullable; HNSW cosine index. Added by a separate migration that may fail when pgvector is absent. Not in the Drizzle schema; raw SQL only. The service detects the column once per process and caches the answer.
   - indexes: (team_id, created_at desc), (team_id, repo)
-- `learning_pushes` (id, learning_id, team_id, member_id, source, session_ref, merged boolean, created_at): one row per push, including merged duplicates
+- `learning_pushes` (id, learning_id, team_id, member_id, source, session_ref, merged boolean, area, cost, blocked, classification jsonb, created_at): one row per push, including merged duplicates
 - `feedback` (learning_id, member_id, team_id, vote, note, created_at, updated_at; primary key (learning_id, member_id)): one vote per member per learning; the counters on `learnings` are recomputed in the same transaction
-- `ask_log` (id, team_id, member_id, question, answer, cited_ids text[], synthesized boolean, created_at)
+- `ask_log` (id, team_id, member_id, question, answer, cited_ids text[], synthesized boolean, classification jsonb, created_at)
 - `early_access` (id, name, email, company, team_size, source, created_at)
 
 The migration runner keeps a `_migrations` table. It applies the pgvector migration inside its own try/catch and logs a warning when it fails.
@@ -165,10 +165,10 @@ endWebSession(): Promise<void>
 
 1. Validate with `hivePushInput`. Normalize repo to lower case `owner/name` (strip `https://github.com/`, `.git`). Normalize tags to lower case kebab, deduped.
 2. Redact secrets in title and body with `redactSecrets` from core (API key shapes such as `sk-`, `sk-ant-`, `ghp_`, `github_pat_`, `xox[bap]-`, `AKIA…`, `hm_…`, JWTs, `-----BEGIN … PRIVATE KEY-----` blocks, `postgres://user:pass@` passwords). Replace with `[redacted]`. Return the count.
-3. Embed `title + "\n\n" + body` (truncate to 8000 characters) when `OPENAI_API_KEY` exists. The call has a 6 second timeout and two retries. An embedding failure never fails the push.
-4. Dedupe inside the same team and the same repo (null equals null): nearest neighbour with cosine similarity >= 0.90, or equal normalized title when there is no embedding. On a duplicate: increment `push_count`, set `last_pushed_at`, union tags and paths, keep the max confidence, keep the existing title, replace the body only when the new body is at least 1.5 times longer. Insert a `learning_pushes` row with `merged = true`. Return `merged: true` and the existing id.
+3. Classify the redacted observation with Jev before any embedding or write. Refuse high sensitive-data probability. Keep an explicit caller kind, otherwise use a confident suggestion or learning. Store the raw typed answers. Embed `title + "\n\n" + body` (truncate to 8000 characters) when `OPENAI_API_KEY` exists. The call has a 6 second timeout and two retries. An embedding failure never fails the push.
+4. Dedupe inside the same team, repo (null equals null) and kind. Try equal normalized titles first. Friction uses title equality only. Other kinds also use nearest neighbour with cosine similarity >= 0.90. On a duplicate: increment `push_count`, set `last_pushed_at`, union tags and paths, keep the max confidence, keep the existing title, replace the body only when the new body is at least 1.5 times longer. Insert a `learning_pushes` row with `merged = true`. Return `merged: true` and the existing id.
 5. Otherwise insert the learning and a `learning_pushes` row.
-6. When tags are empty and `ANTHROPIC_API_KEY` exists, schedule `suggestTags` with `after()` from `next/server` and store up to 5 tags. This never delays or fails the push.
+6. When Jev is unavailable, tags are empty and `ANTHROPIC_API_KEY` exists, schedule `suggestTags` with `after()` from `next/server` and store up to 5 tags. This never delays or fails the push.
 
 ### Search
 
@@ -186,13 +186,13 @@ endWebSession(): Promise<void>
 
 1. `searchLearnings` with the question, limit 8.
 2. No hits: return a fixed answer that says the hive has nothing on this yet, `synthesized: false`, `confidence: "low"`.
-3. Call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
+3. Gate retrieved evidence with Jev. Weak evidence returns a gap before synthesis. Empty retrieval skips Jev. On an outage require a vector similarity of at least 0.55 or 75% lexical coverage without vectors. Then call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
 4. Drop citations whose id is not in the retrieved set. On `stop_reason: "refusal"`, any API error, or a missing key: return the extractive fallback (top 3 hits as a bullet list with ids), `synthesized: false`.
 5. Write an `ask_log` row.
 
 ### Recent
 
-`since` accepts an ISO datetime or `<n>h` / `<n>d`. Order by `last_pushed_at desc`.
+`since` accepts an ISO datetime or `<n>m`, `<n>h`, `<n>d`, `<n>w`. Search and recent accept a hard kind filter. Order by `last_pushed_at desc`.
 
 ### Feedback
 
@@ -205,7 +205,7 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 ## Web
 
 - `/` landing: pitch, how it works, early-access form (name, email, company, team size). The form writes an `early_access` row and shows a thank-you state.
-- `/app/login`: three panels. Create a team (team name, your name). Join a team (invite code, your name). Sign in (paste an API key). Create and join show the API key once, with the install snippets filled in.
+- `/app/login`: three panels. Create a team (team name, your name, work email and code). Join a team (invite code or allowed work domain, your name, work email and code). Sign in (paste an API key). Create and join show the API key once, with the install snippets filled in.
 - `/app`: the comb, one hexagonal cell per learning (title, repo, whose agent, time, votes, status, push count), polling every 5 seconds; a cell opens the full learning with kind, tags, paths, feedback and a copyable id. Status is outdated when outdated votes outnumber up votes, confirmed when it has up votes or more than one push, otherwise fresh. Search box whose result cards show the score and every ranking signal. "Ask the hive" box that shows the answer with clickable citations, the confidence and the gaps. "Fresh nectar" lists the latest arrivals with the agent that brought them.
 - All UI comes from `@hivemind/design-system`. `design/system/readme.md` sets the vocabulary and the voice.
 - `/app/members`: members, the invite code with a copy button.
@@ -214,13 +214,13 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 
 ## Web HTTP API
 
-All bodies are JSON. Errors are `{ "error": "<one line>" }` with a 4xx or 5xx status. Routes under `/api/app/*` other than `teams`, `join` and `session` need the session cookie and return 401 without it. Every body is validated with the zod schema from core.
+All bodies are JSON. Errors are `{ "error": "<one line>" }` with a 4xx or 5xx status. Routes under `/api/app/*` other than `teams`, `join`, `email`, `capture` and `session` need the session cookie and return 401 without it. Every body is validated with the zod schema from core.
 
 | Route                                       | Body                         | Success                                                                                 |
 | ------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
 | `POST /api/early-access`                    | `EarlyAccessInput`           | 201 `{ ok: true }`                                                                      |
-| `POST /api/app/teams`                       | `{ teamName, memberName }`   | 201 `{ apiKey, inviteCode, team: { id, name }, member: { id, name } }`, sets the cookie |
-| `POST /api/app/join`                        | `{ inviteCode, memberName }` | 201 `{ apiKey, team, member }`, sets the cookie. 404 for an unknown code                |
+| `POST /api/app/teams`                       | `{ teamName, memberName, email }` | 202 `{ verificationToken, expiresIn }`; PUT /api/app/email completes the join |
+| `POST /api/app/join`                        | `{ inviteCode, memberName, email }` | 202 `{ verificationToken, expiresIn }`; PUT /api/app/email completes the join |
 | `POST /api/app/session`                     | `{ apiKey }`                 | 200 `{ team, member }`, sets the cookie. 401 for an unknown key                         |
 | `DELETE /api/app/session`                   | none                         | 204, clears the cookie                                                                  |
 | `GET /api/app/feed?since=7d&repo=&limit=50` | none                         | 200 `{ learnings: LearningView[] }`                                                     |
@@ -266,3 +266,13 @@ Learnings store the friction fields. On a same-kind duplicate, cost accumulates 
 GET /api/app/friction returns count, measured minutes, unmeasured count, blocked count, area groups, recurring titles and cited cells. An optional repo is a hard filter. hive_ask recognizes friction asks and returns a deterministic aggregate with citations and a measurement gap. The comb has a kind filter, distinct integer-scale badges for friction and insight, and a polling Friction panel. The instruction block and Stop hook ask what slowed you down, how long, and whether there was a workaround. The connection commands stay unchanged.
 
 0006_friction.sql extends the enum and both tables. 0007_friction_events.sql preserves blocked state on each report. Its rollback maps the new kinds to learning before narrowing the enum. Six seed cells record the 12 October build facts requested for this round, with unknown costs omitted. No names of customers or secrets are seeded.
+
+## Round 3: Jev decisions
+
+One server module, src/server/classify.ts, owns typed questions and the pure decide() policy. The JavaScript SDK is pinned to 0.6.0. Every request uses jev-1.13.0, timeout 500 ms, retry.maxRetries 0 and SDK body logging off. Five independent push questions run in one POST /v1/systemone: kind (Choice over seven kinds), worthSharing (Noul), sensitive (Noul), repoArea (Choice over frontend/backend/database/testing/deployment/tooling/documentation/process/none), and severity (Score from no friction to destructive impact). Known secret shapes are redacted before this request. Sensitive probability at least 0.8 refuses the push. A caller's kind always wins; otherwise Choice confidence at least 0.6 selects the kind. A repository-topic tag needs confidence at least 0.6; none adds no tag. Sharing value is advisory for intentional pushes, not silent data loss. Severity is consumed only for friction. Raw probabilities remain available in classification.
+
+The Node Stop script reads up to 100,000 trailing transcript characters and extracts at most 6000 characters of assistant text. Local changes, errors or explicit observations plus at least 20 characters of text form the cheap pre-gate. A quiet session has no network or model call. An authenticated POST /api/app/capture runs one sharing Noul. At least 0.65 asks the agent to capture; lower skips. The route rate-limits each member to 30 requests per minute. The script reads HIVE_KEY or the matching registered user-scope hive server, asks once per session, and preserves headless final answers. A provider or network outage uses the local activity signal. Missing/unsupported transcripts skip capture. Installed scripts need to be updated.
+
+The ask Noul receives the question and bounded retrieved cell evidence, with outdated state. Probability at least 0.7 permits synthesis. Lower probabilities return no citations, low confidence and an explicit evidence gap. Empty retrieval and deterministic friction summaries need no model. On a TypeSafe outage, current evidence needs vector similarity at least 0.55 or at least 75% direct lexical coverage when vectors are absent. This fallback is conservative, not proof of answerability.
+
+Migration 0008_classification.sql adds JSONB evidence to learnings, learning_pushes and ask_log. A learning holds its latest push classification; push events preserve earlier evidence. Ask logs preserve relevance evidence. Decision logs contain model, latency, policy output and provider status, never raw text or credentials. No-network evals cover thresholds, caller precedence, refusals, empty/quiet gates, outages and malformed responses. TYPESAFE_LIVE_TEST=1 opts into a real provider smoke test. The thresholds need a larger labeled team eval before broad rollout.
