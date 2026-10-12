@@ -62,7 +62,7 @@ export function WaitlistForm() {
           </Button>
         </form>
       )}
-      <p className="waitlist-note">No spam. One email when it's ready.</p>
+      <p className="waitlist-note">No spam. Just your invitation.</p>
     </div>
   );
 }
