@@ -1,3 +1,4 @@
+import { withOrigin, originFor, bindApiKey } from "@/server/analytics/events";
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -29,6 +30,7 @@ const contextSchema = z.object({
   teamName: z.string(),
   memberId: z.string(),
   memberName: z.string(),
+  apiKeyId: z.string().optional(),
 });
 type ToolContext = {
   http?: { authInfo?: AuthInfo; req?: { headers: Headers } };
@@ -38,7 +40,9 @@ function getContext(ctx: ToolContext): HiveContext {
   const parsed = contextSchema.safeParse(ctx.http?.authInfo?.extra);
   if (!parsed.success)
     throw new HiveError("A valid hive API key is required.", 401);
-  return parsed.data;
+  return parsed.data.apiKeyId
+    ? bindApiKey(parsed.data, parsed.data.apiKeyId)
+    : parsed.data;
 }
 
 function age(date: string): string {
@@ -53,9 +57,16 @@ function age(date: string): string {
       : `${Math.floor(minutes / 1440)}d ago`;
 }
 
-async function reply(action: () => Promise<string>) {
+async function reply(action: () => Promise<string>, ctx: ToolContext) {
   try {
-    return { content: [{ type: "text" as const, text: await action() }] };
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: await withOrigin(originFor(getContext(ctx), "mcp"), action),
+        },
+      ],
+    };
   } catch (error) {
     return {
       isError: true,
@@ -82,8 +93,10 @@ export function registerHiveTools(server: McpServer) {
       inputSchema: hiveBrowseInput,
     },
     async (input, ctx) =>
-      reply(async () =>
-        JSON.stringify(await browseKnowledge(getContext(ctx), input.path)),
+      reply(
+        async () =>
+          JSON.stringify(await browseKnowledge(getContext(ctx), input.path)),
+        ctx,
       ),
   );
   server.registerTool(
@@ -98,7 +111,7 @@ export function registerHiveTools(server: McpServer) {
       reply(async () => {
         const file = await readKnowledge(getContext(ctx), input.path);
         return `Revision ${file.revision}: ${file.path}\n\n${file.content}`;
-      }),
+      }, ctx),
   );
   server.registerTool(
     "hive_snapshot",
@@ -109,8 +122,9 @@ export function registerHiveTools(server: McpServer) {
       inputSchema: z.object({}),
     },
     async (_input, ctx) =>
-      reply(async () =>
-        JSON.stringify(await snapshotKnowledge(getContext(ctx))),
+      reply(
+        async () => JSON.stringify(await snapshotKnowledge(getContext(ctx))),
+        ctx,
       ),
   );
 
@@ -139,7 +153,7 @@ export function registerHiveTools(server: McpServer) {
           source,
         });
         return `${result.merged ? `Merged into ${result.id} (seen ${result.pushCount} times)` : `Saved ${result.id}`}${result.redactions ? `\nRedacted ${result.redactions} secret${result.redactions === 1 ? "" : "s"}.` : ""}`;
-      }),
+      }, ctx),
   );
 
   server.registerTool(
@@ -161,7 +175,7 @@ export function registerHiveTools(server: McpServer) {
               `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
           )
           .join("\n\n");
-      }),
+      }, ctx),
   );
 
   server.registerTool(
@@ -176,7 +190,7 @@ export function registerHiveTools(server: McpServer) {
       reply(async () => {
         const result = await askHive(getContext(ctx), input);
         return `${result.answer}\n\nSources:\n${result.citations.map((citation) => `- ${citation.id}: ${citation.title}`).join("\n") || "None."}\n\nConfidence: ${result.confidence}\nGaps: ${result.gaps ?? "None reported."}`;
-      }),
+      }, ctx),
   );
 
   server.registerTool(
@@ -199,7 +213,7 @@ export function registerHiveTools(server: McpServer) {
             .join("\n") ||
           "No learnings in this time window. Use hive_push once you learn something useful."
         );
-      }),
+      }, ctx),
   );
 
   server.registerTool(
@@ -214,6 +228,6 @@ export function registerHiveTools(server: McpServer) {
       reply(async () => {
         const result = await recordFeedback(getContext(ctx), input);
         return `${result.id}: +${result.votes.up} / -${result.votes.down} / outdated ${result.votes.outdated}`;
-      }),
+      }, ctx),
   );
 }

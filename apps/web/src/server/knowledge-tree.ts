@@ -1,3 +1,9 @@
+import {
+  recordEvent,
+  withOperation,
+  currentOrigin,
+  originFor,
+} from "./analytics/events";
 import { createHash, randomBytes } from "node:crypto";
 import { posix } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -226,7 +232,19 @@ export async function ensureKnowledge(
       : null;
     const published =
       await sql`UPDATE knowledge_state SET next_verify_at = ${nextVerifyAt}, manifest = ${sql.json(manifest)}, published_revision = ${state.revision} WHERE team_id = ${ctx.teamId} AND revision = ${state.revision} RETURNING published_revision`;
-    if (published.length) return { revision: Number(state.revision), manifest };
+    if (published.length) {
+      await recordEvent({
+        name: "tree.rebuilt",
+        key: `${ctx.teamId}:${state.revision}`,
+        properties: { revision: Number(state.revision), files: files.size },
+        origin: {
+          ...(currentOrigin() ?? originFor(ctx, "scheduled", "system")),
+          teamId: ctx.teamId,
+          memberId: ctx.memberId,
+        },
+      });
+      return { revision: Number(state.revision), manifest };
+    }
   }
   throw new HiveError(
     "The hive changed during publication. Retry to read the latest tree.",
@@ -246,7 +264,12 @@ export function scheduleKnowledge(ctx: HiveContext) {
   } catch {}
 }
 
-export async function browseKnowledge(
+export function browseKnowledge(ctx: HiveContext, path = "") {
+  return withOperation(ctx, "tree_browse", () =>
+    browseKnowledgeAction(ctx, path),
+  );
+}
+async function browseKnowledgeAction(
   ctx: HiveContext,
   path = "",
 ): Promise<KnowledgeListing> {
@@ -265,6 +288,10 @@ export async function browseKnowledge(
   }
   if (path && !entries.size)
     throw new HiveNotFoundError("Directory not found in your hive.");
+  await recordEvent({
+    name: "tree.read",
+    properties: { revision, files: entries.size },
+  });
   return {
     path,
     revision,
@@ -274,7 +301,10 @@ export async function browseKnowledge(
   };
 }
 
-export async function readKnowledge(
+export function readKnowledge(ctx: HiveContext, path: string) {
+  return withOperation(ctx, "tree_read", () => readKnowledgeAction(ctx, path));
+}
+async function readKnowledgeAction(
   ctx: HiveContext,
   path: string,
 ): Promise<KnowledgeFile> {
@@ -287,10 +317,17 @@ export async function readKnowledge(
     throw new HiveUnavailableError(
       "This hive file failed its integrity check. Rebuild the tree.",
     );
+  await recordEvent({
+    name: "tree.read",
+    properties: { revision, files: 1, bytes: content.length },
+  });
   return { path, revision, content: content.toString("utf8") };
 }
 
-export async function snapshotKnowledge(ctx: HiveContext) {
+export function snapshotKnowledge(ctx: HiveContext) {
+  return withOperation(ctx, "snapshot", () => snapshotKnowledgeAction(ctx));
+}
+async function snapshotKnowledgeAction(ctx: HiveContext) {
   const { revision, manifest } = await ensureKnowledge(ctx);
   const pack = tar.pack(),
     chunks: Buffer[] = [];
@@ -331,6 +368,14 @@ export async function snapshotKnowledge(ctx: HiveContext) {
     const token = randomBytes(32).toString("base64url"),
       expiresAt = new Date(Date.now() + 15 * 60000);
     await getSql()`INSERT INTO knowledge_snapshots (token_hash, team_id, member_id, revision, object_key, expires_at) VALUES (${digest(token)}, ${ctx.teamId}, ${ctx.memberId}, ${revision}, ${key}, ${expiresAt})`;
+    await recordEvent({
+      name: "snapshot.exported",
+      properties: {
+        revision,
+        files: Object.keys(manifest).length,
+        bytes: archive.length,
+      },
+    });
     return {
       revision,
       url: `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/api/knowledge/snapshot?token=${token}`,

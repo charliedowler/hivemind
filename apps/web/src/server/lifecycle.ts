@@ -1,3 +1,8 @@
+import {
+  analyticsTransaction,
+  recordMutation,
+  withActor,
+} from "./analytics/events";
 import { scheduleKnowledge } from "./knowledge-tree";
 import type postgres from "postgres";
 import {
@@ -84,6 +89,19 @@ export async function acceptSupersession(
     throw new HiveInputError("A replacement cannot create a cycle.");
   await tx`UPDATE learnings SET lifecycle = 'superseded', superseded_by = ${edge.newer_id} WHERE id = ${edge.older_id} AND team_id = ${ctx.teamId}`;
   await tx`UPDATE learning_supersessions SET status = 'accepted', reason = ${reason}, decided_by = ${ctx.memberId}, decided_at = now() WHERE id = ${edgeId} AND team_id = ${ctx.teamId}`;
+  await recordMutation({
+    name: "learning.superseded",
+    key: edgeId,
+    learningId: edge.older_id,
+    properties: { newerLearningId: edge.newer_id },
+  });
+  await recordMutation({
+    name: "learning.lifecycle_changed",
+    key: edgeId,
+    learningId: edge.older_id,
+    reasonCode: "replacement",
+    properties: { previousState: older.lifecycle, state: "superseded" },
+  });
 }
 
 export async function listConflicts(
@@ -123,48 +141,57 @@ export async function listConflicts(
   }));
 }
 
-export async function resolveConflict(
+export function resolveConflict(
   ctx: HiveContext,
   id: string,
   action: "confirm" | "reject",
 ) {
-  const result = await getSql().begin(async (tx) => {
-    await lockLearningWrites(tx, ctx);
-    const members =
-      await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
-    if (!members.length) throw new HiveNotFoundError("Member not found.");
-    const admin = members[0].role === "admin";
-    const edges =
-      await tx`SELECT status FROM learning_supersessions WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
-    if (!edges.length)
-      throw new HiveNotFoundError("Conflict not found in your team.");
-    if (edges[0].status !== "candidate")
-      throw new HiveError("This conflict is already resolved.", 409);
-    if (action === "reject") {
-      if (!admin)
-        throw new HiveError(
-          "A team admin is needed to reject a replacement.",
-          403,
+  return withActor(ctx, () => resolveConflictAction(ctx, id, action));
+}
+async function resolveConflictAction(
+  ctx: HiveContext,
+  id: string,
+  action: "confirm" | "reject",
+) {
+  const result = await analyticsTransaction(() =>
+    getSql().begin(async (tx) => {
+      await lockLearningWrites(tx, ctx);
+      const members =
+        await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
+      if (!members.length) throw new HiveNotFoundError("Member not found.");
+      const admin = members[0].role === "admin";
+      const edges =
+        await tx`SELECT status FROM learning_supersessions WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+      if (!edges.length)
+        throw new HiveNotFoundError("Conflict not found in your team.");
+      if (edges[0].status !== "candidate")
+        throw new HiveError("This conflict is already resolved.", 409);
+      if (action === "reject") {
+        if (!admin)
+          throw new HiveError(
+            "A team admin is needed to reject a replacement.",
+            403,
+          );
+        await tx`UPDATE learning_supersessions SET status = 'rejected', reason = 'Admin keeps both cells', decided_by = ${ctx.memberId}, decided_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+        return { status: "rejected" };
+      }
+      await tx`INSERT INTO learning_conflict_votes (edge_id, team_id, member_id) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}) ON CONFLICT DO NOTHING`;
+      const votes =
+        await tx`SELECT count(*)::int AS count FROM learning_conflict_votes v JOIN members m ON m.id = v.member_id AND m.team_id = v.team_id WHERE v.edge_id = ${id} AND v.team_id = ${ctx.teamId} AND m.removed_at IS NULL`;
+      if (admin || votes[0].count >= 2) {
+        await acceptSupersession(
+          tx,
+          ctx,
+          id,
+          admin
+            ? "Admin confirms replacement"
+            : "Two members confirm replacement",
         );
-      await tx`UPDATE learning_supersessions SET status = 'rejected', reason = 'Admin keeps both cells', decided_by = ${ctx.memberId}, decided_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-      return { status: "rejected" };
-    }
-    await tx`INSERT INTO learning_conflict_votes (edge_id, team_id, member_id) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}) ON CONFLICT DO NOTHING`;
-    const votes =
-      await tx`SELECT count(*)::int AS count FROM learning_conflict_votes v JOIN members m ON m.id = v.member_id AND m.team_id = v.team_id WHERE v.edge_id = ${id} AND v.team_id = ${ctx.teamId} AND m.removed_at IS NULL`;
-    if (admin || votes[0].count >= 2) {
-      await acceptSupersession(
-        tx,
-        ctx,
-        id,
-        admin
-          ? "Admin confirms replacement"
-          : "Two members confirm replacement",
-      );
-      return { status: "accepted" };
-    }
-    return { status: "candidate" };
-  });
+        return { status: "accepted" };
+      }
+      return { status: "candidate" };
+    }),
+  );
   scheduleKnowledge(ctx);
   return result;
 }
@@ -185,45 +212,64 @@ export async function learningVersions(
   }));
 }
 
-export async function editLearning(
+export function editLearning(
+  ctx: HiveContext,
+  id: string,
+  input: z.infer<typeof learningEditInput>,
+) {
+  return withActor(ctx, () => editLearningAction(ctx, id, input));
+}
+async function editLearningAction(
   ctx: HiveContext,
   id: string,
   input: z.infer<typeof learningEditInput>,
 ) {
   const data = learningEditInput.parse(input);
-  const result = await getSql().begin(async (tx) => {
-    await lockLearningWrites(tx, ctx);
-    const rows =
-      await tx`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} FOR UPDATE`;
-    const row = rows[0];
-    if (!row) throw new HiveNotFoundError();
-    if (row.member_id !== ctx.memberId && !row.admin)
-      throw new HiveError(
-        "Only the author or a team admin can edit this cell.",
-        403,
-      );
-    if (row.revision !== data.revision)
-      throw new HiveError("This cell changed. Reload it before editing.", 409);
-    if (row.lifecycle === "superseded")
-      throw new HiveError("Edit the current cell in the chain instead.", 409);
-    const title = redactSecrets(data.title ?? row.title).text,
-      body = redactSecrets(data.body ?? row.body).text;
-    if (
-      row.admin_outdated &&
-      data.lifecycle &&
-      ["fresh", "confirmed"].includes(data.lifecycle) &&
-      !row.admin
-    )
-      throw new HiveError("A team admin must clear the outdated mark.", 403);
-    await tx`UPDATE learnings SET title = ${title}, body = ${body}, verify_after = ${data.verify_after ? new Date(data.verify_after) : row.verify_after}, lifecycle = ${data.lifecycle ?? row.lifecycle}, admin_outdated = ${data.lifecycle && ["fresh", "confirmed"].includes(data.lifecycle) ? false : row.admin_outdated} WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-    if ((data.title || data.body) && (await hasEmbeddingColumn())) {
-      const embedding = await embedText(`${title}\n\n${body}`);
-      await tx`UPDATE learnings SET embedding = ${embedding ? JSON.stringify(embedding) : null}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-    }
-    const updated =
-      await tx`SELECT revision FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-    return { revision: updated[0].revision };
-  });
+  const result = await analyticsTransaction(() =>
+    getSql().begin(async (tx) => {
+      await lockLearningWrites(tx, ctx);
+      const rows =
+        await tx`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} FOR UPDATE`;
+      const row = rows[0];
+      if (!row) throw new HiveNotFoundError();
+      if (row.member_id !== ctx.memberId && !row.admin)
+        throw new HiveError(
+          "Only the author or a team admin can edit this cell.",
+          403,
+        );
+      if (row.revision !== data.revision)
+        throw new HiveError(
+          "This cell changed. Reload it before editing.",
+          409,
+        );
+      if (row.lifecycle === "superseded")
+        throw new HiveError("Edit the current cell in the chain instead.", 409);
+      const title = redactSecrets(data.title ?? row.title).text,
+        body = redactSecrets(data.body ?? row.body).text;
+      if (
+        row.admin_outdated &&
+        data.lifecycle &&
+        ["fresh", "confirmed"].includes(data.lifecycle) &&
+        !row.admin
+      )
+        throw new HiveError("A team admin must clear the outdated mark.", 403);
+      await tx`UPDATE learnings SET title = ${title}, body = ${body}, verify_after = ${data.verify_after ? new Date(data.verify_after) : row.verify_after}, lifecycle = ${data.lifecycle ?? row.lifecycle}, admin_outdated = ${data.lifecycle && ["fresh", "confirmed"].includes(data.lifecycle) ? false : row.admin_outdated} WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      if ((data.title || data.body) && (await hasEmbeddingColumn())) {
+        const embedding = await embedText(`${title}\n\n${body}`);
+        await tx`UPDATE learnings SET embedding = ${embedding ? JSON.stringify(embedding) : null}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      }
+      const updated =
+        await tx`SELECT revision FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      if (data.lifecycle && data.lifecycle !== row.lifecycle)
+        await recordMutation({
+          name: "learning.lifecycle_changed",
+          learningId: id,
+          reasonCode: "manual",
+          properties: { previousState: row.lifecycle, state: data.lifecycle },
+        });
+      return { revision: updated[0].revision };
+    }),
+  );
   scheduleKnowledge(ctx);
   return result;
 }

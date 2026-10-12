@@ -1,3 +1,4 @@
+import { withOrigin, originFor, recordEvent } from "@/server/analytics/events";
 import { z } from "zod";
 import { authenticateApiKey } from "@/server/auth";
 import { classifyCapture } from "@/server/classify";
@@ -25,7 +26,21 @@ export async function POST(request: Request) {
       );
     const input = inputSchema.parse(await readJson(request));
     await rateLimit("capture", `${ctx.teamId}/${ctx.memberId}`, 30, 60);
-    const result = await classifyCapture(input);
+    const result = await withOrigin(originFor(ctx, "hook"), async () => {
+      const result = await classifyCapture(input);
+      await recordEvent({
+        name: "hook.fired",
+        outcome: result.decision,
+        properties: {
+          hookKind: "stop",
+          gateDecision: result.decision,
+          worthSharingProbability:
+            result.classification?.answers.worthSharing.noul,
+          pushedCount: null,
+        },
+      });
+      return result;
+    });
     return Response.json(result, {
       headers: {
         "Cache-Control": "no-store",

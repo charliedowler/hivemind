@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getWebContext } from "@/server/auth";
+import { requireAdmin } from "@/server/identity/access";
 import { Navigation } from "@/components/navigation";
 import { ErrorPanel } from "@/components/primitives";
 import { errorMessage } from "@/lib/client";
@@ -28,9 +29,16 @@ export default async function DashboardLayout({
     );
   }
   if (!ctx) redirect("/app/login");
+  const isAdmin = await requireAdmin(ctx)
+    .then(() => true)
+    .catch(() => false);
   return (
     <>
-      <Navigation teamName={ctx.teamName} memberName={ctx.memberName} />
+      <Navigation
+        teamName={ctx.teamName}
+        memberName={ctx.memberName}
+        isAdmin={isAdmin}
+      />
       <main className="page">{children}</main>
     </>
   );

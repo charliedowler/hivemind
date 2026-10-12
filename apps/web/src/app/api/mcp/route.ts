@@ -1,3 +1,4 @@
+import { apiKeyId } from "@/server/analytics/events";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { registerHiveTools } from "@/mcp/server";
@@ -22,7 +23,7 @@ async function verifyToken(
         token: bearerToken,
         clientId: ctx.memberId,
         scopes: ["hive"],
-        extra: ctx,
+        extra: { ...ctx, apiKeyId: apiKeyId(ctx) },
       }
     : undefined;
 }

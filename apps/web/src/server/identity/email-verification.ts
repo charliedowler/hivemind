@@ -1,3 +1,10 @@
+import { earlyAccessIdForEmail } from "../analytics/linkages";
+import {
+  accessEvent,
+  bindApiKey,
+  bindRole,
+  withActor,
+} from "../analytics/events";
 import { randomInt } from "node:crypto";
 import { z } from "zod";
 import type { HiveContext } from "@hivemind/core";
@@ -72,6 +79,7 @@ export async function sendEmailCode(
   if (!(await delivery(data.email, code, id)))
     throw new HiveError("Code could not be sent. Try later.", 502);
   await getSql()`UPDATE email_verifications SET delivered = true WHERE id = ${id} AND email = ${data.email} AND consumed_at IS NULL`;
+  await accessEvent(ctx, "email_verification_sent");
   return { verificationToken: token, expiresIn: 900 };
 }
 export async function completeEmailCode(
@@ -115,7 +123,15 @@ export async function completeEmailCode(
         await tx`UPDATE members SET email = ${row.email}, email_verified = true WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING id`;
       if (!updated.length) return { error: "Member not found." };
       await tx`UPDATE email_verifications SET consumed_at = now() WHERE id = ${row.id} AND token_hash = ${hashToken(token)}`;
-      return { ctx };
+      return {
+        ctx,
+        analytics: {
+          outcome: null,
+          keyId: null,
+          role: null,
+          verifiedEmail: null,
+        },
+      };
     }
     const existing =
       await tx`SELECT id FROM members WHERE email = ${row.email}`;
@@ -143,14 +159,49 @@ export async function completeEmailCode(
     const memberId = newId("mem"),
       apiKey = `hm_${newToken()}`;
     await tx`INSERT INTO members (id, team_id, name, email, email_verified, role) VALUES (${memberId}, ${teamId}, ${payload.memberName}, ${row.email}, true, ${payload.intent === "teams" ? "admin" : "member"})`;
-    await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${newId("key")}, ${teamId}, ${memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
+    const keyId = newId("key");
+    await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${keyId}, ${teamId}, ${memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
     await tx`UPDATE email_verifications SET consumed_at = now() WHERE id = ${row.id} AND token_hash = ${hashToken(token)}`;
     return {
       ctx: { teamId, teamName, memberId, memberName: payload.memberName },
       apiKey,
       inviteCode,
+      analytics: {
+        outcome: payload.intent,
+        verifiedEmail: row.email as string,
+        keyId,
+        role:
+          payload.intent === "teams" ? ("admin" as const) : ("member" as const),
+      },
     };
   });
   if ("error" in result) throw new HiveInputError(result.error);
-  return result;
+  const { analytics, ...value } = result;
+  if (analytics.keyId) bindApiKey(value.ctx, analytics.keyId);
+  if (analytics.role) bindRole(value.ctx, analytics.role);
+  await withActor(value.ctx, async () => {
+    await accessEvent(value.ctx, "email_verified");
+    if (analytics.outcome) {
+      await accessEvent(value.ctx, "signup", {
+        earlyAccessId: analytics.verifiedEmail
+          ? await earlyAccessIdForEmail(analytics.verifiedEmail)
+          : null,
+      });
+      await accessEvent(
+        value.ctx,
+        analytics.outcome === "teams"
+          ? "invite_created"
+          : analytics.outcome === "join"
+            ? "invite_accepted"
+            : "domain_join",
+      );
+      await accessEvent(
+        value.ctx,
+        "key_created",
+        { keyId: analytics.keyId },
+        analytics.keyId ?? undefined,
+      );
+    }
+  });
+  return value;
 }

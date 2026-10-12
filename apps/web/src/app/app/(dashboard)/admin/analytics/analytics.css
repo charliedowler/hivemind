@@ -1,0 +1,110 @@
+.analytics-page {
+  gap: 24px;
+}
+.analytics-heading,
+.analytics-report-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.analytics-heading h1 {
+  font-size: 44px;
+  margin: 0 0 4px;
+}
+.analytics-heading p,
+.analytics-report p {
+  margin: 0;
+}
+.analytics-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 12px 16px;
+  border: 2px solid var(--ink);
+  background: var(--honey-100);
+}
+.analytics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+.analytics-report {
+  min-width: 0;
+}
+.analytics-usage,
+.analytics-knowledge,
+.analytics-quality {
+  grid-column: 1 / -1;
+}
+.analytics-report h2 {
+  font-size: 26px;
+  margin: 0 0 6px;
+}
+.analytics-report-heading {
+  align-items: flex-end;
+  margin-bottom: 18px;
+}
+.analytics-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 80px;
+  height: 52px;
+  border-bottom: 4px solid var(--ink);
+}
+.analytics-bar {
+  display: block;
+  width: 8px;
+  min-width: 8px;
+  background: var(--teal-600);
+  border: 2px solid var(--ink);
+}
+.analytics-table-scroll {
+  overflow-x: auto;
+  max-height: 300px;
+}
+.analytics-report table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.analytics-report th {
+  text-align: left;
+  background: var(--wax-50);
+  border-bottom: 2px solid var(--ink);
+  font-weight: 800;
+}
+.analytics-report td,
+.analytics-report th {
+  padding: 9px 10px;
+  white-space: nowrap;
+}
+.analytics-report td {
+  border-bottom: 2px solid var(--wax-100);
+}
+.analytics-report tbody tr:last-child td {
+  border-bottom: 0;
+}
+.analytics-empty {
+  padding: 16px;
+  background: var(--wax-50);
+  border: 2px solid var(--wax-200);
+}
+@media (max-width: 760px) {
+  .analytics-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .analytics-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .analytics-heading h1 {
+    font-size: 32px;
+  }
+  .analytics-report-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

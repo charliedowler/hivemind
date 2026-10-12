@@ -1,3 +1,4 @@
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
 import { LegalLinks } from "@/components/legal-links";
@@ -60,6 +61,7 @@ export default async function HomePage() {
   });
   return (
     <main className="landing">
+      <AnalyticsBeacon page="landing" />
       <header className="landing-header">
         <Link href="/" className="brand">
           <Sprite name="bee" scale={3} />

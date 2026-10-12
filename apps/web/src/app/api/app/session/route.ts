@@ -1,3 +1,4 @@
+import { recordEvent, originFor, withOrigin } from "@/server/analytics/events";
 import { signInInput } from "@hivemind/core";
 import {
   authenticateApiKey,
@@ -10,9 +11,19 @@ export async function POST(request: Request) {
   try {
     const input = signInInput.parse(await readJson(request));
     const ctx = await authenticateApiKey(input.apiKey);
-    if (!ctx)
+    if (!ctx) {
+      await recordEvent({
+        name: "access.changed",
+        outcome: "login_failed",
+        reasonCode: "invalid_credentials",
+        origin: originFor(),
+        properties: { actorKind: "anonymous" },
+      });
       return Response.json({ error: "API key not found." }, { status: 401 });
-    await startWebSession(ctx);
+    }
+    await withOrigin(originFor(ctx, "web", "api_key"), () =>
+      startWebSession(ctx),
+    );
     return Response.json(identity(ctx));
   } catch (error) {
     return httpError(error);

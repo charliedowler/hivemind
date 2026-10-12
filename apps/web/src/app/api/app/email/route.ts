@@ -1,3 +1,4 @@
+import { withOrigin, originFor } from "@/server/analytics/events";
 import { z } from "zod";
 import { getWebContext, startWebSession } from "@/server/auth";
 import {
@@ -31,21 +32,23 @@ export async function PUT(request: Request) {
       })
       .parse(await readJson(request));
     const ctx = await getWebContext();
-    const result = await completeEmailCode(
-      input.verificationToken,
-      input.code,
-      request.headers.get("x-vercel-forwarded-for") ?? "unknown",
-      ctx ?? undefined,
-    );
-    if (result.apiKey) await startWebSession(result.ctx);
-    return Response.json(
-      {
-        ...identity(result.ctx),
-        apiKey: result.apiKey,
-        inviteCode: result.inviteCode,
-      },
-      { status: result.apiKey ? 201 : 200 },
-    );
+    return await withOrigin(originFor(ctx ?? undefined), async () => {
+      const result = await completeEmailCode(
+        input.verificationToken,
+        input.code,
+        request.headers.get("x-vercel-forwarded-for") ?? "unknown",
+        ctx ?? undefined,
+      );
+      if (result.apiKey) await startWebSession(result.ctx);
+      return Response.json(
+        {
+          ...identity(result.ctx),
+          apiKey: result.apiKey,
+          inviteCode: result.inviteCode,
+        },
+        { status: result.apiKey ? 201 : 200 },
+      );
+    });
   } catch (error) {
     return httpError(error);
   }

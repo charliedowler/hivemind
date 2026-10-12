@@ -1,3 +1,5 @@
+import { originFor, withOrigin, type EventRow } from "../analytics/events";
+import { saveEarlyAccess } from "../early-access";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTeam, authenticateApiKey, joinTeam } from "../auth";
 import { getSql } from "../db/client";
@@ -68,6 +70,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     afterAll(async () => {
       const sql = getSql();
       await sql`DELETE FROM email_verifications WHERE email IN ${sql(emails)}`;
+      await sql`DELETE FROM early_access WHERE email IN ${sql(emails)}`;
       for (const table of [
         "feedback",
         "learning_pushes",
@@ -140,6 +143,29 @@ describe.skipIf(!process.env.DATABASE_URL)(
       });
       await expect(requireAdmin(member)).rejects.toThrow("team admin");
     });
+    it("links a verified signup to the existing waitlist row without logging email", async () => {
+      const email = `waitlisted@${suffix}.example.test`;
+      const early = await saveEarlyAccess({ email, source: "waitlist" });
+      const sent = await request("waitlisted", "domain");
+      const rows: EventRow[] = [];
+      await withOrigin(
+        originFor(),
+        () => completeEmailCode(sent.verificationToken, sent.code, suffix),
+        async (row) => {
+          rows.push(row);
+        },
+      );
+      const signup = rows.find(
+        (row) =>
+          row.event_name === "access.changed" && row.outcome === "signup",
+      );
+      expect(signup?.properties.earlyAccessId).toBe(early.id);
+      expect(signup?.team_id).toBe(a.teamId);
+      expect(signup?.member_id).toMatch(/^mem_/);
+      expect(JSON.stringify(rows)).not.toContain(email);
+      expect(JSON.stringify(rows)).not.toContain(sent.code);
+    });
+
     it("counts concurrent wrong attempts and rejects expired codes", async () => {
       const sent = await request("guesses", "domain");
       const wrong = sent.code === "000000" ? "111111" : "000000";
