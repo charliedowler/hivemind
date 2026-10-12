@@ -44,7 +44,7 @@ Driver: `postgres` (postgres.js) with `drizzle-orm/postgres-js`, `prepare: false
 
 ## Ids and keys
 
-- Ids are text with a prefix and 12 lowercase base32 characters: `team_`, `mem_`, `key_`, `lrn_`, `ses_`, `ea_`, `ask_`.
+- Ids are text with a prefix and 12 lowercase base32 characters: `team_`, `mem_`, `key_`, `lrn_`, `psh_`, `ses_`, `ea_`, `ask_`.
 - API key format: `hm_` + 32 random bytes as base64url. The database stores `sha256(key)` as hex and a display prefix (first 10 characters). The raw key is shown once.
 - Invite code: `hive-` + 10 base32 characters. Stored in plaintext so the Members page can show it. It only allows joining a team.
 - Web session: random 32 byte token in the `hm_session` cookie (httpOnly, secure in production, sameSite lax, 30 days). The database stores the sha256 hash.
@@ -127,13 +127,13 @@ endWebSession(): Promise<void>
 ### Push
 1. Validate with `hivePushInput`. Normalize repo to lower case `owner/name` (strip `https://github.com/`, `.git`). Normalize tags to lower case kebab, deduped.
 2. Redact secrets in title and body with `redactSecrets` from core (API key shapes such as `sk-`, `sk-ant-`, `ghp_`, `github_pat_`, `xox[bap]-`, `AKIA…`, `hm_…`, JWTs, `-----BEGIN … PRIVATE KEY-----` blocks, `postgres://user:pass@` passwords). Replace with `[redacted]`. Return the count.
-3. Embed `title + "\n\n" + body` (truncate to 8000 characters) when `OPENAI_API_KEY` exists. An embedding failure never fails the push.
+3. Embed `title + "\n\n" + body` (truncate to 8000 characters) when `OPENAI_API_KEY` exists. The call has a 6 second timeout and two retries. An embedding failure never fails the push.
 4. Dedupe inside the same team and the same repo (null equals null): nearest neighbour with cosine similarity >= 0.90, or equal normalized title when there is no embedding. On a duplicate: increment `push_count`, set `last_pushed_at`, union tags and paths, keep the max confidence, keep the existing title, replace the body only when the new body is at least 1.5 times longer. Insert a `learning_pushes` row with `merged = true`. Return `merged: true` and the existing id.
 5. Otherwise insert the learning and a `learning_pushes` row.
 6. When tags are empty and `ANTHROPIC_API_KEY` exists, schedule `suggestTags` with `after()` from `next/server` and store up to 5 tags. This never delays or fails the push.
 
 ### Search
-1. Candidate set = top 40 by cosine similarity (when the query embeds and the column exists) union top 40 by `ts_rank_cd(search, websearch_to_tsquery('english', q))`. When both are empty, fall back to a prefix `to_tsquery` on the query words. All inside `team_id = ctx.teamId`. `tags` is a hard filter (array overlap). `repo` is a boost, not a filter.
+1. Candidate set = the 40 nearest learnings by cosine similarity (when the query embeds and the column exists), kept when the similarity is at least 0.30 or the row is also a text candidate, union the top 40 text candidates. A text candidate matches any query lexeme (`plainto_tsquery` with OR) and covers at least half of the distinct query lexemes; it is ordered by `ts_rank_cd`. When both sets are empty, fall back to a prefix `to_tsquery` on the query words. All inside `team_id = ctx.teamId`. `tags` is a hard filter (array overlap). `repo` is a boost, not a filter.
 2. Rank with `rankCandidates` from core (pure, unit tested):
    - `vector` = cosine similarity clamped to 0..1
    - `fts` = rank divided by the max rank in the candidate set

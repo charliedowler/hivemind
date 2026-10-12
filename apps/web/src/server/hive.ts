@@ -12,6 +12,9 @@ import { newId } from "./db/ids";
 import { HiveInputError, HiveNotFoundError } from "./errors";
 import { embedText, synthesizeAnswer, extractiveAnswer, suggestTags } from "@/server/llm";
 
+const minimumVectorSimilarity = 0.3;
+const minimumLexemeCoverage = 0.5;
+
 function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
   if (!result.success) throw new HiveInputError("The input is invalid. Check the tool's fields and limits.");
@@ -68,7 +71,7 @@ export async function pushLearning(ctx: HiveContext, input: HivePushInput): Prom
       await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${data.kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ?? null})`;
       if (vector) await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
     }
-    await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged) VALUES (${newId("lrn")}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ?? null}, ${merged})`;
+    await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged) VALUES (${newId("psh")}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ?? null}, ${merged})`;
     const rows = await tx`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
     const learning = view(rows[0]);
     return { id, merged, pushCount: learning.pushCount, redactions: title.count + body.count, learning };
@@ -82,13 +85,18 @@ export async function searchLearnings(ctx: HiveContext, input: HiveSearchInput):
   const sql = getSql();
   const tags = normalizeTags(data.tags ?? []);
   const embedding = await hasEmbeddingColumn() ? await embedText(data.query) : null;
-  const tsquery = sql`websearch_to_tsquery('english', ${data.query})`;
+  const tsquery = sql`replace(plainto_tsquery('english', ${data.query})::text, '&', '|')::tsquery`;
+  const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
+  const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
   const filter = sql`l.team_id = ${ctx.teamId} AND (${tags.length === 0} OR l.tags && ${tags}::text[])`;
-  const ftsRows = await sql`SELECT l.*, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} ORDER BY fts DESC LIMIT 40`;
+  const ftsRows = await sql`SELECT l.*, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding ? await sql`SELECT l.*, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40` : [];
   const candidates = new Map<string, LearningView & { vector: number | null; fts: number }>();
   for (const row of ftsRows) candidates.set(row.id, { ...view(row), vector: null, fts: Number(row.fts) });
-  for (const row of vectorRows) candidates.set(row.id, { ...view(row), vector: Number(row.vector), fts: Number(row.fts) });
+  for (const row of vectorRows) {
+    const vector = Number(row.vector);
+    if (vector >= minimumVectorSimilarity || candidates.has(row.id)) candidates.set(row.id, { ...view(row), vector, fts: Number(row.fts) });
+  }
   if (!candidates.size) {
     const words = data.query.match(/[\p{L}\p{N}]+/gu) ?? [];
     if (words.length) {
