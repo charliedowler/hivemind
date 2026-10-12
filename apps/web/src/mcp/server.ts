@@ -30,7 +30,7 @@ type ToolContext = {
 function getContext(ctx: ToolContext): HiveContext {
   const parsed = contextSchema.safeParse(ctx.http?.authInfo?.extra);
   if (!parsed.success)
-    throw new HiveError("A valid hive API key is required.", 401);
+    throw new HiveError("Connect your forager to the hive and sign in.", 401);
   return parsed.data;
 }
 

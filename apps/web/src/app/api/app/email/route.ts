@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getWebContext, startWebSession } from "@/server/auth";
+import { getWebContext } from "@/server/auth";
 import {
   sendEmailCode,
   completeEmailCode,
@@ -10,6 +10,8 @@ export async function POST(request: Request) {
   try {
     const body = await readJson(request);
     const ctx = await getWebContext();
+    if (!ctx || !body || typeof body !== "object" || !("intent" in body) || body.intent !== "account")
+      return Response.json({ error: "Sign in to verify your account email." }, { status: 401 });
     return Response.json(
       await sendEmailCode(
         body,
@@ -31,13 +33,14 @@ export async function PUT(request: Request) {
       })
       .parse(await readJson(request));
     const ctx = await getWebContext();
+    if (!ctx) return Response.json({ error: "Sign in first." }, { status: 401 });
     const result = await completeEmailCode(
       input.verificationToken,
       input.code,
       request.headers.get("x-vercel-forwarded-for") ?? "unknown",
       ctx ?? undefined,
     );
-    if (result.apiKey) await startWebSession(result.ctx);
+    if (result.apiKey) return Response.json({ error: "Create or join with an email account at /app/login." }, { status: 410 });
     return Response.json(
       {
         ...identity(result.ctx),

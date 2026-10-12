@@ -22,23 +22,23 @@ export function buildInstallSnippets({
   apiKey,
 }: {
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;
 }): InstallSnippet[] {
   const url = baseUrl.replace(/\/+$/, "");
   return [
     {
       id: "claude",
       title: "Claude Code",
-      description: "Add the hive to every Claude Code session.",
+      description: "Add the hive, then use /mcp to sign in through your browser.",
       language: "bash",
-      code: `claude mcp add --transport http hive ${url}/api/mcp --header "Authorization: Bearer ${apiKey}" --scope user`,
+      code: `claude mcp add --transport http hive ${url}/api/mcp --scope user`,
     },
     {
       id: "codex",
       title: "Codex",
-      description: "Add the export line to ~/.zshrc so new shells have it.",
+      description: "Add the hive, then sign in through your browser.",
       language: "bash",
-      code: `export HIVE_KEY=${apiKey}\ncodex mcp add hive --url ${url}/api/mcp --bearer-token-env-var HIVE_KEY`,
+      code: `codex mcp add hive --url ${url}/api/mcp\ncodex mcp login hive`,
     },
     {
       id: "instructions",
@@ -69,6 +69,13 @@ export function buildInstallSnippets({
       description: "hive should appear as connected.",
       language: "bash",
       code: "claude mcp list",
+    },
+    {
+      id: "headless",
+      title: "Headless and CI access",
+      description: "Create a key on your account page only when a browser cannot sign in.",
+      language: "bash",
+      code: `claude mcp add --transport http hive ${url}/api/mcp --header "Authorization: Bearer ${apiKey || "<YOUR_KEY>"}" --scope user\n\nexport HIVE_KEY=${apiKey || "<YOUR_KEY>"}\ncodex mcp add hive --url ${url}/api/mcp --bearer-token-env-var HIVE_KEY`,
     },
   ];
 }

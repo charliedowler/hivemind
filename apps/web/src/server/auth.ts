@@ -5,7 +5,7 @@ import {
   type HiveContext,
   type JoinTeamInput,
 } from "@hivemind/core";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getSql } from "./db/client";
 import { hashToken, newId, newToken, randomBase32 } from "./db/ids";
 import { HiveInputError, HiveNotFoundError } from "./errors";
@@ -112,7 +112,13 @@ export async function startWebSession(ctx: HiveContext): Promise<void> {
 }
 
 export async function getWebContext(): Promise<HiveContext | null> {
-  const token = (await cookies()).get("hm_session")?.value;
+  const jar = await cookies();
+  if (jar.get("better-auth.session_token") || jar.get("__Secure-better-auth.session_token")) {
+    const [{ getAuth }, { memberContext }] = await Promise.all([import("./better-auth"), import("./identity/enrollment")]);
+    const session = await (await getAuth()).api.getSession({ headers: await headers() });
+    return session?.user.emailVerified ? memberContext(session.user.id) : null;
+  }
+  const token = jar.get("hm_session")?.value;
   if (!token) return null;
   const rows =
     await getSql()`SELECT s.team_id, t.name AS team_name, s.member_id, m.name AS member_name FROM web_sessions s JOIN teams t ON t.id = s.team_id JOIN members m ON m.id = s.member_id AND m.team_id = s.team_id WHERE s.token_hash = ${hashToken(token)} AND s.expires_at > now() AND m.removed_at IS NULL`;

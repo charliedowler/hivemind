@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SearchHit } from "@hivemind/core";
 import { AnswerCard, CombGrid } from "@hivemind/design-system";
 import { InstallSnippets, KeyBox } from "./install";
@@ -7,6 +7,10 @@ import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
 import { Markdown } from "./markdown";
 import { learningStatus } from "@/lib/learning-presentation";
+import { Login } from "./login";
+import { enabledSignInProviders } from "@/lib/auth-providers";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push() {}, refresh() {} }) }));
 
 const hit: SearchHit = {
   id: "lrn_abcdefghijkl",
@@ -29,6 +33,19 @@ const hit: SearchHit = {
 };
 
 describe("dashboard components", () => {
+  it("hides unconfigured providers and removes API keys from web sign-in", () => {
+    const providers = enabledSignInProviders({ GOOGLE_CLIENT_ID: "fixture", SLACK_CLIENT_SECRET: "fixture" });
+    expect(providers).toEqual([]);
+    const html = renderToStaticMarkup(<Login invite="" providers={providers} />);
+    expect(html).toContain('name="email"');
+    expect(html).toContain('name="password"');
+    expect(html).not.toContain('name="apiKey"');
+    expect(html).not.toContain("Sign in with Google");
+    expect(html).not.toContain("Sign in with Slack");
+    const configured = renderToStaticMarkup(<Login invite="" providers={enabledSignInProviders({ GOOGLE_CLIENT_ID: "fixture", GOOGLE_CLIENT_SECRET: "fixture", SLACK_CLIENT_ID: "fixture", SLACK_CLIENT_SECRET: "fixture" })} />);
+    expect(configured).toContain("Sign in with Google");
+    expect(configured).toContain("Sign in with Slack");
+  });
   it("renders a keyboard reachable cell with attribution, status and repeat pushes", () => {
     const html = renderToStaticMarkup(
       <CombGrid columns={4}>
@@ -158,7 +175,7 @@ describe("dashboard components", () => {
     expect(html).toContain("[lrn_abcdefghijkl]");
   });
 
-  it("fills the unchanged install snippets with the base URL and key", () => {
+  it("leads with OAuth commands and keeps the headless key fallback last", () => {
     const html = renderToStaticMarkup(
       <InstallSnippets baseUrl="https://hive.example" apiKey="hm_test" />,
     );
@@ -169,7 +186,7 @@ describe("dashboard components", () => {
     expect(html).toContain(
       "codex mcp add hive --url https://hive.example/api/mcp --bearer-token-env-var HIVE_KEY",
     );
-    expect(html).toContain("Your agent joins the hive.");
+    expect(html).toContain("codex mcp login hive");
     expect(html).not.toContain("One line.");
     expect(html).toContain("Agent instructions");
     expect(html).toContain("claude mcp list");
