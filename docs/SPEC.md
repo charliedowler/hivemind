@@ -325,6 +325,9 @@ Dashboard routes: `/app/conflicts`, `/app/tree`, `/app/cells/[id]`. Friction, an
 
 Operational limits: Blob garbage collection, a scheduled queue worker, streaming large hives, arbitrary free-form entity extraction and a visual content editor are not implemented. Run `pnpm --filter web knowledge:rebuild` for recovery. The SQL rollback files refuse to discard evidence/history already created by the feature; read them before considering a rollback. Normal development and production use the handwritten migration runner, never schema push.
 
+## Analytics
+
+The [analytics contract](analytics.md) defines the versioned append-only event envelope, allowlisted metadata, fixed reasons, traffic classification, trusted boundaries and five reports. It follows Wolf reporting conventions. Team admins can open `/app/admin/analytics`; all rows are scoped to their authenticated team. Only landing, waitlist and install pages send a small first-party page beacon. Waitlist signups stay in `early_access`. Installer, hook, Slack and Better Auth handoffs are explicit in the contract. Migration `0013_analytics_events.sql` is applied at merge time before deploy.
 ## Better Auth web and MCP access
 
 This section replaces the historical public create/join/email-code and key sign-in routes. POST `/api/app/teams` and `/api/app/join` return 410. `/api/app/email` is only a scoped legacy account-email upgrade. Normal accounts use `/api/auth/sign-up/email`, `/api/auth/sign-in/email`, `/api/auth/email-otp/verify-email`, `/api/auth/email-otp/request-password-reset` and `/api/auth/email-otp/reset-password`. Email codes are hashed, last 15 minutes and allow five attempts. Shared database rate limits protect auth and email sending. Passwords use Better Auth's scrypt. First-password reset creates a credential account for the same existing member. Password reset revokes web sessions.

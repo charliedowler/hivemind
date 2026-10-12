@@ -1,3 +1,9 @@
+import {
+  accessEvent,
+  analyticsTransaction,
+  recordMutation,
+  withActor,
+} from "../analytics/events";
 import { scheduleKnowledge } from "../knowledge-tree";
 import type { HiveContext } from "@hivemind/core";
 import { lockLearningWrites } from "../lifecycle";
@@ -39,12 +45,14 @@ export async function revokeKey(ctx: HiveContext, id: string): Promise<void> {
   const rows =
     await getSql()`UPDATE api_keys SET revoked_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} AND (member_id = ${ctx.memberId} OR EXISTS (SELECT 1 FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND role = 'admin' AND removed_at IS NULL)) RETURNING id`;
   if (!rows.length) throw new HiveNotFoundError("Key not found in your team.");
+  await accessEvent(ctx, "key_revoked", { keyId: id }, id);
 }
 export async function rotateInvite(ctx: HiveContext) {
   await requireAdmin(ctx);
   const inviteCode = `hive-${newToken()}`;
   const rows =
     await getSql()`UPDATE teams SET invite_code = ${hashToken(inviteCode)}, invite_expires_at = now() + interval '7 days' WHERE id = ${ctx.teamId} RETURNING invite_expires_at`;
+  await accessEvent(ctx, "invite_rotated", { role: "admin" });
   return { inviteCode, expiresAt: rows[0].invite_expires_at.toISOString() };
 }
 export async function allowDomain(ctx: HiveContext): Promise<void> {
@@ -82,6 +90,12 @@ export async function removeMember(
     await tx`UPDATE api_keys SET revoked_at = now() WHERE member_id = ${id} AND team_id = ${ctx.teamId}`;
     await tx`DELETE FROM web_sessions WHERE member_id = ${id} AND team_id = ${ctx.teamId}`;
   });
+  await accessEvent(
+    ctx,
+    "member_removed",
+    { targetMemberId: id, role: "admin" },
+    id,
+  );
 }
 export async function moderateLearning(
   ctx: HiveContext,
@@ -89,17 +103,29 @@ export async function moderateLearning(
   action: "delete" | "outdated",
 ): Promise<void> {
   await requireAdmin(ctx);
-  await getSql().begin(async (tx) => {
-    await lockLearningWrites(tx, ctx);
-    const rows =
-      await tx`SELECT id, lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
-    if (!rows.length) throw new HiveNotFoundError();
-    if (rows[0].lifecycle === "superseded")
-      throw new HiveError(
-        "Moderate the current cell in the chain instead.",
-        409,
-      );
-    await tx`UPDATE learnings SET lifecycle = ${action === "delete" ? "retracted" : "outdated"}, admin_outdated = true, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-  });
+  await withActor(ctx, () =>
+    analyticsTransaction(() =>
+      getSql().begin(async (tx) => {
+        await lockLearningWrites(tx, ctx);
+        const rows =
+          await tx`SELECT id, lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+        if (!rows.length) throw new HiveNotFoundError();
+        if (rows[0].lifecycle === "superseded")
+          throw new HiveError(
+            "Moderate the current cell in the chain instead.",
+            409,
+          );
+        await tx`UPDATE learnings SET lifecycle = ${action === "delete" ? "retracted" : "outdated"}, admin_outdated = true, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+        const state = action === "delete" ? "retracted" : "outdated";
+        if (rows[0].lifecycle !== state)
+          await recordMutation({
+            name: "learning.lifecycle_changed",
+            learningId: id,
+            reasonCode: "manual",
+            properties: { previousState: rows[0].lifecycle, state },
+          });
+      }),
+    ),
+  );
   scheduleKnowledge(ctx);
 }
