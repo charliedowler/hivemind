@@ -41,7 +41,12 @@ async function main() {
     if (command === 'install') {
       if (agents.length) install({ ...options, registerMcp: false });
       installExecutor({ ...executorOptions, open: !yes && !!process.stdout.isTTY });
-    } else if (command === 'doctor') { if (!doctorExecutor(executorOptions)) process.exitCode = 1; }
+      await reportDoctor([{ agent: 'executor', healthy: doctorExecutor(executorOptions) }], home);
+    } else if (command === 'doctor') {
+      const healthy = doctorExecutor(executorOptions);
+      await reportDoctor([{ agent: 'executor', healthy }], home);
+      if (!healthy) process.exitCode = 1;
+    }
     else if (command === 'uninstall') console.log('Remove the Hive integration in Executor only after checking who uses it. Local uninstall leaves organisation accounts and policies in place');
     else throw new Error('Use install, doctor or uninstall with --client executor');
     return;
@@ -69,15 +74,32 @@ async function main() {
         }
       } finally { prompt.close(); }
     }
-    doctor(options);
+    const results: DoctorResult[] = [];
+    doctor({ ...options, onDoctor: (agent, healthy) => results.push({ agent, healthy }) });
+    await reportDoctor(results, home);
   } else if (command === 'doctor') {
-    let healthy = doctor(options);
-    if (detectExecutor(executorOptions).detected) healthy = doctorExecutor(executorOptions) && healthy;
+    const results: DoctorResult[] = [];
+    let healthy = doctor({ ...options, onDoctor: (agent, ready) => results.push({ agent, healthy: ready }) });
+    if (detectExecutor(executorOptions).detected) {
+      const ready = doctorExecutor(executorOptions);
+      results.push({ agent: 'executor', healthy: ready });
+      healthy &&= ready;
+    }
+    await reportDoctor(results, home);
     if (!healthy) process.exitCode = 1;
   } else if (command === 'uninstall') uninstall(options);
   else if (command === 'login') login(home, agents);
   else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--yes] [--client claude|codex|executor]\ngohive doctor\ngohive login\ngohive uninstall\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
   else throw new Error(`Unknown command: ${command}. Run gohive --help`);
+}
+
+type DoctorResult = { agent: Agent | 'executor'; healthy: boolean };
+
+async function reportDoctor(results: DoctorResult[], home: string) {
+  try {
+    const telemetry = await import(new URL('../assets/hive/scripts/telemetry.mjs', import.meta.url).href);
+    await telemetry.reportDoctors(results, home);
+  } catch {}
 }
 
 function login(home: string, agents: Agent[]) {

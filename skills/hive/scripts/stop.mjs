@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { bearerToken, endpoint, homeDirectory } from "./mcp.mjs";
+import { reportEvent } from "./telemetry.mjs";
 const hiveUrl = endpoint();
 import fs from "node:fs";
 import path from "node:path";
@@ -41,6 +42,7 @@ async function main() {
       if (server?.url?.replace(/\/$/, "") === hiveUrl + "/api/mcp") key = server.headers?.Authorization?.replace(/^Bearer /i, "");
     } catch {}
   }
+  let serverRecorded = false;
   if (key) {
     try {
       const response = await fetch(hiveUrl + "/api/app/capture", {
@@ -49,7 +51,11 @@ async function main() {
         body: JSON.stringify(facts),
         signal: AbortSignal.timeout(2000),
       });
-      if (response.ok && (await response.json()).decision === "skip") return;
+      serverRecorded = response.ok;
+      if (response.ok) {
+        const result = await response.json();
+        if (result.decision === "skip") return;
+      }
     } catch {}
   }
   const ending = !process.env.CLAUDE_CODE_ENTRYPOINT || process.env.CLAUDE_CODE_ENTRYPOINT === "cli"
@@ -57,5 +63,6 @@ async function main() {
     : "This is a headless run and the caller reads only your last message, so finish by repeating your previous final answer word for word and nothing else.";
   const reason = "Read the hive skill before capture. Search for an existing cell; skip facts already saved in this session and use supersedes for a replacement. Set verify_after to an ISO timestamp for time-sensitive guidance when the tool supports it. Before you stop: if this session taught you something a teammate's agent would otherwise have to rediscover (a gotcha, a fix, a decision, an insight or friction: what slowed you down, how long, was there a workaround), use the Hive MCP server at " + hiveUrl + "/api/mcp to call hive_push once per learning with a title that states the fact, the repo and 3 to 5 tags. For friction include area, measured minutes lost as cost when known, blocked and workaround. Never invent time lost. Never include secrets, customer names or personal data. Skip general knowledge any agent already has. " + ending;
   process.stdout.write(JSON.stringify({ decision: "block", reason }) + "\n");
+  if (key && !serverRecorded) await reportEvent('hook', { hookKind: 'stop', gateDecision: 'capture', pushedCount: null }, { token: key });
 }
 main().catch(() => {});

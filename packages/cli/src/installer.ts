@@ -14,7 +14,7 @@ type OwnedFile = { hash: string; previous?: string };
 type Manifest = { version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: OwnedHook[] };
 export type Result = { status: number; stdout: string; stderr: string };
 export type Runner = (command: string, args: string[], home: string) => Result;
-export type Options = { home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string; registerMcp?: boolean };
+export type Options = { home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string; registerMcp?: boolean; onDoctor?: (agent: Agent, healthy: boolean) => void };
 export const url = 'https://gohive.dev/api/mcp';
 export const startMarker = '<!-- hive:start -->';
 export const endMarker = '<!-- hive:end -->';
@@ -234,6 +234,7 @@ export function doctor(options: Options): boolean {
   const agents = options.agents || detectAgents(home, run);
   if (!agents.length) { log('No forager found. Install Claude Code or Codex first'); return false; }
   let healthy = true;
+  const checks = new Map<Agent, boolean>();
   for (const agent of agents) {
     let connected = false;
     try {
@@ -250,6 +251,7 @@ export function doctor(options: Options): boolean {
     log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} skill: ${skills ? 'Present' : 'Missing'}`);
     log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} instructions: ${instructions ? 'Present' : 'Missing'}`);
     healthy &&= connected && skills && instructions;
+    checks.set(agent, connected && skills && instructions);
   }
   if (agents.includes('claude')) {
     try {
@@ -259,8 +261,9 @@ export function doctor(options: Options): boolean {
         const present = (settings.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.command === hookCommand(home, script))) && existsSync(join(home, '.claude/skills/hive/scripts', script));
         log(`${event} hook: ${present ? 'Present' : 'Missing'}`);
         healthy &&= present;
+        checks.set('claude', !!checks.get('claude') && present);
       }
-    } catch { log('Claude hooks: Could not read settings'); healthy = false; }
+    } catch { log('Claude hooks: Could not read settings'); healthy = false; checks.set('claude', false); }
   }
   const oauth = read(join(home, '.hive/oauth.json'));
   const config = read(join(home, '.claude.json'));
@@ -268,6 +271,8 @@ export function doctor(options: Options): boolean {
   try { hookCredentials ||= !!JSON.parse(config || '{}').mcpServers?.hive?.headers?.Authorization; } catch {}
   log(`Hook credentials: ${hookCredentials ? 'Present (the next SessionStart checks them)' : 'Run gohive login; hooks stay silent until sign-in'}`);
   if (agents.includes('claude')) healthy &&= hookCredentials;
+  if (agents.includes('claude')) checks.set('claude', !!checks.get('claude') && hookCredentials);
+  for (const [agent, ready] of checks) options.onDoctor?.(agent, ready);
   log(healthy ? 'Your foragers are ready. Start a new agent session in a repo your team knows' : 'Finish sign-in, then run gohive doctor again');
   return healthy;
 }

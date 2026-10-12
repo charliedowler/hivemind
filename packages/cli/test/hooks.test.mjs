@@ -25,11 +25,13 @@ function run(script, input, env) {
 
 async function mockHive(t, responseText = '- lrn_fixture: Restart the worker before retrying | author via codex | 1h ago | team/widget', sse = false) {
   const calls = [];
+  const reports = [];
   const server = createServer(async (request, response) => {
     let body = '';
     for await (const chunk of request) body += chunk;
     assert.equal(request.headers.authorization, 'Bearer fixture');
     const value = JSON.parse(body);
+    if (request.url === '/api/analytics/hook') { reports.push(value); response.writeHead(204).end(); return; }
     calls.push(value);
     if (value.method === 'notifications/initialized') { response.writeHead(202).end(); return; }
     const result = value.method === 'initialize' ? { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 'hive', version: '1' } } : { content: [{ type: 'text', text: responseText }] };
@@ -39,7 +41,7 @@ async function mockHive(t, responseText = '- lrn_fixture: Restart the worker bef
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
-  return { calls, baseUrl: `http://127.0.0.1:${server.address().port}` };
+  return { calls, reports, baseUrl: `http://127.0.0.1:${server.address().port}` };
 }
 
 function scratchRepo() {
@@ -76,6 +78,10 @@ test('SessionStart runs hive_recent once per session and repo, through real MCP 
   assert.deepEqual(hive.calls[2].params, { name: 'hive_recent', arguments: { repo: 'team/widget', since: '7d', limit: 3 } });
   assert.equal(await run('session-start.mjs', input, env), '');
   assert.equal(hive.calls.length, 3);
+  assert.equal(hive.reports.length, 1);
+  assert.equal(hive.reports[0].hookKind, 'session_start');
+  assert.equal(hive.reports[0].gateDecision, 'capture');
+  assert.equal(hive.reports[0].pushedCount, null);
   await run('session-start.mjs', { ...input, session_id: 'another-session' }, env);
   assert.equal(hive.calls.length, 6);
 });
@@ -86,6 +92,8 @@ test('empty hives and missing credentials leave SessionStart silent', async t =>
   assert.equal(await run('session-start.mjs', { session_id: 'empty', cwd: home }, { HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' }), '');
   assert.equal(await run('session-start.mjs', { session_id: 'no-token', cwd: home }, { HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl }), '');
   assert.equal(hive.calls.length, 3);
+  assert.equal(hive.reports.length, 1);
+  assert.equal(hive.reports[0].gateDecision, 'skip');
 });
 
 test('the MCP client reads SSE responses', async t => {
@@ -132,6 +140,31 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   assert.ok(captured.text.length <= 6000);
   decision = 'capture';
   assert.equal(JSON.parse(await run('stop.mjs', { session_id: 'jev-capture', transcript_path: transcript }, env)).decision, 'block');
+});
+
+test('Stop reports a local nudge when the capture gate fails without sending transcript data', async t => {
+  const home = scratchRepo();
+  const transcript = join(home, 'failed-capture.jsonl');
+  writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Discovered that a stopped migration worker can leave a lock open.' }] } }));
+  const reports = [];
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    if (request.url === '/api/app/capture') { response.writeHead(503).end(); return; }
+    assert.equal(request.url, '/api/analytics/hook');
+    reports.push(JSON.parse(body));
+    response.writeHead(204).end();
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
+  assert.equal(JSON.parse(await run('stop.mjs', { session_id: 'failed-gate', transcript_path: transcript }, env)).decision, 'block');
+  assert.equal(reports.length, 1);
+  assert.deepEqual(Object.keys(reports[0]).sort(), ['attemptId', 'gateDecision', 'hookKind', 'pushedCount']);
+  assert.equal(reports[0].hookKind, 'stop');
+  assert.equal(reports[0].pushedCount, null);
+  assert.equal(await run('stop.mjs', { session_id: 'failed-gate', transcript_path: transcript }, env), '');
+  assert.equal(reports.length, 1);
 });
 
 test('recent summaries preserve lifecycle and verification warnings without author data', () => {

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { bearerToken, callTool, endpoint, homeDirectory } from './mcp.mjs';
+import { reportEvent } from './telemetry.mjs';
 
 export function repository(remote) {
   if (!/^(?:https?:\/\/|ssh:\/\/|[^/\s]+@[^:\s]+:)/.test(remote.trim())) return;
@@ -39,9 +40,13 @@ async function main() {
   const signal = AbortSignal.timeout(2000);
   const token = await bearerToken(homeDirectory(), endpoint(), signal);
   if (!token) return;
-  const result = await callTool('hive_recent', { repo, since: '7d', limit: 3 }, { token, signal });
-  const context = summary(result, repo);
+  let context;
+  try {
+    const result = await callTool('hive_recent', { repo, since: '7d', limit: 3 }, { token, signal });
+    context = summary(result, repo);
+  } catch {}
   if (context) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }) + '\n');
+  await reportEvent('hook', { hookKind: 'session_start', gateDecision: context ? 'capture' : 'skip', pushedCount: null }, { token });
 }
 
 if (process.argv[1]?.endsWith('session-start.mjs')) main().catch(() => {});
