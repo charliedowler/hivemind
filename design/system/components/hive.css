@@ -393,6 +393,10 @@ button.hm-cell {
   color: var(--text-body);
 }
 
+.hm-ask-input:focus-visible {
+  outline: none;
+}
+
 .hm-ask-input::placeholder {
   color: var(--text-muted);
   font-weight: 600;

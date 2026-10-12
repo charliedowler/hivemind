@@ -412,7 +412,7 @@ pre:focus-visible {
 .search-form > .hm-field:nth-child(2) {
   flex: 0 1 240px;
 }
-.search-form .hm-input {
+.search-form .hm-input:not(:focus-within) {
   box-shadow: var(--shadow-hard-sm);
 }
 .search-results {
