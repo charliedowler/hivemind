@@ -71,3 +71,17 @@ test('Executor skill setup never registers a duplicate direct MCP server', () =>
   assert.ok(!f.calls.some(call => call[1] === 'mcp' && call[2] === 'add'));
   assert.ok(!f.calls.some(call => call[1] === 'mcp' && call[2] === 'get'));
 });
+
+test('Executor detects an existing Hive namespace by its endpoint and rejects a different server', () => {
+  const f = fixture();
+  const run = (command, args) => {
+    if (args.includes('getServer') && args.at(-1).includes('gohive_mcp')) return { status: 0, stdout: JSON.stringify({ ok: true, data: { integration: { slug: 'gohive_mcp', config: { endpoint: url } } } }), stderr: '' };
+    if (args.includes('integrations')) return { status: 0, stdout: JSON.stringify({ ok: true, data: { integrations: [{ slug: 'gohive_mcp', kind: 'mcp' }] } }), stderr: '' };
+    if (args.includes('connections')) return { status: 0, stdout: JSON.stringify({ ok: true, data: { connections: [{ integration: 'gohive_mcp', lastHealth: { status: 'healthy' } }] } }), stderr: '' };
+    return f.options.run(command, args);
+  };
+  assert.equal(doctorExecutor({ ...f.options, run }), true);
+  assert.equal(installExecutor({ ...f.options, run }).link, 'https://executor.sh/example-team/integrations/gohive_mcp');
+  const different = fixture({ integration: { slug: 'hive', endpoint: 'https://other.example/mcp' }, connections: [{ integration: 'hive', lastHealth: { status: 'healthy' } }] });
+  assert.equal(doctorExecutor(different.options), false);
+});

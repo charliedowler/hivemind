@@ -37,7 +37,24 @@ Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/sc
 
 **MCP auth is OAuth-first.** Web sign-in uses email and password, Google or Slack. Create a team, or join with an invite link or an allowed work domain. Email accounts verify a six-digit Resend code within 15 minutes.
 
-For Claude Code:
+Run the installer with Node 20 or later:
+
+```sh
+npx gohive install
+npx gohive doctor
+```
+
+It detects Claude Code and Codex, adds their MCP connection, installs the [Hive skill](skills/hive/SKILL.md), and merges the Claude hooks. It backs up existing settings and instructions before changing them. Run `npx gohive login` for the hooks' own OAuth session. Use `npx gohive uninstall` to remove owned files and hooks.
+
+For Executor, run `npx gohive install --client executor`. It opens the organisation setup page with the MCP URL where supported and walks through OAuth sign-in. It keeps existing organisation accounts and policies. Doctor recognises an existing Hive namespace by its server URL.
+
+Until the npm package is published, use the same installer from Git:
+
+```sh
+npx --yes --package github:charliedowler/hivemind gohive install
+```
+
+The [CLI guide](packages/cli/README.md) covers backup paths, hook login and client selection. Manual setup remains available. For Claude Code:
 
 ```
 claude mcp add --transport http hive https://gohive.dev/api/mcp --scope user

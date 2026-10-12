@@ -64,6 +64,29 @@ pre:focus-visible {
   gap: 20px;
   min-width: 0;
 }
+.install-fallback > summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+.install-fallback > div {
+  margin-top: 20px;
+}
+.executor-steps {
+  padding: 20px;
+  border-top: 1px solid var(--border-default);
+}
+.executor-steps .muted,
+.executor-steps a {
+  color: var(--teal-300);
+}
+.executor-steps ol {
+  margin: 0;
+  padding-left: 24px;
+  line-height: 1.6;
+}
+.executor-steps li + li {
+  margin-top: 12px;
+}
 .row {
   display: flex;
   align-items: center;

@@ -31,6 +31,9 @@ async function main() {
   try { discovery = await json(`${issuerUrl.origin}/.well-known/oauth-authorization-server${suffix}`); }
   catch { discovery = await json(`${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`); }
   if (!discovery.registration_endpoint || !discovery.authorization_endpoint || !discovery.token_endpoint) throw new Error('Hive OAuth discovery is incomplete');
+  const scopes = new Set(resourceMetadata.scopes_supported || ['hive']);
+  if (discovery.scopes_supported?.includes('offline_access')) scopes.add('offline_access');
+  const scope = [...scopes].join(' ');
   const state = randomBytes(24).toString('base64url');
   const verifier = randomBytes(32).toString('base64url');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
@@ -50,10 +53,10 @@ async function main() {
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const redirectUri = `http://127.0.0.1:${server.address().port}/callback`;
-    const registration = await json(discovery.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Hive hooks', application_type: 'native', redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' }) });
+    const registration = await json(discovery.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Hive hooks', application_type: 'native', redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none', scope }) });
     if (!registration.client_id) throw new Error('Hive did not register the hook client');
     const authorizationUrl = new URL(trustedUrl(discovery.authorization_endpoint));
-    authorizationUrl.search = new URLSearchParams({ client_id: registration.client_id, redirect_uri: redirectUri, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state, resource, scope: resourceMetadata.scopes_supported?.join(' ') || 'hive' }).toString();
+    authorizationUrl.search = new URLSearchParams({ client_id: registration.client_id, redirect_uri: redirectUri, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state, resource, scope }).toString();
     console.log('Let the hooks catch up with your hive. Open this sign-in link:');
     console.log(authorizationUrl.href);
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';

@@ -57,6 +57,22 @@ function call(options: ExecutorOptions, path: string[], input: object): { ok: bo
   try { return JSON.parse(result.stdout); } catch { return; }
 }
 
+type RemoteIntegration = { slug: string; config?: { endpoint?: string }; endpoint?: string };
+
+function findHive(options: ExecutorOptions): { checked: boolean; integration?: RemoteIntegration } {
+  const primary = call(options, ['mcp', 'getServer'], { slug: 'hive' });
+  if (!primary?.ok) return { checked: false };
+  if (primary.data?.integration) return { checked: true, integration: primary.data.integration as RemoteIntegration };
+  const list = call(options, ['coreTools', 'integrations', 'list'], {});
+  const integrations = list?.ok && Array.isArray(list.data?.integrations) ? list.data.integrations as { slug: string; kind?: string; description?: string }[] : [];
+  for (const candidate of integrations.filter(item => item.kind === 'mcp' && /hive/i.test(item.slug + ' ' + item.description)).slice(0, 5)) {
+    const result = call(options, ['mcp', 'getServer'], { slug: candidate.slug });
+    const integration = result?.ok ? result.data?.integration as RemoteIntegration | undefined : undefined;
+    if ((integration?.config?.endpoint || integration?.endpoint)?.replace(/\/$/, '') === url) return { checked: true, integration: { ...integration, slug: candidate.slug } };
+  }
+  return { checked: true };
+}
+
 export function doctorExecutor(options: ExecutorOptions): boolean {
   const log = options.log || console.log;
   const found = detectExecutor(options);
@@ -67,12 +83,15 @@ export function doctorExecutor(options: ExecutorOptions): boolean {
     log('Executor Hive connection: Check the Hive account in the web dashboard');
     return false;
   }
-  const integration = call(options, ['mcp', 'getServer'], { slug: 'hive' });
-  if (!integration?.ok) { log('Executor Hive integration: Could not check the current CLI profile'); return false; }
-  if (!integration.data?.integration) { log('Executor Hive integration: Missing. Run npx gohive install --client executor'); return false; }
+  const { checked, integration } = findHive(options);
+  if (!checked) { log('Executor Hive integration: Could not check the current CLI profile'); return false; }
+  if (!integration) { log('Executor Hive integration: Missing. Run npx gohive install --client executor'); return false; }
+  if ((integration.config?.endpoint || integration.endpoint)?.replace(/\/$/, '') !== url) { log('Executor Hive integration: The server URL differs. Check the existing integration before changing it'); return false; }
+  const slug = integration.slug || 'hive';
+  log(`Executor Hive integration: ${slug}`);
   const response = call(options, ['coreTools', 'connections', 'list'], {});
   const connections = response?.ok && Array.isArray(response.data?.connections) ? response.data.connections as { integration?: string; lastHealth?: { status?: string }; template?: string }[] : [];
-  const hive = connections.filter(connection => connection.integration === 'hive');
+  const hive = connections.filter(connection => connection.integration === slug);
   const healthy = hive.some(connection => connection.lastHealth?.status === 'healthy');
   log(`Executor Hive connection: ${healthy ? 'Healthy in the current CLI profile' : hive.length ? 'Needs sign-in or a health check' : 'Not connected. Finish OAuth in the dashboard'}`);
   return healthy;
@@ -89,10 +108,10 @@ export function installExecutor(options: ExecutorOptions) {
   if (found.cli && /^executor v1\./.test(found.version || '')) {
     const probe = call(options, ['mcp', 'probeEndpoint'], { endpoint: url });
     if (probe?.ok && probe.data?.requiresOAuth === false) log('Hive browser sign-in is not live yet. Wait for the OAuth release; do not paste a key');
-    const current = call(options, ['mcp', 'getServer'], { slug: 'hive' });
-    if (current?.ok && current.data?.integration) {
+    const current = findHive(options).integration;
+    if (current) {
       log('A Hive integration already exists. Open it and check its URL; keep its existing accounts and policies');
-      if (new URL(link).pathname.endsWith('/integrations/add/mcp')) { const existing = new URL(link); existing.pathname = existing.pathname.replace('/integrations/add/mcp', '/integrations/hive'); existing.search = ''; link = existing.href; }
+      if (new URL(link).pathname.endsWith('/integrations/add/mcp')) { const existing = new URL(link); existing.pathname = existing.pathname.replace('/integrations/add/mcp', `/integrations/${encodeURIComponent(current.slug || 'hive')}`); existing.search = ''; link = existing.href; }
     }
   }
   log(`Open Executor: ${link}`);

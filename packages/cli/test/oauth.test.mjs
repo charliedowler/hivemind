@@ -20,13 +20,14 @@ test('the hook OAuth login discovers the server, uses PKCE and saves a private r
     const send = value => response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(value));
     if (request.url === '/api/mcp') { response.writeHead(401, { 'WWW-Authenticate': `Bearer resource_metadata="${baseUrl}/resource"` }).end(); return; }
     if (request.url === '/resource') { send({ resource: `${baseUrl}/api/mcp`, authorization_servers: [baseUrl], scopes_supported: ['hive'] }); return; }
-    if (request.url === '/.well-known/oauth-authorization-server') { send({ issuer: baseUrl, registration_endpoint: `${baseUrl}/register`, authorization_endpoint: `${baseUrl}/authorize`, token_endpoint: `${baseUrl}/token` }); return; }
+    if (request.url === '/.well-known/oauth-authorization-server') { send({ issuer: baseUrl, scopes_supported: ['hive', 'offline_access'], registration_endpoint: `${baseUrl}/register`, authorization_endpoint: `${baseUrl}/authorize`, token_endpoint: `${baseUrl}/token` }); return; }
     let body = '';
     for await (const chunk of request) body += chunk;
     if (request.url === '/register') {
       const client = JSON.parse(body);
       assert.equal(client.token_endpoint_auth_method, 'none');
       assert.equal(client.application_type, 'native');
+      assert.equal(client.scope, 'hive offline_access');
       redirectUri = client.redirect_uris[0];
       assert.ok(redirectUri.startsWith('http://127.0.0.1:'));
       send({ client_id: 'hook-client' }); return;
@@ -61,6 +62,7 @@ test('the hook OAuth login discovers the server, uses PKCE and saves a private r
     const authorize = new URL(link);
     challenge = authorize.searchParams.get('code_challenge');
     assert.equal(authorize.searchParams.get('code_challenge_method'), 'S256');
+    assert.equal(authorize.searchParams.get('scope'), 'hive offline_access');
     const callback = new URL(redirectUri);
     callback.search = new URLSearchParams({ state: 'wrong-state', code: 'fixture-code' }).toString();
     assert.equal((await fetch(callback)).status, 400);
