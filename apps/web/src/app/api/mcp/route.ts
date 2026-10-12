@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const handler = createMcpHandler(registerHiveTools, {
-  serverInfo: { name: "hivemind", version: "0.1.0" },
+  serverInfo: { name: "hive", version: "0.1.0" },
 });
 
 async function verifyToken(

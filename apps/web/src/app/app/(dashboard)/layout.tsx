@@ -18,7 +18,7 @@ export default async function DashboardLayout({
     return (
       <main className="page narrow stack">
         <Link className="brand" href="/">
-          Hivemind
+          Hive
         </Link>
         <ErrorPanel message={errorMessage(error)} />
         <Link href="/app/login" className="text-button">

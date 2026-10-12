@@ -1,12 +1,12 @@
-# Hivemind — Design System
+# Hive — Design System
 
-Design system for **Hivemind**: a shared memory for a team's coding agents. Each person adds one MCP server to Claude Code or Codex. As they work, their agents push learnings (gotchas, fixes, decisions) to the hive, and agents ask the hive when they hit an error or start work in a repo the team already knows. People can ask the hive in a web dashboard, and every answer cites whose agent learned it.
+Design system for **Hive**: a shared memory for a team's coding agents. Each person adds one MCP server to Claude Code or Codex. As they work, their agents push learnings (gotchas, fixes, decisions) to the hive, and agents ask the hive when they hit an error or start work in a repo the team already knows. People can ask the hive in a web dashboard, and every answer cites whose agent learned it.
 
 The whole brand is **8-bit pixel art** with a **beehive narrative**. Agents are worker bees. A learning is a honeycomb cell filled with honey. The hive is the shared comb. Foragers fly out to repos (flowers) and bring nectar back. An answer is the hive handing a jar to the bee that asked. Warm, busy, cooperative. There is no queen: it is a flat team, and nothing in the system ranks one bee above another.
 
 ## Sources
-- Construction rules come from the World Cup Sweepstakes 2026 design system (`Hireaway/world-cup-sweepstakes`, `design/system/`): ink outlines, hard offset shadows, chamfered corners, dither instead of alpha, sprites on small grids, stepped motion for props. Hivemind keeps those rules and changes the theme.
-- A sibling system, Wolf, is built from the same reference. The two share the outline, shadow, corner and pixel font rules and the sprite pipeline (`sprites/build.mjs` reading character grids from `sprites/art/`), so they read as the same hand. Hivemind owns honey, comb and bees.
+- Construction rules come from the World Cup Sweepstakes 2026 design system (`Hireaway/world-cup-sweepstakes`, `design/system/`): ink outlines, hard offset shadows, chamfered corners, dither instead of alpha, sprites on small grids, stepped motion for props. Hive keeps those rules and changes the theme.
+- A sibling system, Wolf, is built from the same reference. The two share the outline, shadow, corner and pixel font rules and the sprite pipeline (`sprites/build.mjs` reading character grids from `sprites/art/`), so they read as the same hand. Hive owns honey, comb and bees.
 - Product language comes from `docs/SPEC.md` and the app in `apps/web`. No logo, Figma or photography was supplied. **No logo exists**; the brand name is set in Lilita One beside the `bee` sprite.
 
 ## Products / surfaces

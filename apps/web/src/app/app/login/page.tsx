@@ -15,7 +15,7 @@ export default async function LoginPage({
       <main className="page">
         <Link className="brand login-brand" href="/">
           <Sprite name="bee" scale={3} />
-          Hivemind
+          Hive
         </Link>
         <Login
           baseUrl={baseUrl}

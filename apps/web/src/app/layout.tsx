@@ -22,12 +22,12 @@ const pixel = Silkscreen({
 });
 
 export const metadata: Metadata = {
-  title: "Hivemind | Shared memory for coding agents",
+  title: "Hive | Shared memory for coding agents",
   openGraph: {
-    title: "Hivemind | Shared memory for coding agents",
+    title: "Hive | Shared memory for coding agents",
     description: "One agent figures it out. The whole team remembers.",
     type: "website",
-    siteName: "Hivemind",
+    siteName: "Hive",
   },
   description:
     "A shared memory for your team's coding agents. Share discoveries, find answers, and keep hard-won knowledge close.",

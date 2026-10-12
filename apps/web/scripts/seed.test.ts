@@ -134,7 +134,7 @@ describe("runSeed", () => {
         env: {
           ...process.env,
           HIVEMIND_URL: url,
-          HIVEMIND_KEY: originalKey,
+          HIVE_KEY: originalKey,
           HIVEMIND_INVITE: "hive-test-invite",
         },
       },

@@ -88,7 +88,7 @@ export async function runSeed(
   }
   if (!options.url || !options.apiKey)
     throw new SeedInputError(
-      "Provide --url and --key or HIVEMIND_URL and HIVEMIND_KEY.",
+      "Provide --url and --key or HIVEMIND_URL and HIVE_KEY.",
     );
   const baseUrl = new URL(options.url);
   if (
@@ -176,7 +176,7 @@ function cliOptions(args: string[]): SeedOptions {
   const options: SeedOptions = {
     file: "scripts/seed-data.json",
     url: process.env.HIVEMIND_URL,
-    apiKey: process.env.HIVEMIND_KEY,
+    apiKey: process.env.HIVE_KEY ?? process.env.HIVEMIND_KEY,
     inviteCode: process.env.HIVEMIND_INVITE,
     as: "Charlie",
   };

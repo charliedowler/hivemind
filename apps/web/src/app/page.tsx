@@ -62,7 +62,7 @@ export default async function HomePage() {
       <header className="landing-header">
         <Link href="/" className="brand">
           <Sprite name="bee" scale={3} />
-          Hivemind
+          Hive
         </Link>
         <nav aria-label="Main">
           <a href="#how-it-works">How it works</a>
@@ -234,7 +234,7 @@ export default async function HomePage() {
       <footer className="landing-footer">
         <Link href="/" className="brand">
           <Sprite name="bee" scale={2} />
-          Hivemind
+          Hive
         </Link>
         <span>The hive knows.</span>
         <Link href="/app/login">Create your hive</Link>

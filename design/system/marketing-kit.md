@@ -1,6 +1,6 @@
-# Hivemind marketing kit
+# Hive marketing kit
 
-Exact instructions for producing social images in the Hivemind design system. Build each image as a self-contained HTML page that imports `design/system/styles.css`, `components/core.css` and `components/hive.css`, inline the sprites from `sprites/*.svg`, and screenshot it with Playwright at device scale factor 2. Never redraw a sprite by hand and never scale one by a fraction.
+Exact instructions for producing social images in the Hive design system. Build each image as a self-contained HTML page that imports `design/system/styles.css`, `components/core.css` and `components/hive.css`, inline the sprites from `sprites/*.svg`, and screenshot it with Playwright at device scale factor 2. Never redraw a sprite by hand and never scale one by a fraction.
 
 ## Canvases
 | Use | Size | Safe margin |
@@ -55,8 +55,8 @@ Use whole multiples only. Hero bee: 12× (192px). Supporting bees: 6× or 8×. C
 
 ### 5. A split poster shared with Wolf
 - Canvas: 1600×900 or 1080×1080, split by a hard diagonal: a 45° stair of 16px steps in ink, 8px thick, from top centre-right to bottom centre-left. No soft blend between the halves.
-- Left half is Hivemind: honey comb background, `comb-cluster` at 8×, two bees, wordmark "Hivemind" in Lilita One with the `bee` at 6×.
-- Right half is Wolf: use the Wolf system's own tokens and sprites from its `design/system` (tuxedo dark background, its wolf sprite, its wordmark). Do not recolour Wolf sprites with Hivemind colours or the reverse.
+- Left half is Hive: honey comb background, `comb-cluster` at 8×, two bees, wordmark "Hive" in Lilita One with the `bee` at 6×.
+- Right half is Wolf: use the Wolf system's own tokens and sprites from its `design/system` (tuxedo dark background, its wolf sprite, its wordmark). Do not recolour Wolf sprites with Hive colours or the reverse.
 - Shared elements prove the same hand: the same 4px ink frame around the whole canvas, the same Silkscreen eyebrow pill centred on the seam ("Built at the hackathon"), the same hard shadow offset on both sides, both mascots at the same pixel scale and on the same ground line.
 - Each half keeps its own headline. Equal area, equal weight. One `bee-carry` may cross the seam towards the wolf carrying a droplet; that is the only element allowed to overlap.
 

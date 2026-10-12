@@ -35,7 +35,7 @@ export function Navigation({
       <div className="app-header-inner">
         <Link className="brand" href="/">
           <Sprite name="bee" scale={3} />
-          Hivemind
+          Hive
         </Link>
         <span className="team-name">{teamName}</span>
         <nav aria-label="Dashboard">

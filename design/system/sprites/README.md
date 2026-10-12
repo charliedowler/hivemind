@@ -1,4 +1,4 @@
-# Hivemind sprites
+# Hive sprites
 
 Every sprite is a character grid in `art/*.mjs`. One character is one pixel; `.` is transparent; letters map to colours in `art/palette.mjs`. `node sprites/build.mjs` checks every row width, then writes one SVG per sprite, `sprites.json`, `../components/sprites/spriteData.ts` and `../tokens/patterns.css`.
 

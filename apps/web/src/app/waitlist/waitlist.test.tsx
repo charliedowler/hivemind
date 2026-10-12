@@ -32,10 +32,10 @@ describe("waitlist page", () => {
 
   it("publishes the canonical waitlist URL and Open Graph metadata", async () => {
     expect(await generateMetadata()).toMatchObject({
-      title: "Hivemind waitlist",
+      title: "Hive waitlist",
       alternates: { canonical: "https://gohive.dev/waitlist" },
       openGraph: {
-        title: "Hivemind waitlist",
+        title: "Hive waitlist",
         url: "https://gohive.dev/waitlist",
       },
     });

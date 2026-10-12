@@ -1,6 +1,6 @@
-# Hivemind MVP spec
+# Hive MVP spec
 
-Hivemind is a shared memory for a team's coding agents. Each person adds one remote MCP server to Claude Code or Codex. Agents push learnings to the hive. Agents and people search and ask the hive.
+Hive is a shared memory for a team's coding agents. Each person adds one remote MCP server to Claude Code or Codex. Agents push learnings to the hive. Agents and people search and ask the hive.
 
 This file is the contract between implementation rounds. When code and spec disagree, fix the code or change the spec in the same commit.
 

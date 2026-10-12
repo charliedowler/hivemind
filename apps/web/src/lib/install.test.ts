@@ -20,13 +20,13 @@ describe("install snippets", () => {
       "check",
     ]);
     expect(snippets[0]?.code).toBe(
-      'claude mcp add --transport http hivemind https://hive.example/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user',
+      'claude mcp add --transport http hive https://hive.example/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user',
     );
     expect(snippets[1]?.code).toBe(
-      "export HIVEMIND_KEY=<YOUR_KEY>\ncodex mcp add hivemind --url https://hive.example/api/mcp --bearer-token-env-var HIVEMIND_KEY",
+      "export HIVE_KEY=<YOUR_KEY>\ncodex mcp add hive --url https://hive.example/api/mcp --bearer-token-env-var HIVE_KEY",
     );
     expect(JSON.parse(snippets[4]!.code).hooks.Stop[0].hooks[0].command).toBe(
-      "$HOME/.claude/hooks/hivemind-stop.sh",
+      "$HOME/.claude/hooks/hive-stop.sh",
     );
     expect(snippets[5]?.code).toBe("claude mcp list");
   });
@@ -36,7 +36,7 @@ describe("install snippets", () => {
       apiKey: "test-key",
     });
     expect(result[0]?.code).toContain("Bearer test-key");
-    expect(result[1]?.code).toContain("export HIVEMIND_KEY=test-key\n");
+    expect(result[1]?.code).toContain("export HIVE_KEY=test-key\n");
     expect(result.slice(2).some(({ code }) => code.includes("test-key"))).toBe(
       false,
     );

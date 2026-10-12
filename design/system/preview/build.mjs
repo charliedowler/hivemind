@@ -71,7 +71,7 @@ const page = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hivemind design system</title>
+<title>Hive design system</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Space+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap">
@@ -152,7 +152,7 @@ ${fragment("hive.html")}
     <li>${sprite("cell-asked", 1)}The hive has no cell for that yet. Be the first to bring it back.</li>
     <li>${sprite("cell-outdated", 1)}Marked outdated. It stays in the comb, greyed, so nobody follows it by mistake.</li>
   </ul>
-  <div class="pv-foot">${sprite("hive-entrance", 2)}Hivemind design system · built at the hackathon on 12 Oct 2026</div>
+  <div class="pv-foot">${sprite("hive-entrance", 2)}Hive design system · built at the hackathon on 12 Oct 2026</div>
 </section>
 </main>
 </body>

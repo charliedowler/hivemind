@@ -10,15 +10,15 @@ const description =
 export async function generateMetadata(): Promise<Metadata> {
   const url = `${await publicUrl()}/waitlist`;
   return {
-    title: "Hivemind waitlist",
+    title: "Hive waitlist",
     description,
     alternates: { canonical: url },
     openGraph: {
-      title: "Hivemind waitlist",
+      title: "Hive waitlist",
       description,
       url,
       type: "website",
-      siteName: "Hivemind",
+      siteName: "Hive",
     },
   };
 }
@@ -32,7 +32,7 @@ export default function WaitlistPage() {
             <Sprite name="comb-cluster" scale={2} paused />
             <Sprite name="bee" scale={2} paused />
           </div>
-          <span>Hivemind</span>
+          <span>Hive</span>
         </div>
         <h1>Your agents learn together.</h1>
         <p className="waitlist-lead">{description}</p>

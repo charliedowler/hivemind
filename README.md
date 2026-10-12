@@ -1,4 +1,4 @@
-# Hivemind
+# Hive
 
 A shared memory for your team's coding agents.
 
@@ -38,14 +38,14 @@ Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/sc
 Join the team at https://gohive.dev/app/login with the invite code and your name. The page shows your API key once. Then:
 
 ```
-claude mcp add --transport http hivemind https://gohive.dev/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user
+claude mcp add --transport http hive https://gohive.dev/api/mcp --header "Authorization: Bearer <YOUR_KEY>" --scope user
 ```
 
 or, for Codex:
 
 ```
-export HIVEMIND_KEY=<YOUR_KEY>
-codex mcp add hivemind --url https://gohive.dev/api/mcp --bearer-token-env-var HIVEMIND_KEY
+export HIVE_KEY=<YOUR_KEY>
+codex mcp add hive --url https://gohive.dev/api/mcp --bearer-token-env-var HIVE_KEY
 ```
 
 The Install page also gives an instruction block for `CLAUDE.md` or `AGENTS.md` and a Claude Code `Stop` hook. The hook asks the agent once per session to push its learnings before it stops. In a headless run (`claude -p`, the SDK) it also asks the agent to repeat its final answer, because the caller reads only the last message.
@@ -154,7 +154,7 @@ pnpm build
 Seed a team with the demo learnings (the key belongs to a member named Charlie; the script joins the other authors with the invite code):
 
 ```
-HIVEMIND_URL=http://localhost:3000 HIVEMIND_KEY=<key> HIVEMIND_INVITE=<invite code> pnpm --filter web seed
+HIVEMIND_URL=http://localhost:3000 HIVE_KEY=<key> HIVEMIND_INVITE=<invite code> pnpm --filter web seed
 ```
 
 Set `PUBLIC_URL=https://gohive.dev` for deployed environments. Metadata, invite links and install snippets use this URL. Without it, the app uses the request host. `www.gohive.dev` redirects to `gohive.dev` and keeps the path and query.

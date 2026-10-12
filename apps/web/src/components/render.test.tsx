@@ -163,11 +163,11 @@ describe("dashboard components", () => {
       <InstallSnippets baseUrl="https://hive.example" apiKey="hm_test" />,
     );
     expect(html).toContain(
-      "claude mcp add --transport http hivemind https://hive.example/api/mcp",
+      "claude mcp add --transport http hive https://hive.example/api/mcp",
     );
     expect(html).toContain("Authorization: Bearer hm_test");
     expect(html).toContain(
-      "codex mcp add hivemind --url https://hive.example/api/mcp --bearer-token-env-var HIVEMIND_KEY",
+      "codex mcp add hive --url https://hive.example/api/mcp --bearer-token-env-var HIVE_KEY",
     );
     expect(html).toContain("Your agent joins the hive.");
     expect(html).not.toContain("One line.");
