@@ -1,3 +1,4 @@
+import { withOrigin, originFor, recordEvent } from "@/server/analytics/events";
 import { z } from "zod";
 import { withHiveBearerAuth } from "@/server/bearer-auth";
 import { classifyCapture } from "@/server/classify";
@@ -14,10 +15,24 @@ const inputSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    return await withHiveBearerAuth(request, async (request, ctx) => {
+    return await withHiveBearerAuth(request, async (request, ctx, claims) => {
     const input = inputSchema.parse(await readJson(request));
     await rateLimit("capture", `${ctx.teamId}/${ctx.memberId}`, 30, 60);
-    const result = await classifyCapture(input);
+    const result = await withOrigin(originFor(ctx, "hook", claims ? "oauth" : "api_key"), async () => {
+      const result = await classifyCapture(input);
+      await recordEvent({
+        name: "hook.fired",
+        outcome: result.decision,
+        properties: {
+          hookKind: "stop",
+          gateDecision: result.decision,
+          worthSharingProbability:
+            result.classification?.answers.worthSharing.noul,
+          pushedCount: null,
+        },
+      });
+      return result;
+    });
     return Response.json(result, {
       headers: {
         "Cache-Control": "no-store",

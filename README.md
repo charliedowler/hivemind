@@ -168,8 +168,8 @@ Snapshots are limited to 10,000 cells and 50 MB of source Markdown. The download
 
 - The comb polls every five seconds.
 - No Codex Stop hook equivalent. Codex uses the AGENTS.md instruction block.
+- Team admins can inspect usage, onboarding, knowledge, quality and stalls at `/app/admin/analytics`. General usage quotas are not implemented.
 - Google consent is in Testing. Only configured test accounts can complete Google sign-in until the OAuth app is published.
-- No product audit-log view or general usage quotas. Classifier decisions are logged and push/ask evidence is stored.
 - Jev thresholds have a small policy eval and live smoke check, not a calibrated team dataset.
 - The Stop gate uses text and explicit local activity. Unsupported transcript formats skip capture.
 - Ask keeps no conversation state.
@@ -222,6 +222,9 @@ The normal test suite makes no TypeSafe calls. `classify.test.ts` checks pure de
 
 Production smoke checks on 12 October 2026 measured Jev at 205 ms for a friction push, 151 ms for useful Stop capture and 160 ms for a relevant ask from Vercel. A weak retrieval was rejected at probability 0.03 in 152 ms. A quiet capture made no model call. These are individual checks, not percentile benchmarks. Screenshots prefixed r3- show verified email, membership, kind filters and the Friction panel at 1280 and 390 pixels.
 
+## Analytics and event logs
+
+The [analytics contract](docs/analytics.md) describes the private append-only event ledger, privacy limits, five SQL reports and merge-time migration. Team admins can open `/app/admin/analytics` to inspect their team with pixel tables and bars. Waitlist signups remain in `early_access`. Set `HIVE_REPORTING_DATABASE_URL` to a private ledger-only reporting login for a later Lightdash connection. No Lightdash project is created here.
 ## Better Auth and forager access
 
 [Better Auth](https://better-auth.com/docs/plugins/mcp) owns passwords, email codes, Google and Slack sign-in, sessions, OAuth consent, PKCE, JWT signing and refresh. Its Drizzle user model maps to `members`; its session model maps to `web_sessions`. No old password hashes exist. Existing verified emails link to the same member, so keys and cell attribution retain their IDs. A signed-in account with no team has no dashboard or MCP context until verification and enrollment succeed.

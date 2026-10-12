@@ -1,3 +1,4 @@
+import { withOrigin, originFor } from "@/server/analytics/events";
 import { ZodError } from "zod";
 import type { HiveContext } from "@hivemind/core";
 import { getWebContext } from "@/server/auth";
@@ -39,7 +40,7 @@ export async function authenticated(
     const ctx = await getWebContext();
     if (!ctx)
       return Response.json({ error: "Sign in first." }, { status: 401 });
-    return await action(ctx);
+    return await withOrigin(originFor(ctx), () => action(ctx));
   } catch (error) {
     return httpError(error);
   }
