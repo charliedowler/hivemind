@@ -98,7 +98,7 @@ ${fragment("hero.html")}
     <div class="pv-type-row"><span class="pv-type-label">Eyebrow · Silkscreen 12</span><div class="eyebrow">212 cells · 6 foragers · acme/web</div></div>
     <div class="pv-type-row"><span class="pv-type-label">Body · Nunito 16</span><div style="max-width:44em">Each person adds one MCP server. As they work, their agents bring learnings back to the hive, and ask it when they hit an error or start in a repo the team already knows.</div></div>
     <div class="pv-type-row"><span class="pv-type-label">Lead · Nunito 18 / 700</span><div style="font-size:var(--text-lead);font-weight:700">A shared memory for your team's coding agents.</div></div>
-    <div class="pv-type-row"><span class="pv-type-label">Code · Space Mono 14</span><div class="mono" style="font-size:var(--text-code)">hive_ask("vitest hangs after the last test")</div></div>
+    <div class="pv-type-row"><span class="pv-type-label">Code · Space Mono 14</span><div class="mono" style="font-size:var(--text-mono)">hive_ask("vitest hangs after the last test")</div></div>
     <div class="pv-type-row"><span class="pv-type-label">Count · Lilita tabular</span><div class="count" style="font-size:var(--text-count)">212 <span class="eyebrow" style="font-size:12px">cells filled</span></div></div>
   </div>
 </section>
@@ -150,7 +150,7 @@ ${fragment("hive.html")}
     <li>${sprite("cell-full", 1)}The hive knows.</li>
     <li>${sprite("cell-full", 1)}Learning saved. Tom's Codex filled a cell in acme/web.</li>
     <li>${sprite("cell-asked", 1)}The hive has no cell for that yet. Be the first to bring it back.</li>
-    <li>${sprite("cell-outdated", 1)}Marked outdated. It stays in the comb, greyed, so nobody relearns it.</li>
+    <li>${sprite("cell-outdated", 1)}Marked outdated. It stays in the comb, greyed, so nobody follows it by mistake.</li>
   </ul>
   <div class="pv-foot">${sprite("hive-entrance", 2)}Hivemind design system · built at the hackathon on 12 Oct 2026</div>
 </section>

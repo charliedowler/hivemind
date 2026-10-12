@@ -743,7 +743,7 @@ a.hm-cite:hover {
   margin: 0;
   overflow-x: auto;
   font-family: var(--font-mono);
-  font-size: var(--text-code);
+  font-size: var(--text-mono);
   line-height: var(--leading-code);
   white-space: pre;
 }

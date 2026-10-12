@@ -5,7 +5,7 @@
 --font-pixel:"Silkscreen","Space Mono",ui-monospace,monospace;
 --text-hero:clamp(48px,8vw,96px);--text-display:clamp(36px,5.5vw,64px);--text-h1:44px;--text-h2:30px;--text-h3:22px;--text-eyebrow:12px;
 --text-lead:18px;--text-md:16px;--text-sm:14px;--text-xs:12px;
---text-code:14px;--text-code-sm:13px;
+--text-mono:14px;--text-mono-sm:13px;
 --text-count-xl:64px;--text-count:40px;--text-count-sm:24px;
 --leading-tight:.95;--leading-snug:1.15;--leading-normal:1.5;--leading-relaxed:1.65;--leading-code:1.6;
 --tracking-display:0;--tracking-eyebrow:.04em;--tracking-body:0;
