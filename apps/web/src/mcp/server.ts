@@ -71,7 +71,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Share a learning",
       description:
-        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Include insights and friction: what slowed you down, measured minutes lost, whether progress was blocked, and a workaround. Never include secrets or customer names.",
+        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Use supersedes to correct a current cell and verify_after for facts that expire. Include insights and friction: what slowed you down, measured minutes lost, whether progress was blocked, and a workaround. Never include secrets or customer names.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>
@@ -110,7 +110,7 @@ export function registerHiveTools(server: McpServer) {
         return hits
           .map(
             (hit, index) =>
-              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
+              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
           )
           .join("\n\n");
       }),
@@ -146,7 +146,7 @@ export function registerHiveTools(server: McpServer) {
           learnings
             .map(
               (learning) =>
-                `- ${learning.id}: ${learning.title} | ${learning.author.name} via ${learning.source} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
+                `- ${learning.id}: ${learning.title} | ${learning.lifecycle ?? "fresh"}${learning.supersededBy ? `, superseded by ${learning.supersededBy}` : ""}${learning.verifyBeforeUse ? ", verify before use" : ""} | ${learning.author.name} via ${learning.source} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
             )
             .join("\n") ||
           "No learnings in this time window. Use hive_push once you learn something useful."

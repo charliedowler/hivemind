@@ -29,7 +29,7 @@ describe("rankCandidates", () => {
   it("uses the exact weights without vector data", () => {
     const hit = rankCandidates([candidate()], null, now)[0];
     expect(hit.score).toBeCloseTo(0.7 + 0.15 + 0.15 * 0.5);
-    expect(hit.signals).toEqual({
+    expect(hit.signals).toMatchObject({
       vector: null,
       fts: 1,
       recency: 1,

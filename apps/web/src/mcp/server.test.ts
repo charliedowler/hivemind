@@ -91,7 +91,7 @@ describe("MCP learning text", () => {
         content: [
           {
             type: "text",
-            text: `- lrn_test: Use pooled connections | Alice via ${source} | 2h ago | ${learning.repo ?? "no repo"}`,
+            text: `- lrn_test: Use pooled connections | fresh | Alice via ${source} | 2h ago | ${learning.repo ?? "no repo"}`,
           },
         ],
       });
@@ -99,7 +99,7 @@ describe("MCP learning text", () => {
         content: [
           {
             type: "text",
-            text: `1. lrn_test: Use pooled connections\ngotcha | ${learning.repo ?? "no repo"} | tags: database | Alice via ${source} | 2h ago | votes: +0 / -0 / outdated 0 | score 0.75\nConnect with the pool URL.`,
+            text: `1. lrn_test: Use pooled connections\nfresh | gotcha | ${learning.repo ?? "no repo"} | tags: database | Alice via ${source} | 2h ago | votes: +0 / -0 / outdated 0 | score 0.75\nConnect with the pool URL.`,
           },
         ],
       });

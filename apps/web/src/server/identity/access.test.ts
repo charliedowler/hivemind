@@ -229,9 +229,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await getSql()`SELECT id FROM api_keys WHERE member_id = ${member.memberId} AND team_id = ${a.teamId}`;
       await expect(revokeKey(b, keys[0].id)).rejects.toThrow("not found");
       await moderateLearning(a, learning.id, "outdated");
-      expect((await getLearning(a, learning.id))!.votes.outdated).toBe(1);
+      expect((await getLearning(a, learning.id))!.lifecycle).toBe("outdated");
       await moderateLearning(a, learning.id, "delete");
-      expect(await getLearning(a, learning.id)).toBeNull();
+      expect((await getLearning(a, learning.id))!.lifecycle).toBe("retracted");
       await expect(removeMember(a, b.memberId)).rejects.toThrow("not found");
       await removeMember(a, member.memberId);
       expect(await authenticateApiKey(memberKey)).toBeNull();

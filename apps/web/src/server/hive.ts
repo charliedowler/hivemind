@@ -27,6 +27,9 @@ import {
 } from "@hivemind/core";
 import { frictionSummary, frictionAnswer, isFrictionAsk } from "./friction";
 import { classifyPush, classifyAsk, classificationJson } from "./classify";
+import { learningView as view } from "./learning-view";
+import { lockLearningWrites, acceptSupersession, verificationHorizon, answerLifecycleContext, appendLifecycleContext } from "./lifecycle";
+import { judgeMemory, rerankMemory } from "./memory-judgments";
 import { after } from "next/server";
 import { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
@@ -52,37 +55,6 @@ function validate<T>(schema: z.ZodType<T>, input: unknown): T {
   return result.data;
 }
 
-function view(row: Record<string, unknown>): LearningView {
-  const date = (value: unknown) =>
-    new Date(value as string | Date).toISOString();
-  return {
-    id: String(row.id),
-    title: String(row.title),
-    body: String(row.body),
-    kind: row.kind as LearningView["kind"],
-    tags: row.tags as string[],
-    repo: row.repo as string | null,
-    paths: row.paths as string[],
-    confidence: Number(row.confidence),
-    source: row.source as LearningView["source"],
-    author: { id: String(row.member_id), name: String(row.author_name) },
-    pushCount: Number(row.push_count),
-    votes: {
-      up: Number(row.up_votes),
-      down: Number(row.down_votes),
-      outdated: Number(row.outdated_votes),
-    },
-    classification: row.classification as LearningView["classification"],
-    adminOutdated: Boolean(row.admin_outdated),
-    area: row.area as LearningView["area"],
-    cost: row.cost == null ? null : Number(row.cost),
-    blocked: Boolean(row.blocked),
-    workaround: row.workaround as string | null,
-    createdAt: date(row.created_at),
-    updatedAt: date(row.updated_at),
-    lastPushedAt: date(row.last_pushed_at),
-  };
-}
 
 function scheduleTags(ctx: HiveContext, learning: LearningView) {
   if (learning.tags.length || !process.env.ANTHROPIC_API_KEY) return;
@@ -102,10 +74,10 @@ export async function pushLearning(
   input: HivePushInput,
 ): Promise<PushResult> {
   const data = validate(hivePushInput, input);
-  const repo = normalizeRepo(data.repo);
-  const tags = normalizeTags(data.tags);
+  const repo = normalizeRepo(data.repo ? redactSecrets(data.repo).text : undefined);
+  const tags = normalizeTags(data.tags.map((tag) => redactSecrets(tag).text));
   const paths = [
-    ...new Set(data.paths.map((path) => path.trim()).filter(Boolean)),
+    ...new Set(data.paths.map((path) => redactSecrets(path.trim()).text).filter(Boolean)),
   ];
   const title = redactSecrets(data.title.trim());
   const body = redactSecrets(data.body.trim());
@@ -135,27 +107,48 @@ export async function pushLearning(
     : null;
   const vector = embedding ? JSON.stringify(embedding) : null;
   const normalizedTitle = title.text.toLowerCase().replace(/\s+/g, " ");
+  const candidateRows = vector
+    ? await sql`SELECT id, title, body, revision FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} OR (embedding IS NOT NULL AND 1 - (embedding <=> ${vector}::vector) >= 0.8)) ORDER BY (lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) DESC, embedding <=> ${vector}::vector LIMIT 4`
+    : await sql`SELECT id, title, body, revision FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at DESC LIMIT 4`;
+  const judgment = await judgeMemory({ title: title.text, body: body.text, repo }, candidateRows.map((row) => ({ id: row.id, title: row.title, body: row.body, revision: row.revision })));
+  tags.push(...judgment.tags.filter((tag) => !tags.includes(tag)));
   const result = await sql.begin(async (tx) => {
-    await tx`SELECT pg_advisory_xact_lock(hashtext(${ctx.teamId}), hashtext(${repo ?? ""}))`;
-    const sameTitle =
-      await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at LIMIT 1 FOR UPDATE`;
-    const duplicates = sameTitle.length
-      ? sameTitle
-      : vector && kind !== "friction"
-        ? await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND embedding IS NOT NULL AND 1 - (embedding <=> ${vector}::vector) >= 0.90 ORDER BY embedding <=> ${vector}::vector LIMIT 1 FOR UPDATE`
-        : await tx`SELECT id FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at LIMIT 1 FOR UPDATE`;
-    const merged = duplicates.length > 0;
-    const id: string = duplicates[0]?.id ?? newId("lrn");
+    await lockLearningWrites(tx, ctx);
+    const current = await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (id = ANY(${candidateRows.map((row) => row.id)}::text[]) OR lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) ORDER BY created_at DESC FOR UPDATE`;
+    const relations = judgment.relations.filter((item) => current.some((row) => row.id === item.id && row.revision === item.revision));
+    const normalize = (text: string) => text.trim().toLowerCase().replace(/\s+/g, " ");
+    const duplicate = data.supersedes ? undefined : current.find((row) => {
+      const relation = relations.find((item) => item.id === row.id);
+      if (relation && ["update", "contradiction"].includes(relation.relation)) return false;
+      return (normalize(row.title) === normalizedTitle && normalize(row.body) === normalize(body.text)) ||
+        (kind === "friction" && normalize(row.title) === normalizedTitle) ||
+        (relation?.relation === "same" && relation.confidence >= 0.9);
+    });
+    const merged = Boolean(duplicate);
+    const id: string = duplicate?.id ?? newId("lrn");
     if (merged) {
-      await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround), body = CASE WHEN length(${body.text}) >= 1.5 * length(body) THEN ${body.text} ELSE body END WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-      if (vector)
-        await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId} AND body = ${body.text}`;
+      await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), lifecycle = 'confirmed', classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround) WHERE id = ${id} AND team_id = ${ctx.teamId}`;
     } else {
-      await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref, area, cost, blocked, workaround, classification) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ?? null}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${workaround.text || null}, ${classification ? tx.json(classificationJson(classification)) : null})`;
-      if (vector)
-        await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref, area, cost, blocked, workaround, classification, verify_after) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${workaround.text || null}, ${classification ? tx.json(classificationJson(classification)) : null}, ${verificationHorizon(kind, data.area, tags, data.verify_after)})`;
+      if (vector) await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
     }
-    await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged, area, cost, blocked, classification) VALUES (${newId("psh")}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ?? null}, ${merged}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${classification ? tx.json(classificationJson(classification)) : null})`;
+    const pushId = newId("psh");
+    await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged, area, cost, blocked, classification) VALUES (${pushId}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${merged}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${classification ? tx.json(classificationJson(classification)) : null})`;
+    if (!merged) {
+      const proposals = data.supersedes
+        ? [{ id: data.supersedes, relation: "update" as const, confidence: 1 }]
+        : relations.filter((item) => ["update", "contradiction"].includes(item.relation) && item.confidence >= 0.7);
+      for (const proposal of proposals) {
+        const oldRows = await tx`SELECT * FROM learnings WHERE id = ${proposal.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+        const old = oldRows[0];
+        if (!old) throw new HiveNotFoundError();
+        if (old.superseded_by || old.lifecycle === "retracted") throw new HiveInputError("Replace the current cell in the chain instead.");
+        const edgeId = newId("sup");
+        await tx`INSERT INTO learning_supersessions (id, team_id, older_id, newer_id, older_revision, newer_revision, relation, confidence, reason) VALUES (${edgeId}, ${ctx.teamId}, ${old.id}, ${id}, ${old.revision}, 1, ${proposal.relation}, ${proposal.confidence}, 'Jev proposes a replacement')`;
+        const reason = data.supersedes ? "Pusher explicitly replaces this cell" : old.member_id === ctx.memberId && proposal.confidence >= 0.9 ? "Original author corrects this cell" : data.area === "environment" && old.area === "environment" && proposal.confidence >= 0.98 && data.confidence >= 0.95 ? "High-confidence environment correction" : null;
+        if (reason) await acceptSupersession(tx, ctx, edgeId, reason);
+      }
+    }
     const rows =
       await tx`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
     const learning = view(rows[0]);
@@ -184,7 +177,7 @@ export async function searchLearnings(
   const tsquery = sql`replace(plainto_tsquery('english', ${data.query})::text, '&', '|')::tsquery`;
   const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
   const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
-  const filter = sql`l.team_id = ${ctx.teamId} AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null})`;
+  const filter = sql`l.team_id = ${ctx.teamId} AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null})`;
   const ftsRows =
     await sql`SELECT l.*, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
@@ -234,15 +227,17 @@ export async function askHive(
     ? await frictionSummary(ctx, data.repo)
     : null;
   if (friction && friction.count) {
-    const result = frictionAnswer(friction);
+    const cells = await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
+    const result = appendLifecycleContext(frictionAnswer(friction), await answerLifecycleContext(ctx, cells.map(view)));
     await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((c) => c.id)}, false)`;
     return result;
   }
-  const hits = await searchLearnings(ctx, {
+  const hits = await rerankMemory(data.question, await searchLearnings(ctx, {
     query: data.question.slice(0, 500),
     repo: data.repo,
     limit: 8,
-  });
+  }));
+  const context = await answerLifecycleContext(ctx, hits);
   const relevance = await classifyAsk(data.question, hits);
   let result: AskResult;
   if (relevance.decision === "gap")
@@ -256,7 +251,7 @@ export async function askHive(
     };
   else {
     try {
-      result = await synthesizeAnswer(data.question, hits);
+      result = await synthesizeAnswer(data.question, hits, context.prompt);
     } catch {
       result = extractiveAnswer(hits);
     }
@@ -266,6 +261,7 @@ export async function askHive(
       citations: result.citations.filter((citation) => ids.has(citation.id)),
     };
   }
+  if (result.citations.length) result = appendLifecycleContext(result, context);
   await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized, classification) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((citation) => citation.id)}, ${result.synthesized}, ${relevance.classification ? getSql().json(classificationJson(relevance.classification)) : null})`;
   return result;
 }
@@ -295,6 +291,7 @@ export async function recordFeedback(
 ): Promise<FeedbackResult> {
   const data = validate(hiveFeedbackInput, input);
   return getSql().begin(async (tx) => {
+    await lockLearningWrites(tx, ctx);
     const rows =
       await tx`SELECT id FROM learnings WHERE id = ${data.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
     if (!rows.length) throw new HiveNotFoundError();
@@ -306,7 +303,7 @@ export async function recordFeedback(
       down: Number(counts[0].down),
       outdated: Number(counts[0].outdated),
     };
-    await tx`UPDATE learnings SET up_votes = ${votes.up}, down_votes = ${votes.down}, outdated_votes = ${votes.outdated}, updated_at = now() WHERE id = ${data.id} AND team_id = ${ctx.teamId}`;
+    await tx`UPDATE learnings SET up_votes = ${votes.up}, down_votes = ${votes.down}, outdated_votes = ${votes.outdated}, lifecycle = CASE WHEN lifecycle IN ('superseded','retracted') THEN lifecycle WHEN admin_outdated OR ${votes.outdated} > ${votes.up} THEN 'outdated' WHEN ${votes.up} > 0 OR push_count > 1 THEN 'confirmed' ELSE 'fresh' END, updated_at = now() WHERE id = ${data.id} AND team_id = ${ctx.teamId}`;
     return { id: data.id, votes };
   });
 }

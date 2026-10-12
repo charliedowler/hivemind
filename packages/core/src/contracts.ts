@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LearningKind, LearningSource, FrictionArea } from "./schemas";
+import type { LearningKind, LearningSource, FrictionArea, LearningLifecycle } from "./schemas";
 
 export type HiveContext = {
   teamId: string;
@@ -44,6 +44,12 @@ export type LearningView = {
   author: { id: string; name: string };
   pushCount: number;
   votes: VoteCounts;
+  lifecycle?: LearningLifecycle;
+  revision?: number;
+  verifyAfter?: string | null;
+  verifyBeforeUse?: boolean;
+  supersededBy?: string | null;
+  sessionRef?: string | null;
   classification?: JevClassification | null;
   adminOutdated?: boolean;
   area?: FrictionArea | null;
@@ -61,6 +67,9 @@ export type SearchSignals = {
   recency: number;
   votes: number;
   repoMatch: boolean;
+  lifecycle?: number;
+  verification?: number;
+  relevance?: number;
 };
 
 export type SearchHit = LearningView & {
@@ -150,3 +159,22 @@ export type FrictionSummary = {
   recurring: { title: string; count: number; minutes: number; ids: string[] }[];
   cells: { id: string; title: string }[];
 };
+
+export type LearningConflict = {
+  id: string;
+  older: { id: string; title: string; body: string; author: string; revision: number };
+  newer: { id: string; title: string; body: string; author: string; revision: number };
+  relation: "update" | "contradiction";
+  confidence: number;
+  status: "candidate" | "accepted" | "rejected";
+  reason: string;
+  votes: number;
+  voted: boolean;
+  canAdmin: boolean;
+  stale: boolean;
+  createdAt: string;
+};
+export type LearningVersion = { revision: number; author: string; createdAt: string; content: Record<string, unknown>; diff: Record<string, { before: unknown; after: unknown }> };
+export type KnowledgeEntry = { path: string; name: string; type: "directory" | "file" };
+export type KnowledgeListing = { path: string; revision: number; entries: KnowledgeEntry[] };
+export type KnowledgeFile = { path: string; revision: number; content: string };

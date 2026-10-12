@@ -104,7 +104,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
     ).rejects.toBeInstanceOf(HiveNotFoundError);
   });
 
-  it("dedupes normalized titles, merges fields and records every push with embeddings off", async () => {
+  it("dedupes matching content, merges metadata and records every push with embeddings off", async () => {
     const first = await pushLearning(
       a,
       hivePushInput.parse({
@@ -120,7 +120,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
       a,
       hivePushInput.parse({
         title: "duplicate title",
-        body: "A much longer body with more evidence and context.",
+        body: "Short body.",
         repo: "owner/repo",
         tags: ["sql-query", "auth"],
         paths: ["b.ts"],
@@ -132,7 +132,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
     expect(second.learning.paths.sort()).toEqual(["a.ts", "b.ts"]);
     expect(second.learning.confidence).toBeCloseTo(0.9);
     expect(second.learning.title).toBe("Duplicate   TITLE");
-    expect(second.learning.body).toContain("much longer");
+    expect(second.learning.body).toBe("Short body.");
     const rows =
       await getSql()`SELECT merged FROM learning_pushes WHERE learning_id = ${first.id} AND team_id = ${a.teamId} ORDER BY created_at`;
     expect(rows.map((row) => row.merged)).toEqual([false, true]);

@@ -18,3 +18,11 @@ export async function GET(
       : Response.json({ error: "Learning not found." }, { status: 404 });
   });
 }
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  return authenticated(async (ctx) => {
+    const { learningEditInput } = await import("@hivemind/core");
+    const { editLearning } = await import("@/server/lifecycle");
+    return Response.json(await editLearning(ctx, (await params).id, learningEditInput.parse(await request.json())));
+  });
+}

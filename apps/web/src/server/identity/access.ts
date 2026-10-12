@@ -1,4 +1,5 @@
 import type { HiveContext } from "@hivemind/core";
+import { lockLearningWrites } from "../lifecycle";
 import { getSql } from "../db/client";
 import { hashToken, newToken } from "../db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "../errors";
@@ -81,22 +82,13 @@ export async function removeMember(
     await tx`DELETE FROM web_sessions WHERE member_id = ${id} AND team_id = ${ctx.teamId}`;
   });
 }
-export async function moderateLearning(
-  ctx: HiveContext,
-  id: string,
-  action: "delete" | "outdated",
-): Promise<void> {
+export async function moderateLearning(ctx: HiveContext, id: string, action: "delete" | "outdated"): Promise<void> {
   await requireAdmin(ctx);
   await getSql().begin(async (tx) => {
-    const rows =
-      await tx`SELECT id FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+    await lockLearningWrites(tx, ctx);
+    const rows = await tx`SELECT id, lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
     if (!rows.length) throw new HiveNotFoundError();
-    if (action === "outdated")
-      await tx`UPDATE learnings SET admin_outdated = true, outdated_votes = greatest(outdated_votes, up_votes + 1), updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-    else {
-      await tx`DELETE FROM feedback WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
-      await tx`DELETE FROM learning_pushes WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
-      await tx`DELETE FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-    }
+    if (rows[0].lifecycle === "superseded") throw new HiveError("Moderate the current cell in the chain instead.", 409);
+    await tx`UPDATE learnings SET lifecycle = ${action === "delete" ? "retracted" : "outdated"}, admin_outdated = true, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
   });
 }
