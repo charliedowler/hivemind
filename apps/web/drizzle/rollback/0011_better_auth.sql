@@ -2,6 +2,9 @@ SET LOCAL lock_timeout = '3s';
 SET LOCAL statement_timeout = '30s';
 
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM auth_accounts) THEN
+    RAISE EXCEPTION 'Preserve or explicitly retire linked accounts before rolling back';
+  END IF;
   IF EXISTS (SELECT 1 FROM members WHERE team_id IS NULL) THEN
     RAISE EXCEPTION 'Finish or explicitly retire pending accounts before rolling back';
   END IF;

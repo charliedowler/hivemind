@@ -43,6 +43,13 @@ export function buildInstallSnippets({
       code: `codex mcp add hive --url ${url}/api/mcp\ncodex mcp login hive`,
     },
     {
+      id: "executor",
+      title: "Executor",
+      description: "Add a remote MCP server in your executor organisation. Use OAuth to sign in and allow access to your hive.",
+      language: "text",
+      code: `${url}/api/mcp`,
+    },
+    {
       id: "instructions",
       title: "Agent instructions",
       description: "Add to CLAUDE.md or AGENTS.md in your repo.",

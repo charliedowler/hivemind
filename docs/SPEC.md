@@ -22,7 +22,8 @@ apps/web                     Next.js App Router (Vercel root directory)
   src/app                    routes
   src/mcp/server.ts          registerHiveTools(server, getContext)
   src/server/db/             client.ts, schema.ts (Drizzle, postgres.js driver)
-  src/server/auth.ts         API keys, web sessions
+  src/server/auth.ts         headless keys, legacy session compatibility
+  src/server/better-auth.ts  web sign-in, enrollment hooks, MCP OAuth
   src/server/hive.ts         the service: every read and write goes through here
   src/server/llm/            embeddings.ts, synthesize.ts, tagger.ts (index.ts re-exports all three)
   src/lib/install.ts         install snippet generators (pure)
@@ -40,6 +41,10 @@ design/system                @hivemind/design-system: tokens, pixel sprites and 
 | `TYPESAFE_API_KEY` | Jev push, capture and relevance judgments | deterministic policies and Haiku tagging fallback |
 | `RESEND_API_KEY` / `EMAIL_FROM` | verification email delivery | email joins return a clear disabled response |
 | `RESEND_EMAIL_DOMAIN` | configured sender domain for delivery operations | sender-domain configuration needs checking |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in | Google button hidden |
+| `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | Slack OpenID Connect sign-in | Slack button hidden |
+| `BETTER_AUTH_SECRET` | session, verification and OAuth secrets | production authentication refuses to start; development has a local fallback |
+| `BETTER_AUTH_URL` | authorization origin | uses publicUrl() |
 | `PUBLIC_URL`        | canonical URL in metadata, install snippets and invite links | falls back to the request origin                              |
 
 Local Postgres for development: `postgres://hivemind:hivemind@127.0.0.1:54329/<database>` (Docker container `hivemind-pg`, image `pgvector/pgvector:pg18`, extension `vector` 0.8).
@@ -51,7 +56,7 @@ Driver: `postgres` (postgres.js) with `drizzle-orm/postgres-js`, `prepare: false
 - Ids are text with a prefix and 12 lowercase base32 characters: `team_`, `mem_`, `key_`, `lrn_`, `psh_`, `ses_`, `ea_`, `ask_`.
 - API key format: `hm_` + 32 random bytes as base64url. The database stores `sha256(key)` as hex and a display prefix (first 10 characters). The raw key is shown once.
 - Invite code: `hive-` plus random bytes. Only its SHA-256 hash is stored. It expires after seven days. The Members page shows a rotated code once.
-- Web session: random 32 byte token in the `hm_session` cookie (httpOnly, secure in production, sameSite lax, 30 days). The database stores the sha256 hash.
+- Web sessions use Better Auth cookies, secure in production, httpOnly and sameSite lax. Legacy `hm_session` hashes keep working until their 30-day expiry or sign-out. API keys cannot create web sessions.
 
 ## Tables
 
@@ -203,16 +208,22 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 
 ## MCP endpoint
 
-`/api/mcp`, stateless Streamable HTTP through `mcp-handler` 2.x. `Authorization: Bearer <api key>` is required. A missing or wrong key returns HTTP 401 with `WWW-Authenticate: Bearer` and a JSON body that says how to get a key. Tool results are a text content block. The text is compact markdown that an agent can read, and it always carries the learning ids. Tool errors return `isError: true` with a one-line cause.
+**MCP auth is OAuth-first.** `/api/mcp` uses stateless Streamable HTTP through mcp-handler 2.x. Missing or invalid tokens receive 401 with the RFC 9728 `WWW-Authenticate` challenge. Discovery advertises the canonical protected resource, CIMD support and the DCR fallback. `jwt()`, `mcp()` and `cimd({ metadataProfile: "mcp-2026-07-28" })` share one Better Auth instance. Both DCR controls are explicitly enabled. The secure Node CIMD transport pins public DNS results and rejects redirects.
+
+`requireMcpAuth` verifies the signature, issuer, audience, expiry and hive scope. It also verifies DPoP when used. The token's server-derived `hive_member_id`, `hive_team_id` and subject must identify the same current active membership. The resulting HiveContext reaches tools through AuthInfo.extra. Legacy `hm_` bearer keys remain an independent headless/CI path. Web cookies alone cannot authorize MCP. `/api/app/capture` uses the same shared bearer helper and team binding.
+
+Tool results are compact Markdown with cell IDs. Tool errors use isError and a one-line cause.
 
 ## Web
 
 - `/` landing: pitch, how it works, early-access form (name, email, company, team size). The form writes an `early_access` row and shows a thank-you state.
-- `/app/login`: three panels. Create a team (team name, your name, work email and code). Join a team (invite code or allowed work domain, your name, work email and code). Sign in (paste an API key). Create and join show the API key once, with the install snippets filled in.
+- `/app/login`: Sign in, Create a team and Join tabs. Sign-in uses email/password or a configured Google/Slack provider. Create/join collect a password and verify email with a code. Join accepts an invite link/code or an allowed work domain. No API key form or raw key appears here.
+- `/app/join`: a verified signed-in account without a team chooses a hive. It resumes an MCP login after enrollment.
+- `/app/consent`: verifies the signed OAuth query before displaying the client, hive, identity, scopes and requested profile claims. Allow and Cancel complete the Better Auth flow.
 - `/app`: the comb, one hexagonal cell per learning (title, repo, whose agent, time, votes, status, push count), polling every 5 seconds; a cell opens the full learning with kind, tags, paths, feedback and a copyable id. Status is outdated when outdated votes outnumber up votes, confirmed when it has up votes or more than one push, otherwise fresh. Search box whose result cards show the score and every ranking signal. "Ask the hive" box that shows the answer with clickable citations, the confidence and the gaps. "Fresh nectar" lists the latest arrivals with the agent that brought them.
 - All UI comes from `@hivemind/design-system`. `design/system/readme.md` sets the vocabulary and the voice.
 - `/app/members`: members, the invite code with a copy button.
-- `/app/install`: snippets with copy buttons. A "Create a new key" button issues a key, shows it once and fills the snippets.
+- `/app/install`: keyless Claude and Codex OAuth commands, instructions and Stop hook first; headless key commands last. Key creation and management live only on `/app/account`.
 - Web API routes live under `/api/app/*` and authenticate with the session cookie. They call the same service functions as the MCP tools.
 
 ## Web HTTP API
@@ -222,9 +233,9 @@ All bodies are JSON. Errors are `{ "error": "<one line>" }` with a 4xx or 5xx st
 | Route                                       | Body                         | Success                                                                                 |
 | ------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
 | `POST /api/early-access`                    | `EarlyAccessInput`           | 201 `{ ok: true }`                                                                      |
-| `POST /api/app/teams`                       | `{ teamName, memberName, email }` | 202 `{ verificationToken, expiresIn }`; PUT /api/app/email completes the join |
-| `POST /api/app/join`                        | `{ inviteCode, memberName, email }` | 202 `{ verificationToken, expiresIn }`; PUT /api/app/email completes the join |
-| `POST /api/app/session`                     | `{ apiKey }`                 | 200 `{ team, member }`, sets the cookie. 401 for an unknown key                         |
+| `POST /api/app/teams` | any | 410; use Better Auth signup and enrollment |
+| `POST /api/app/join` | any | 410; use Better Auth signup and enrollment |
+| `POST /api/app/session`                     | any | 410; API-key web sign-in is removed |
 | `DELETE /api/app/session`                   | none                         | 204, clears the cookie                                                                  |
 | `GET /api/app/feed?since=7d&repo=&limit=50` | none                         | 200 `{ learnings: LearningView[] }`                                                     |
 | `POST /api/app/search`                      | `HiveSearchInput`            | 200 `{ hits: SearchHit[] }`                                                             |
@@ -246,7 +257,7 @@ suggestTags(learning: Pick<LearningView, "title" | "body" | "kind" | "repo">): P
 
 `apps/web/scripts/seed-data.json` holds the demo learnings; each has an `author` name. `pnpm --filter web seed -- --url <base url> --key <api key of an existing member> --invite <invite code>` joins the other authors through `POST /api/app/join`, then pushes every learning through `tools/call hive_push` on `/api/mcp` with the right author's key. The script prints the ids. It never prints a key.
 
-## Round 3: email identity and access
+## Round 3: email identity and access (historical contract)
 
 Email verification precedes public team creation and joins. POST `/api/app/teams` and `/api/app/join` return 202 with an opaque verification token. POST `/api/app/email` accepts `intent: domain` for domain joins or `intent: account` with a session to verify a legacy member. PUT `/api/app/email` consumes the token and six-digit code. Successful creation or join returns the key once and starts the existing hashed, httpOnly session. An account verification binds the email without issuing a new key.
 
@@ -274,7 +285,7 @@ GET /api/app/friction returns count, measured minutes, unmeasured count, blocked
 
 One server module, src/server/classify.ts, owns typed questions and the pure decide() policy. The JavaScript SDK is pinned to 0.6.0. Every request uses jev-1.13.0, timeout 500 ms, retry.maxRetries 0 and SDK body logging off. Five independent push questions run in one POST /v1/systemone: kind (Choice over seven kinds), worthSharing (Noul), sensitive (Noul), repoArea (Choice over frontend/backend/database/testing/deployment/tooling/documentation/process/none), and severity (Score from no friction to destructive impact). Known secret shapes are redacted before this request. Sensitive probability at least 0.8 refuses the push. A caller's kind always wins; otherwise Choice confidence at least 0.6 selects the kind. A repository-topic tag needs confidence at least 0.6; none adds no tag. Sharing value is advisory for intentional pushes, not silent data loss. Severity is consumed only for friction. Raw probabilities remain available in classification.
 
-The Node Stop script reads up to 100,000 trailing transcript characters and extracts at most 6000 characters of assistant text. Local changes, errors or explicit observations plus at least 20 characters of text form the cheap pre-gate. A quiet session has no network or model call. An authenticated POST /api/app/capture runs one sharing Noul. At least 0.65 asks the agent to capture; lower skips. The route rate-limits each member to 30 requests per minute. The script reads HIVE_KEY or the matching registered user-scope hive server, asks once per session, and preserves headless final answers. A provider or network outage uses the local activity signal. Missing/unsupported transcripts skip capture. Installed scripts need to be updated.
+The Node Stop script reads up to 100,000 trailing transcript characters and extracts at most 6000 characters of assistant text. Local changes, errors or explicit observations plus at least 20 characters of text form the cheap pre-gate. A quiet session has no network or model call. An authenticated POST /api/app/capture runs one sharing Noul. At least 0.65 asks the agent to capture; lower skips. The route rate-limits each member to 30 requests per minute. The script reads and refreshes ~/.hive/oauth.json first, then accepts HIVE_KEY or a registered headless key as a fallback, asks once per session, and preserves headless final answers. A provider or network outage uses the local activity signal. Missing/unsupported transcripts skip capture. Installed scripts need to be updated.
 
 The ask Noul receives the question and bounded retrieved cell evidence, with outdated state. Probability at least 0.7 permits synthesis. Lower probabilities return no citations, low confidence and an explicit evidence gap. Empty retrieval and deterministic friction summaries need no model. On a TypeSafe outage, current evidence needs vector similarity at least 0.55 or at least 75% direct lexical coverage when vectors are absent. This fallback is conservative, not proof of answerability.
 
@@ -311,3 +322,19 @@ Tree reads never accept object keys. Paths reject absolute paths, dot traversal,
 Dashboard routes: `/app/conflicts`, `/app/tree`, `/app/cells/[id]`. Friction, answer and replacement citations display truncated titles, with IDs only in tooltips or cell details. Cells show lifecycle, verification dates, a readable successor link and version diffs. `GET/POST /api/app/conflicts` lists/decides scoped edges; `GET /api/app/learnings/[id]/versions` reads history; `PATCH /api/app/learnings/[id]` accepts a revision and edited title/body/verification/lifecycle fields; `GET /api/app/knowledge?path=...&read=true` reads a file and POST prepares a snapshot. All app routes authenticate before querying. `GET /api/knowledge/snapshot?token=...` authenticates by its short-lived capability instead of cookies.
 
 Operational limits: Blob garbage collection, a scheduled queue worker, streaming large hives, arbitrary free-form entity extraction and a visual content editor are not implemented. Run `pnpm --filter web knowledge:rebuild` for recovery. The SQL rollback files refuse to discard evidence/history already created by the feature; read them before considering a rollback. Normal development and production use the handwritten migration runner, never schema push.
+
+## Better Auth web and MCP access
+
+This section replaces the historical public create/join/email-code and key sign-in routes. POST `/api/app/teams` and `/api/app/join` return 410. `/api/app/email` is only a scoped legacy account-email upgrade. Normal accounts use `/api/auth/sign-up/email`, `/api/auth/sign-in/email`, `/api/auth/email-otp/verify-email`, `/api/auth/email-otp/request-password-reset` and `/api/auth/email-otp/reset-password`. Email codes are hashed, last 15 minutes and allow five attempts. Shared database rate limits protect auth and email sending. Passwords use Better Auth's scrypt. First-password reset creates a credential account for the same existing member. Password reset revokes web sessions.
+
+The user model maps to members. Its nullable team_id is unset only for pending accounts. Better Auth owns image and updated_at; hive_registration stores a validated pending intent and only an invite hash. Team and role fields are server-owned. Enrollment locks the member row, requires verified email, validates the live invite or exact allowed work domain, and never moves an existing membership to another team. A creator is admin; every join is member. Public providers cannot domain-join. Google and Slack accounts link by matching verified email; no unverified provider is trusted for linking.
+
+The session model maps to web_sessions, with new token, updated_at, ip_address and user_agent columns. New sessions also retain a token_hash and the resolved team when one exists. Legacy hash-only rows and member IDs stay intact. A member with no email uses a live legacy session to verify an address on the account page. Keys remain valid for headless access. Removed members cannot obtain sessions or use already-issued MCP JWTs.
+
+0011_better_auth.sql adds the mapped model fields, credential accounts, verification and database rate limits. 0012_mcp_oauth.sql adds signing keys, clients, resources, client-resource links, access/refresh tokens, consents and client assertions. Both migrations have IF NOT EXISTS guards and local lock/statement timeouts. Rollbacks refuse populated accounts/grants; they are not applied to production as verification.
+
+The authorization issuer is Better Auth's canonical base URL including /api/auth. Well-known resource and issuer aliases and /oauth2/* reach auth.handler. The protected resource comes from publicUrl(). Token grants are authorization_code and refresh_token; public clients require S256 PKCE. The hive scope allows all existing tools in one team. offline_access must be requested to get refresh tokens. Login and post-login flows preserve the signed oauth_query through email, social sign-in, enrollment and consent. Tampered or expired consent queries do not render a permission request. Dynamic native registrations that omit application_type receive a validated native hint; explicit client choices remain intact.
+
+Install commands are `claude mcp add --transport http hive https://gohive.dev/api/mcp --scope user` and `codex mcp add hive --url https://gohive.dev/api/mcp`, followed by `codex mcp login hive`. Claude authenticates through /mcp. No HIVE_KEY is required for this path. The Stop hook has its own OAuth token store because native agent stores are private. The shared bearer helper makes its Jev gate work with OAuth and preserves the legacy key fallback. Connecting Slack for digests is outside this round.
+
+The install page offers Claude Code, Codex and Executor tabs. Executor uses the remote MCP URL and OAuth. Dynamic registration accepts hosted HTTPS redirect URIs as well as native loopback clients.

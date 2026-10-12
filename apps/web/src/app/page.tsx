@@ -132,12 +132,13 @@ export default async function HomePage() {
         <InstallSnippet
           options={snippets
             .filter(
-              (snippet) => snippet.id === "claude" || snippet.id === "codex",
+              (snippet) => ["claude", "codex", "executor"].includes(snippet.id),
             )
             .map((snippet) => ({
-              agent: snippet.id as "claude" | "codex",
+              agent: snippet.id as "claude" | "codex" | "executor",
               label: snippet.title,
               code: snippet.code,
+              description: snippet.description,
             }))}
         />
       </section>

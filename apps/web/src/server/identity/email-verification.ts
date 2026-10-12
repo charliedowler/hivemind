@@ -122,7 +122,7 @@ export async function completeEmailCode(
     if (existing.length)
       return {
         error:
-          "This email already belongs to a member. Sign in with your saved key.",
+          "This email already belongs to a member. Sign in or set your password with an email code.",
       };
     let teamId = newId("team"),
       teamName = payload.teamName ?? "",

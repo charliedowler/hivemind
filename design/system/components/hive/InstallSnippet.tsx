@@ -6,9 +6,10 @@ import { Sprite } from "../sprites/Sprite";
 import type { AgentKind } from "./MemberBee";
 
 export interface InstallOption {
-  agent: AgentKind;
+  agent: AgentKind | "executor";
   label: string;
   code: string;
+  description?: string;
 }
 
 export interface InstallSnippetProps {
@@ -87,10 +88,10 @@ export function InstallSnippet({
         <pre
           className="hm-install-code"
           tabIndex={0}
-          aria-label={`${option.label} install command`}
+          aria-label={`${option.label} connection details`}
         >
           <code>
-            <span className="hm-prompt">$ </span>
+            {option.agent !== "executor" && <span className="hm-prompt">$ </span>}
             {option.code}
           </code>
         </pre>
@@ -111,10 +112,10 @@ export function InstallSnippet({
       ) : null}
       <div className="hm-install-foot" aria-live="polite">
         <Sprite
-          name={option.agent === "claude" ? "bee-claude" : "bee-codex"}
+          name={option.agent === "claude" ? "bee-claude" : option.agent === "codex" ? "bee-codex" : "bee-face"}
           scale={1}
         />
-        {copied ? "Command copied. Your forager is ready." : footnote}
+        {copied ? "Connection details copied. Your forager is ready." : option.description ?? footnote}
       </div>
     </div>
   );

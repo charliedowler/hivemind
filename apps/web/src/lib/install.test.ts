@@ -14,6 +14,7 @@ describe("install snippets", () => {
     expect(snippets.map(({ id }) => id)).toEqual([
       "claude",
       "codex",
+      "executor",
       "instructions",
       "stop-script",
       "stop-settings",
@@ -26,19 +27,19 @@ describe("install snippets", () => {
     expect(snippets[1]?.code).toBe(
       "codex mcp add hive --url https://hive.example/api/mcp\ncodex mcp login hive",
     );
-    expect(JSON.parse(snippets[4]!.code).hooks.Stop[0].hooks[0].command).toBe(
+    expect(JSON.parse(snippets[5]!.code).hooks.Stop[0].hooks[0].command).toBe(
       "$HOME/.claude/hooks/hive-stop.sh",
     );
-    expect(snippets[5]?.code).toBe("claude mcp list");
+    expect(snippets[6]?.code).toBe("claude mcp list");
   });
   it("keeps OAuth commands keyless and keys only in the headless fallback", () => {
     const result = buildInstallSnippets({
       baseUrl: "http://localhost:4340",
       apiKey: "test-key",
     });
-    expect(result.slice(0, 6).some(({ code }) => code.includes("test-key"))).toBe(false);
-    expect(result[6]?.code).toContain("Bearer test-key");
-    expect(result[6]?.code).toContain("export HIVE_KEY=test-key\n");
+    expect(result.slice(0, 7).some(({ code }) => code.includes("test-key"))).toBe(false);
+    expect(result[7]?.code).toContain("Bearer test-key");
+    expect(result[7]?.code).toContain("export HIVE_KEY=test-key\n");
   });
   it("leaves quiet sessions alone without a network call or marker", () => {
     const directory = mkdtempSync(join(tmpdir(), "hive-quiet-test-"));
@@ -55,7 +56,7 @@ describe("install snippets", () => {
     try {
       const script =
         'globalThis.fetch = () => { throw new Error("Quiet session called network"); };\n' +
-        snippets[3]!.code.replace(/^#![^\n]*\n/, "");
+        snippets[4]!.code.replace(/^#![^\n]*\n/, "");
       const result = execFileSync("node", ["-e", script], {
         input: JSON.stringify({
           session_id: "quiet",
@@ -90,7 +91,7 @@ describe("install snippets", () => {
     try {
       const script =
         'globalThis.fetch = async () => ({ ok: true, json: async () => ({ decision: "skip" }) });\n' +
-        snippets[3]!.code.replace(/^#![^\n]*\n/, "");
+        snippets[4]!.code.replace(/^#![^\n]*\n/, "");
       expect(
         execFileSync("node", ["-e", script], {
           input: JSON.stringify({
@@ -127,7 +128,7 @@ describe("install snippets", () => {
       const run = (input: object) =>
         execFileSync(
           "node",
-          ["-e", snippets[3]!.code.replace(/^#![^\n]*\n/, "")],
+          ["-e", snippets[4]!.code.replace(/^#![^\n]*\n/, "")],
           {
             input: JSON.stringify({ transcript_path: transcript, ...input }),
             encoding: "utf8",

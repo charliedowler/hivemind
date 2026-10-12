@@ -21,20 +21,16 @@ export function InstallSnippets({
   const snippets = buildInstallSnippets({ baseUrl, apiKey });
   return (
     <div className="snippet-list">
-      {snippets.map((snippet) =>
-        snippet.id === "claude" || snippet.id === "codex" ? (
-          <section className="stack" key={snippet.id}>
-            <div>
-              <h2>{snippet.title}</h2>
-              <p className="muted">{snippet.description}</p>
-            </div>
-            <InstallSnippet
-              options={[
-                { agent: snippet.id, label: snippet.title, code: snippet.code },
-              ]}
-            />
-          </section>
-        ) : (
+      <section className="stack">
+        <h2>Connect your forager</h2>
+        <InstallSnippet options={snippets.slice(0, 3).map((snippet) => ({
+          agent: snippet.id as "claude" | "codex" | "executor",
+          label: snippet.title,
+          code: snippet.code,
+          description: snippet.description,
+        }))} />
+      </section>
+      {snippets.slice(3).map((snippet) => (
           <section className="stack" key={snippet.id}>
             <div>
               <h2>{snippet.title}</h2>
@@ -57,8 +53,7 @@ export function InstallSnippets({
               </pre>
             </Card>
           </section>
-        ),
-      )}
+        ))}
     </div>
   );
 }
