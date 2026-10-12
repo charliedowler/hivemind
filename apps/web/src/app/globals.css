@@ -159,7 +159,11 @@ pre:focus-visible {
 .how-steps .hm-card {
   height: 100%;
   display: grid;
+  align-content: start;
   gap: 16px;
+}
+.how-steps .hm-card > .row {
+  height: 60px;
 }
 .how-steps .hm-card p {
   line-height: 1.6;
