@@ -225,7 +225,8 @@ export function doctor(options: Options): boolean {
       connected = result.status === 0 && !!line && (agent === 'claude' ? /connected/i.test(line) && !/not connected|disconnected/i.test(line) : /enabled/i.test(line));
     } catch {}
     const directories = agent === 'claude' ? ['.claude/skills/hive'] : ['.agents/skills/hive', '.codex/skills/hive'];
-    const skills = directories.every(directory => existsSync(join(home, directory, 'SKILL.md')));
+    const requiredFiles = filesUnder(options.assets || assetDirectory).map(path => relative(options.assets || assetDirectory, path));
+    const skills = directories.every(directory => requiredFiles.every(path => existsSync(join(home, directory, path))));
     let instructions = false;
     try { const text = read(instructionPaths(home, agent)) || ''; instructions = text.includes(startMarker) && text.includes(endMarker); } catch {}
     log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} MCP: ${connected ? agent === 'claude' ? 'Connected' : 'Enabled (run Codex to verify the connection)' : 'Sign-in or connection check needed'}`);
