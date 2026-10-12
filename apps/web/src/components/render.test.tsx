@@ -28,6 +28,9 @@ const hit: SearchHit = {
   source: "claude-code",
   author: { id: "mem_abcdefghijkl", name: "Maya" },
   pushCount: 3,
+  captureFlagged: false,
+  captureRedacted: false,
+  captureRuleIds: [],
   votes: { up: 2, down: 0, outdated: 1 },
   createdAt: "2026-10-12T10:00:00.000Z",
   updatedAt: "2026-10-12T10:00:00.000Z",
@@ -138,6 +141,26 @@ describe("dashboard components", () => {
     expect(html).toContain("lrn_abcdefghijkl");
   });
 
+  it("shows kept status only for a current cell with capture-rule evidence", () => {
+    const kept = renderToStaticMarkup(
+      <LearningDetail learning={{ ...hit, captureRuleIds: ["crule_test"] }} />,
+    );
+    expect(kept).toContain("kept after owner confirmation");
+    expect(
+      renderToStaticMarkup(<LearningDetail learning={hit} />),
+    ).not.toContain("kept after owner confirmation");
+    expect(
+      renderToStaticMarkup(
+        <LearningDetail
+          learning={{
+            ...hit,
+            lifecycle: "retracted",
+            captureRuleIds: ["crule_test"],
+          }}
+        />,
+      ),
+    ).not.toContain("kept after owner confirmation");
+  });
   it("turns inline learning ids into citation buttons and leaves other links alone", () => {
     const html = renderToStaticMarkup(
       <Markdown
@@ -226,8 +249,12 @@ describe("dashboard components", () => {
   });
 
   it("leads with the installer and keeps manual and Git fallbacks available", () => {
-    const html = renderToStaticMarkup(<InstallPage baseUrl="https://hive.example" />);
-    expect(html.indexOf("npx gohive install")).toBeLessThan(html.indexOf("claude mcp add"));
+    const html = renderToStaticMarkup(
+      <InstallPage baseUrl="https://hive.example" />,
+    );
+    expect(html.indexOf("npx gohive install")).toBeLessThan(
+      html.indexOf("claude mcp add"),
+    );
     expect(html).toContain("github:charliedowler/hivemind gohive install");
     expect(html).toContain("skills/hive/SKILL.md");
     expect(html).toContain("Manual setup for Claude Code, Codex or Executor");

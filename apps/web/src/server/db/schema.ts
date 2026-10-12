@@ -79,6 +79,11 @@ export const learnings = pgTable("learnings", {
   memberId: text("member_id")
     .notNull()
     .references(() => members.id),
+  captureContext: jsonb("capture_context").notNull().default({}),
+  captureCategories: jsonb("capture_categories").notNull().default({}),
+  captureFlagged: boolean("capture_flagged").notNull().default(false),
+  captureRedacted: boolean("capture_redacted").notNull().default(false),
+  captureRuleIds: text("capture_rule_ids").array().notNull().default([]),
   classification: jsonb("classification"),
   title: text("title").notNull(),
   body: text("body").notNull(),
@@ -252,4 +257,54 @@ export const knowledgeSnapshots = pgTable("knowledge_snapshots", {
   objectKey: text("object_key").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: createdAt(),
+});
+
+export const captureRules = pgTable("capture_rules", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull().references(() => teams.id),
+  memberId: text("member_id").references(() => members.id),
+  createdBy: text("created_by").notNull().references(() => members.id),
+  name: text("name").notNull(),
+  scope: text("scope").notNull(),
+  kind: text("kind").notNull(),
+  action: text("action").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  config: jsonb("config").notNull(),
+  source: text("source").notNull().default("web"),
+  naturalText: text("natural_text"),
+  revision: integer("revision").notNull().default(1),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const captureRulePreviews = pgTable("capture_rule_previews", {
+  tokenHash: text("token_hash").primaryKey(),
+  ruleId: text("rule_id").notNull(),
+  teamId: text("team_id").notNull(),
+  memberId: text("member_id").notNull(),
+  ruleRevision: integer("rule_revision").notNull(),
+  cells: jsonb("cells").notNull(),
+  nextCursor: text("next_cursor"),
+  scanned: integer("scanned").notNull(),
+  truncated: boolean("truncated").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+});
+
+export const captureRuleApplications = pgTable("capture_rule_applications", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  ruleId: text("rule_id").notNull(),
+  learningId: text("learning_id").notNull(),
+  memberId: text("member_id").notNull(),
+  previousState: text("previous_state").notNull(),
+  action: text("action").notNull().default("drop"),
+  ruleName: text("rule_name").notNull(),
+  beforeSnapshot: jsonb("before_snapshot").notNull().default({}),
+  appliedRevision: integer("applied_revision").notNull(),
+  reasonCode: text("reason_code").notNull().default("capture_rule"),
+  createdAt: createdAt(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  reversedBy: text("reversed_by"),
+  reversalReason: text("reversal_reason"),
 });

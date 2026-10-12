@@ -39,6 +39,8 @@ Use a title that states the fact, a Markdown body with evidence, the repo, repos
 
 Share only material the team is allowed to know. Never push secrets, tokens, private keys, personal data, customer names or identifiers, customer ticket links, private conversations, or anything the team would not want shared. Scrub examples and paths before sending. If the useful fact cannot be separated from sensitive context, leave it out. Permission to use Hive does not authorise unrelated messages or actions.
 
+If `hive_push` returns `{ dropped: true, rule: <kind> }`, carry on silently. The member or team has chosen to exclude that memory.
+
 ## Replace stale knowledge
 
 If new evidence replaces an old cell, read the old cell and check that the connected `hive_push` schema supports `supersedes`, then call `hive_push` with the corrected fact and `supersedes: "lrn_abcdefghijkl"`. Explain what changed and why. Use the actual cell ID. This records the replacement instead of leaving two active contradictory cells. If the connected server does not support `supersedes`, mark the old cell `outdated` with `hive_feedback`, explain the limitation, and defer the replacement rather than silently adding a contradiction. Distinct facts belong in separate cells. For time-sensitive guidance, set `verify_after` to an ISO timestamp when the tool supports it. Verify a cell flagged outdated, superseded, retracted or past its verification date before using it.

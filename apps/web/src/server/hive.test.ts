@@ -11,7 +11,7 @@ import {
 } from "./auth";
 import { getSql, hasEmbeddingColumn } from "./db/client";
 import {
-  pushLearning,
+  pushLearning as pushLearningRaw,
   searchLearnings,
   recentLearnings,
   getLearning,
@@ -41,6 +41,12 @@ vi.mock("next/headers", () => ({
     delete: (name: string) => jar.delete(name),
   }),
 }));
+
+async function pushLearning(...args: Parameters<typeof pushLearningRaw>) {
+  const result = await pushLearningRaw(...args);
+  if (result.dropped) throw new Error("Unexpected capture drop in accepted push fixture.");
+  return result;
+}
 
 const enabled = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!enabled)("hive database integration", () => {

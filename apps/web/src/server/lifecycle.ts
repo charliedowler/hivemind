@@ -3,7 +3,7 @@ import {
   recordMutation,
   withActor,
 } from "./analytics/events";
-import { scheduleKnowledge } from "./knowledge-tree";
+import { invalidateKnowledgeSnapshots, scheduleKnowledge } from "./knowledge-tree";
 import type postgres from "postgres";
 import {
   learningEditInput,
@@ -17,6 +17,7 @@ import type { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
 import { HiveError, HiveInputError, HiveNotFoundError } from "./errors";
 import { embedText } from "./llm/embeddings";
+import { learningVisibleSql } from "./capture-visibility";
 
 export type LearningTransaction = postgres.TransactionSql;
 
@@ -62,14 +63,14 @@ export async function acceptSupersession(
     await tx`SELECT * FROM learning_supersessions WHERE id = ${edgeId} AND team_id = ${ctx.teamId} FOR UPDATE`;
   const edge = edges[0];
   if (!edge) throw new HiveNotFoundError("Conflict not found in your team.");
-  if (edge.status === "accepted") return;
-  if (edge.status !== "candidate")
-    throw new HiveInputError("This conflict is already resolved.");
   const cells =
-    await tx`SELECT id, revision, lifecycle FROM learnings WHERE team_id = ${ctx.teamId} AND id = ANY(${[edge.older_id, edge.newer_id]}::text[]) ORDER BY id FOR UPDATE`;
+    await tx`SELECT l.id, l.revision, l.lifecycle FROM learnings l WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${[edge.older_id, edge.newer_id]}::text[]) ORDER BY l.id FOR UPDATE`;
   const older = cells.find((row) => row.id === edge.older_id),
     newer = cells.find((row) => row.id === edge.newer_id);
   if (!older || !newer) throw new HiveNotFoundError();
+  if (edge.status === "accepted") return;
+  if (edge.status !== "candidate")
+    throw new HiveInputError("This conflict is already resolved.");
   if (
     older.revision !== edge.older_revision ||
     newer.revision !== edge.newer_revision
@@ -109,7 +110,7 @@ export async function listConflicts(
   history = false,
 ): Promise<LearningConflict[]> {
   const rows =
-    await getSql()`SELECT s.*, a.title AS older_title, a.body AS older_body, a.revision AS current_older_revision, b.title AS newer_title, b.body AS newer_body, b.revision AS current_newer_revision, am.name AS older_author, bm.name AS newer_author, (SELECT count(*)::int FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId}) AS votes, EXISTS (SELECT 1 FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId} AND v.member_id = ${ctx.memberId}) AS voted, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS can_admin FROM learning_supersessions s JOIN learnings a ON a.id = s.older_id AND a.team_id = s.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = s.team_id JOIN members am ON am.id = a.member_id AND am.team_id = a.team_id JOIN members bm ON bm.id = b.member_id AND bm.team_id = b.team_id WHERE s.team_id = ${ctx.teamId} AND (${history} OR s.status = 'candidate') ORDER BY s.created_at DESC LIMIT 100`;
+    await getSql()`SELECT s.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, a.body AS older_body, a.revision AS current_older_revision, b.title AS newer_title, b.body AS newer_body, b.revision AS current_newer_revision, am.name AS older_author, bm.name AS newer_author, (SELECT count(*)::int FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId}) AS votes, EXISTS (SELECT 1 FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId} AND v.member_id = ${ctx.memberId}) AS voted, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS can_admin FROM learning_supersessions s JOIN learnings a ON a.id = s.older_id AND a.team_id = s.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = s.team_id JOIN members am ON am.id = a.member_id AND am.team_id = a.team_id JOIN members bm ON bm.id = b.member_id AND bm.team_id = b.team_id WHERE s.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${history} OR s.status = 'candidate') ORDER BY s.created_at DESC LIMIT 100`;
   return rows.map((row) => ({
     id: row.id,
     older: {
@@ -129,7 +130,7 @@ export async function listConflicts(
     relation: row.relation,
     confidence: Number(row.confidence),
     status: row.status,
-    reason: row.reason,
+    reason: row.capture_redacted ? "A cell was redacted by a capture rule." : row.reason,
     votes: Number(row.votes),
     voted: row.voted,
     canAdmin: row.can_admin,
@@ -161,7 +162,7 @@ async function resolveConflictAction(
       if (!members.length) throw new HiveNotFoundError("Member not found.");
       const admin = members[0].role === "admin";
       const edges =
-        await tx`SELECT status FROM learning_supersessions WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+        await tx`SELECT s.status FROM learning_supersessions s JOIN learnings a ON a.id = s.older_id AND a.team_id = s.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = s.team_id WHERE s.id = ${id} AND s.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} FOR UPDATE OF s, a, b`;
       if (!edges.length)
         throw new HiveNotFoundError("Conflict not found in your team.");
       if (edges[0].status !== "candidate")
@@ -201,14 +202,37 @@ export async function learningVersions(
   id: string,
 ): Promise<LearningVersion[]> {
   const rows =
-    await getSql()`SELECT v.*, m.name AS author FROM learning_versions v JOIN members m ON m.id = v.member_id AND m.team_id = v.team_id WHERE v.learning_id = ${id} AND v.team_id = ${ctx.teamId} ORDER BY v.revision DESC LIMIT 100`;
+    await getSql()`SELECT v.*, m.name AS author FROM learning_versions v JOIN learnings l ON l.id = v.learning_id AND l.team_id = v.team_id JOIN members m ON m.id = v.member_id AND m.team_id = v.team_id WHERE v.learning_id = ${id} AND v.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (l.member_id = ${ctx.memberId} OR (coalesce((v.content->>'capture_flagged')::boolean, false) = false AND coalesce((v.diff->'capture_flagged'->>'before')::boolean, false) = false)) ORDER BY v.revision DESC LIMIT 100`;
   if (!rows.length) throw new HiveNotFoundError();
+  const targets = [...new Set(rows.flatMap((row) => [
+    row.content?.superseded_by,
+    row.diff?.superseded_by?.before,
+    row.diff?.superseded_by?.after,
+  ]).filter((target): target is string => typeof target === "string"))];
+  const visibleTargets = new Set(targets.length
+    ? (await getSql()`SELECT l.id FROM learnings l WHERE l.team_id = ${ctx.teamId} AND l.id = ANY(${targets}::text[]) AND ${learningVisibleSql(ctx)}`).map((row) => String(row.id))
+    : []);
+  const visibleTarget = (target: unknown) =>
+    typeof target === "string" && !visibleTargets.has(target) ? null : target;
   return rows.map((row) => ({
     revision: row.revision,
     author: row.author,
     createdAt: row.created_at.toISOString(),
-    content: row.content,
-    diff: row.diff,
+    content: {
+      ...row.content,
+      ...(Object.hasOwn(row.content, "superseded_by")
+        ? { superseded_by: visibleTarget(row.content.superseded_by) }
+        : {}),
+    },
+    diff: {
+      ...row.diff,
+      ...(row.diff.superseded_by
+        ? { superseded_by: {
+            before: visibleTarget(row.diff.superseded_by.before),
+            after: visibleTarget(row.diff.superseded_by.after),
+          } }
+        : {}),
+    },
   }));
 }
 
@@ -225,11 +249,43 @@ async function editLearningAction(
   input: z.infer<typeof learningEditInput>,
 ) {
   const data = learningEditInput.parse(input);
+  const candidates =
+    await getSql()`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+  const candidate = candidates[0];
+  if (!candidate) throw new HiveNotFoundError();
+  if (candidate.member_id !== ctx.memberId && !candidate.admin)
+    throw new HiveError("Only the author or a team admin can edit this cell.", 403);
+  if (candidate.revision !== data.revision)
+    throw new HiveError("This cell changed. Reload it before editing.", 409);
+  if (candidate.lifecycle === "superseded")
+    throw new HiveError("Edit the current cell in the chain instead.", 409);
+  const { enforceCaptureRules } = await import("./capture-rules");
+  const capture = await enforceCaptureRules(ctx, {
+    title: data.title ?? candidate.title,
+    body: data.body ?? candidate.body,
+    remote: candidate.capture_context?.remote,
+    cwd: candidate.capture_context?.cwd,
+    home: candidate.capture_context?.home,
+    sessionType: candidate.capture_context?.sessionType,
+    repo: candidate.repo ?? undefined,
+    paths: candidate.paths,
+    agent: candidate.capture_context?.agent ?? candidate.source,
+    categories: data.title || data.body ? undefined : candidate.capture_categories,
+  }, undefined, [
+    ...(candidate.tags ?? []),
+    ...(candidate.paths ?? []),
+    candidate.repo ?? "",
+    candidate.workaround ?? "",
+    candidate.session_ref ?? "",
+    ...Object.values(candidate.capture_context ?? {}).filter((value): value is string => typeof value === "string"),
+  ]);
+  if (capture.action === "drop")
+    throw new HiveError("This edit was excluded by a capture rule.", 422);
   const result = await analyticsTransaction(() =>
     getSql().begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
       const rows =
-        await tx`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} FOR UPDATE`;
+        await tx`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} FOR UPDATE`;
       const row = rows[0];
       if (!row) throw new HiveNotFoundError();
       if (row.member_id !== ctx.memberId && !row.admin)
@@ -244,8 +300,8 @@ async function editLearningAction(
         );
       if (row.lifecycle === "superseded")
         throw new HiveError("Edit the current cell in the chain instead.", 409);
-      const title = redactSecrets(data.title ?? row.title).text,
-        body = redactSecrets(data.body ?? row.body).text;
+      const title = redactSecrets(capture.title).text,
+        body = redactSecrets(capture.body).text;
       if (
         row.admin_outdated &&
         data.lifecycle &&
@@ -253,13 +309,21 @@ async function editLearningAction(
         !row.admin
       )
         throw new HiveError("A team admin must clear the outdated mark.", 403);
-      await tx`UPDATE learnings SET title = ${title}, body = ${body}, verify_after = ${data.verify_after ? new Date(data.verify_after) : row.verify_after}, lifecycle = ${data.lifecycle ?? row.lifecycle}, admin_outdated = ${data.lifecycle && ["fresh", "confirmed"].includes(data.lifecycle) ? false : row.admin_outdated} WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-      if ((data.title || data.body) && (await hasEmbeddingColumn())) {
+      await tx`UPDATE learnings SET title = ${title}, body = ${body}, verify_after = ${data.verify_after ? new Date(data.verify_after) : row.verify_after}, lifecycle = ${data.lifecycle ?? row.lifecycle}, admin_outdated = ${data.lifecycle && ["fresh", "confirmed"].includes(data.lifecycle) ? false : row.admin_outdated}, capture_flagged = capture_flagged OR ${capture.flagged}, capture_redacted = capture_redacted OR ${capture.redacted}, capture_rule_ids = ARRAY(SELECT DISTINCT unnest(capture_rule_ids || ${capture.matches.map(match => match.ruleId)}::text[])), capture_categories = ${tx.json(capture.categories)}, repo = ${capture.redacted ? null : row.repo}, tags = ${capture.redacted ? [] : row.tags}, paths = ${capture.redacted ? [] : row.paths}, workaround = ${capture.redacted ? null : row.workaround}, session_ref = ${capture.redacted ? null : row.session_ref}, capture_context = ${tx.json(capture.redacted ? {} : row.capture_context ?? {})}, classification = ${capture.redacted ? null : row.classification ? tx.json(row.classification) : null} WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      if ((data.title || data.body || capture.redacted) && (await hasEmbeddingColumn())) {
         const embedding = await embedText(`${title}\n\n${body}`);
         await tx`UPDATE learnings SET embedding = ${embedding ? JSON.stringify(embedding) : null}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       }
       const updated =
         await tx`SELECT revision FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      if (capture.redacted) {
+        await tx`DELETE FROM learning_versions WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND revision <> ${updated[0].revision}`;
+        await tx`UPDATE learning_versions SET diff = '{}'::jsonb WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND revision = ${updated[0].revision}`;
+        await tx`DELETE FROM learning_evidence WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
+        await tx`UPDATE learning_pushes SET session_ref = NULL, classification = NULL WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
+      }
+      if (capture.redacted || (capture.flagged && !row.capture_flagged))
+        await invalidateKnowledgeSnapshots(tx, ctx);
       if (data.lifecycle && data.lifecycle !== row.lifecycle)
         await recordMutation({
           name: "learning.lifecycle_changed",
@@ -278,9 +342,10 @@ export async function answerLifecycleContext(
   ctx: HiveContext,
   hits: import("@hivemind/core").LearningView[],
 ) {
+  hits = hits.filter((hit) => !hit.captureFlagged);
   const ids = hits.map((hit) => hit.id);
   const rows = ids.length
-    ? await getSql()`WITH RECURSIVE history AS (SELECT s.older_id, s.newer_id, s.decided_at, 1 AS depth FROM learning_supersessions s WHERE s.team_id = ${ctx.teamId} AND s.newer_id = ANY(${ids}::text[]) AND s.status = 'accepted' UNION ALL SELECT s.older_id, s.newer_id, s.decided_at, h.depth + 1 FROM learning_supersessions s JOIN history h ON s.newer_id = h.older_id WHERE s.team_id = ${ctx.teamId} AND s.status = 'accepted' AND h.depth < 16) SELECT DISTINCT h.*, l.title, n.title AS newer_title FROM history h JOIN learnings l ON l.id = h.older_id AND l.team_id = ${ctx.teamId} JOIN learnings n ON n.id = h.newer_id AND n.team_id = ${ctx.teamId} ORDER BY h.depth, h.older_id`
+    ? await getSql()`WITH RECURSIVE visible_edges AS (SELECT s.* FROM learning_supersessions s JOIN learnings a ON a.id = s.older_id AND a.team_id = s.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = s.team_id WHERE s.team_id = ${ctx.teamId} AND s.status = 'accepted' AND a.capture_flagged = false AND b.capture_flagged = false), history AS (SELECT s.older_id, s.newer_id, s.decided_at, 1 AS depth FROM visible_edges s WHERE s.team_id = ${ctx.teamId} AND s.newer_id = ANY(${ids}::text[]) AND s.status = 'accepted' UNION ALL SELECT s.older_id, s.newer_id, s.decided_at, h.depth + 1 FROM visible_edges s JOIN history h ON s.newer_id = h.older_id WHERE s.team_id = ${ctx.teamId} AND s.status = 'accepted' AND h.depth < 16) SELECT DISTINCT h.*, l.title, n.title AS newer_title FROM history h JOIN learnings l ON l.id = h.older_id AND l.team_id = ${ctx.teamId} JOIN learnings n ON n.id = h.newer_id AND n.team_id = ${ctx.teamId} ORDER BY h.depth, h.older_id`
     : [];
   const asOf = new Date().toISOString();
   const lines = [`As of ${asOf.slice(0, 10)}.`];

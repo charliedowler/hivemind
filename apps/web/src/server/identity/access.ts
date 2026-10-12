@@ -108,7 +108,7 @@ export async function moderateLearning(
       getSql().begin(async (tx) => {
         await lockLearningWrites(tx, ctx);
         const rows =
-          await tx`SELECT id, lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+          await tx`SELECT id, lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) FOR UPDATE`;
         if (!rows.length) throw new HiveNotFoundError();
         if (rows[0].lifecycle === "superseded")
           throw new HiveError(

@@ -18,6 +18,7 @@ import {
 } from "@hivemind/core";
 import { getSql } from "./db/client";
 import { learningView } from "./learning-view";
+import { learningVisible, learningVisibleSql } from "./capture-visibility";
 import {
   HiveError,
   HiveInputError,
@@ -63,8 +64,20 @@ function cellPath(cell: LearningView) {
 }
 
 export function renderKnowledgeTree(
-  cells: LearningView[],
+  cells: (LearningView & { captureFlagged?: boolean })[],
+  ctx?: HiveContext,
 ): Map<string, string> {
+  cells = cells.filter((cell) =>
+    ctx ? learningVisible(ctx, cell) : !cell.captureFlagged,
+  );
+  const visibleIds = new Set(cells.map((cell) => cell.id));
+  cells = cells.map((cell) => ({
+    ...cell,
+    supersededBy:
+      cell.supersededBy && visibleIds.has(cell.supersededBy)
+        ? cell.supersededBy
+        : null,
+  }));
   const files = new Map<string, string>();
   const groups = new Map<string, { title: string; cells: LearningView[] }>();
   const add = (path: string, title: string, cell: LearningView) => {
@@ -220,13 +233,13 @@ export async function ensureKnowledge(
         manifest: state.manifest as Manifest,
       };
     const rows =
-      await sql`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} ORDER BY l.id LIMIT 10001`;
+      await sql`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.capture_flagged = false ORDER BY l.id LIMIT 10001`;
     if (rows.length > 10000)
       throw new HiveUnavailableError(
         "This hive needs a streamed rebuild before it can publish more than 10000 cells.",
       );
     const renderedAt = Date.now();
-    const files = renderKnowledgeTree(rows.map(learningView));
+    const files = renderKnowledgeTree(rows.map(row => learningView(row, ctx)));
     const oldManifest = state.manifest as Manifest;
     const manifest: Manifest = {};
     await withStorageWorkers(files, async ([path, content]) => {
@@ -282,20 +295,37 @@ export function scheduleKnowledge(ctx: HiveContext) {
   } catch {}
 }
 
+export async function invalidateKnowledgeSnapshots(
+  tx: LearningTransaction,
+  ctx: HiveContext,
+) {
+  await tx`DELETE FROM knowledge_snapshots WHERE team_id = ${ctx.teamId}`;
+}
+
 export function browseKnowledge(ctx: HiveContext, path = "") {
   return withOperation(ctx, "tree_browse", () =>
     browseKnowledgeAction(ctx, path),
   );
+}
+async function contextKnowledge(ctx: HiveContext) {
+  const { revision } = await ensureKnowledge(ctx);
+  const rows =
+    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} ORDER BY l.id LIMIT 10001`;
+  if (rows.length > 10000)
+    throw new HiveUnavailableError(
+      "This hive needs a streamed rebuild before it can read more than 10000 cells.",
+    );
+  return { revision, files: renderKnowledgeTree(rows.map(row => learningView(row, ctx)), ctx) };
 }
 async function browseKnowledgeAction(
   ctx: HiveContext,
   path = "",
 ): Promise<KnowledgeListing> {
   path = knowledgePath(path);
-  const { revision, manifest } = await ensureKnowledge(ctx);
+  const { revision, files } = await contextKnowledge(ctx);
   const prefix = path ? `${path}/` : "";
   const entries = new Map<string, KnowledgeListing["entries"][number]>();
-  for (const name of Object.keys(manifest)) {
+  for (const name of files.keys()) {
     if (!name.startsWith(prefix)) continue;
     const [child, rest] = name.slice(prefix.length).split("/");
     entries.set(child, {
@@ -327,19 +357,15 @@ async function readKnowledgeAction(
   path: string,
 ): Promise<KnowledgeFile> {
   path = knowledgePath(path);
-  const { revision, manifest } = await ensureKnowledge(ctx);
-  const file = manifest[path];
-  if (!file) throw new HiveNotFoundError("File not found in your hive.");
-  const content = await readPrivateObject(file.key);
-  if (digest(content) !== file.digest)
-    throw new HiveUnavailableError(
-      "This hive file failed its integrity check. Rebuild the tree.",
-    );
+  const { revision, files } = await contextKnowledge(ctx);
+  const content = files.get(path);
+  if (content === undefined)
+    throw new HiveNotFoundError("File not found in your hive.");
   await recordEvent({
     name: "tree.read",
-    properties: { revision, files: 1, bytes: content.length },
+    properties: { revision, files: 1, bytes: Buffer.byteLength(content) },
   });
-  return { path, revision, content: content.toString("utf8") };
+  return { path, revision, content };
 }
 
 export function snapshotKnowledge(ctx: HiveContext) {

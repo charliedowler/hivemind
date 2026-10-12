@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repository, summary } from '../../../skills/hive/scripts/session-start.mjs';
+import { captureContext, effectiveCaptureRules, localCaptureDecision } from '../../../skills/hive/scripts/capture-rules.mjs';
 import { callTool } from '../../../skills/hive/scripts/mcp.mjs';
 
 const scripts = fileURLToPath(new URL('../../../skills/hive/scripts/', import.meta.url));
@@ -27,6 +28,7 @@ async function mockHive(t, responseText = '- lrn_fixture: Restart the worker bef
   const calls = [];
   const reports = [];
   const server = createServer(async (request, response) => {
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
     let body = '';
     for await (const chunk of request) body += chunk;
     assert.equal(request.headers.authorization, 'Bearer fixture');
@@ -125,8 +127,10 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   let decision = 'skip';
   let captured;
   const server = createServer(async (request, response) => {
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
     assert.equal(request.url, '/api/app/capture');
     assert.equal(request.headers.authorization, 'Bearer fixture');
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
     let body = '';
     for await (const chunk of request) body += chunk;
     captured = JSON.parse(body);
@@ -148,6 +152,7 @@ test('Stop reports a local nudge when the capture gate fails without sending tra
   writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Discovered that a stopped migration worker can leave a lock open.' }] } }));
   const reports = [];
   const server = createServer(async (request, response) => {
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
     let body = '';
     for await (const chunk of request) body += chunk;
     if (request.url === '/api/app/capture') { response.writeHead(503).end(); return; }
@@ -173,4 +178,60 @@ test('recent summaries preserve lifecycle and verification warnings without auth
   assert.ok(context.includes('Current guidance [fresh, verify before use]'));
   assert.ok(!context.includes('private author'));
   assert.equal(context.split('\n').length, 2);
+});
+
+
+test('capture metadata keeps the exact remote and working directory', () => {
+  const cwd = scratchRepo();
+  const value = captureContext({ cwd, session_id: 'session', agent: 'codex', session_type: 'headless' });
+  assert.equal(value.repo, 'team/widget');
+  assert.equal(value.remote, execFileSync('git', ['remote', 'get-url', 'origin'], { cwd, encoding: 'utf8' }).trim());
+  assert.equal(value.cwd, cwd);
+  assert.equal(value.agent, 'codex');
+  assert.equal(value.sessionType, 'headless');
+});
+
+test('effective rule cache is short and bound to the credential and endpoint', async t => {
+  const home = scratchRepo();
+  let requests = 0;
+  const server = createServer((request, response) => {
+    assert.equal(request.url, '/api/app/capture-rules/effective');
+    requests++;
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [{ id: 'fixture', enabled: true }] }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const options = { home, baseUrl, token: 'one', now: 1000 };
+  assert.equal((await effectiveCaptureRules(options)).length, 1);
+  await effectiveCaptureRules({ ...options, now: 2000 });
+  assert.equal(requests, 1);
+  await effectiveCaptureRules({ ...options, token: 'two', now: 2000 });
+  await effectiveCaptureRules({ ...options, now: 32000 });
+  assert.equal(requests, 3);
+});
+
+test('local filtering excludes content rules and keeps non-drop actions server-side', async () => {
+  assert.deepEqual(await localCaptureDecision([
+    { enabled: true, action: 'drop', kind: 'content_category' },
+    { enabled: true, action: 'redact', kind: 'keyword' },
+    { enabled: false, action: 'drop', kind: 'repo_match' },
+  ], { title: 'Private', body: 'Personal admin' }), { dropped: false });
+});
+
+test('a local repo drop never sends transcript text to the capture endpoint', async t => {
+  const home = scratchRepo();
+  const transcript = join(home, 'private.jsonl');
+  writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Discovered a private repo workaround that must stay on this machine.' }] } }));
+  const received = [];
+  const server = createServer(async (request, response) => {
+    received.push(request.url);
+    assert.equal(request.url, '/api/app/capture-rules/effective');
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [{ id: 'private', kind: 'repo_owner', owners: ['team'], mode: 'deny', action: 'drop', enabled: true }] }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
+  assert.equal(await run('stop.mjs', { cwd: home, session_id: 'private-drop', transcript_path: transcript }, env), '');
+  assert.deepEqual(received, ['/api/app/capture-rules/effective']);
 });

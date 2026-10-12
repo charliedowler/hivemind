@@ -142,3 +142,10 @@ pnpm --filter web build
 The fixture suite checks replay identity, null fields, privacy, independent concurrent origins, failure deadlines, post-commit events, append-only triggers, role privileges, admin/team guards, rollback refusal, and all five SQL reports with known counts. The service integration test records real push, merge, feedback, correction, search, ask, recent, and refusal boundaries through an injected event writer. The ordinary suite makes no provider calls. Database tests need DATABASE_URL; the live TypeSafe smoke test remains opt-in.
 
 For a local demo, `HIVE_ANALYTICS_TEST_DATABASE_URL=... pnpm --filter web exec tsx scripts/analytics-fixture.ts` creates a fresh isolated schema, applies migrations there, seeds events and synthetic sessions, and writes a new ignored `.env.local`. It refuses to overwrite an existing env file and accepts only the local endpoint. Never deploy the fixture sessions. The [verification report](analytics-report.md) contains the seeded SQL outputs and the reviewed 1280-pixel Playwright screenshot.
+
+
+## Capture rule events
+
+`capture.rule_dropped` records an excluded capture before storage. Its properties contain the rule ID and kind only. No title, body, path, remote, keyword, rule description or classifier input is recorded.
+
+`capture.rule_applied` records a matched rule's kind, action, ingress and agent. It covers drop, redact and flag. These events answer which rule kinds exclude captures, which entrypoints encounter rules and which actions members use. They measure observed captures; locally filtered hooks may never reach the server. Counts do not measure all agent sessions or the amount of private content on a machine.

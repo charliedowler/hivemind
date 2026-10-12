@@ -48,6 +48,7 @@ export function Navigation({
             ["/app/members", "Members"],
             ["/app/install", "Install"],
             ["/app/account", "Account"],
+            ["/app/settings/capture", "What Hive keeps"],
             ...(isAdmin ? [["/app/admin/analytics", "Analytics"]] : []),
           ].map(([href, label]) => (
             <Link

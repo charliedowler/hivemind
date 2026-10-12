@@ -18,6 +18,7 @@ import { CopyButton, ErrorPanel, LoadingPanel } from "./primitives";
 import { CellCitation } from "./cell-citation";
 import { LearningHistory } from "./learning-history";
 import { Markdown } from "./markdown";
+import { CaptureCellNote } from "./capture-cell-note";
 
 export function LearningDetail({
   learning,
@@ -78,6 +79,7 @@ export function LearningDetail({
           This cell is marked outdated. Check the learning before you cite it.
         </p>
       ) : null}
+      <CaptureNotice learning={learning} />
       <LifecycleNotice learning={learning} />
       <FrictionDetails learning={learning} />
       <Markdown text={learning.body} />
@@ -276,5 +278,25 @@ function LifecycleNotice({ learning }: { learning: LearningView }) {
         </p>
       ) : null}
     </>
+  );
+}
+
+function CaptureNotice({ learning }: { learning: LearningView }) {
+  const current =
+    learning.lifecycle === undefined ||
+    learning.lifecycle === "fresh" ||
+    learning.lifecycle === "confirmed";
+  const flagged = Boolean(learning.captureFlagged);
+  const redacted = Boolean(learning.captureRedacted);
+  const matched = Boolean(learning.captureRuleIds?.length);
+  return (
+    <CaptureCellNote
+      key={learning.id}
+      id={learning.id}
+      flagged={flagged}
+      redacted={redacted}
+      canConfirm={learning.canConfirmCapture ?? (flagged && current)}
+      keptAfterConfirmation={current && matched && !flagged && !redacted}
+    />
   );
 }

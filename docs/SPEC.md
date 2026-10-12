@@ -366,3 +366,10 @@ Sonnet decides at confidence >= 0.80. Otherwise Jev's action Choice decides at c
 The application rechecks revisions before applying decisions. Admin reversal rejects subsequent content, votes or push-count changes, restores the prior lifecycle and moved pushes, and appends a `reversed` entry linked to the original. It does not delete the original decision or ask members to vote. Related pushes retry undecided candidates with current evidence. There is no daily retry job.
 
 Every applied attempt and reversal emits `conflict.decided` after commit using the private analytics writer. Its allowlisted properties contain action, confidence, fixed model and fixed-key Jev distributions, plus envelope latency. No bodies, titles, reasons, authors or repo paths enter events. Migration 0014 adds the log after analytics migration 0013; SQL uses local lock/statement timeouts and rollback refuses populated history.
+
+
+## Capture rules
+
+The [capture rule contract](capture-rules.md) defines member and admin-owned team rules, typed configurations, matcher order and privacy behaviour. Core exports the shared deterministic matcher. Every ingress enforces the caller's effective rules before embedding or storage. Content classification runs only when a content rule needs it. Dropped pushes return `{ dropped: true, rule: <kind> }`.
+
+`/settings/capture` offers descriptions with a confirmed structured proposal, rule editing, enable toggles, deletion, bounded existing-cell previews and application history. `GET /api/app/capture-rules/effective` requires a team-scoped bearer token. Other rule routes use the web session. Flagged cells stay owner-only until confirmed and are excluded from shared materialisations. Retractions use the existing reversible lifecycle and carry the rule ID.

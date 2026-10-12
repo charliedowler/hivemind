@@ -103,6 +103,12 @@ export const hivePushInput = z.object({
     .string()
     .optional()
     .describe("The related repository, such as owner/name."),
+  remote: z.string().trim().max(2000).optional(),
+  cwd: z.string().trim().max(4000).optional(),
+  home: z.string().trim().max(4000).optional(),
+  branch: z.string().trim().max(500).optional(),
+  agent: z.string().trim().min(1).max(120).optional(),
+  sessionType: z.string().trim().min(1).max(120).optional(),
   paths: z
     .array(z.string())
     .max(20)

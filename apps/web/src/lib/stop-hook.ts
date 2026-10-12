@@ -67,12 +67,22 @@ async function main() {
       if (server?.url?.replace(/\/$/, "") === hiveUrl + "/api/mcp") key = server.headers?.Authorization?.replace(/^Bearer /i, "");
     } catch {}
   }
+  let context = { cwd: input.cwd || process.cwd(), home, agent: "claude-code", sessionType: process.env.CLAUDE_CODE_ENTRYPOINT || "cli", sessionRef: input.session_id };
+  try {
+    const hooks = await import(require("node:url").pathToFileURL(path.join(home, ".claude", "skills", "hive", "scripts", "capture-rules.mjs")).href);
+    context = hooks.captureContext(input);
+    if (key) {
+      const rules = await hooks.effectiveCaptureRules({ token: key, baseUrl: hiveUrl, home });
+      const decision = await hooks.localCaptureDecision(rules, { ...context, title: "", body: facts.text });
+      if (decision.dropped || decision.action === "drop") return;
+    }
+  } catch {}
   if (key) {
     try {
       const response = await fetch(hiveUrl + "/api/app/capture", {
         method: "POST",
         headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify(facts),
+        body: JSON.stringify({ ...facts, ...context }),
         signal: AbortSignal.timeout(2000),
       });
       if (response.ok && (await response.json()).decision === "skip") return;

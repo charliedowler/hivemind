@@ -31,6 +31,7 @@ import {
   recordMutation,
   withOperation,
   pushSource,
+  currentOrigin,
 } from "./analytics/events";
 import { frictionSummary, frictionAnswer, isFrictionAsk } from "./friction";
 import { classifyPush, classifyAsk, classificationJson } from "./classify";
@@ -54,6 +55,8 @@ import {
   scheduleKnowledge,
   ensureKnowledge,
 } from "./knowledge-tree";
+import { enforceCaptureRules } from "./capture-rules";
+import { learningVisibleSql, visibleSupersededBySql } from "./capture-visibility";
 import { after } from "next/server";
 import { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
@@ -103,7 +106,27 @@ async function pushLearningAction(
   ctx: HiveContext,
   input: HivePushInput,
 ): Promise<PushResult> {
-  const data = validate(hivePushInput, input);
+  let data = validate(hivePushInput, input);
+  const sidecar = [data.workaround, ...(data.tags ?? []), ...(data.paths ?? []), data.repo, data.remote, data.cwd, data.home, data.branch, data.agent, data.sessionType, data.sessionRef, data.evidence?.session_excerpt, data.evidence?.diff].filter((value): value is string => Boolean(value));
+  const capture = await enforceCaptureRules(ctx, {
+    title: data.title,
+    body: data.body,
+    repo: data.repo,
+    remote: data.remote,
+    cwd: data.cwd,
+    paths: data.paths,
+    home: data.home,
+    agent: data.agent ?? data.source,
+    sessionType: data.sessionType,
+  }, undefined, sidecar);
+  if (capture.action === "drop")
+    return {dropped: true, rule: capture.matches.find(match => match.action === "drop")!.kind};
+  const captureRedacted = capture.redacted;
+  const captureFlagged = capture.flagged;
+  const captureRuleIds = capture.matches.map(match => match.ruleId);
+  const captureContext = captureRedacted ? {} : Object.fromEntries(Object.entries({remote: data.remote, cwd: data.cwd, home: data.home, agent: data.agent ?? data.source, sessionType: data.sessionType, branch: data.branch}).filter(([, value]) => value !== undefined).map(([key, value]) => [key, redactSecrets(value!).text]));
+  data = {...data, title: capture.title, body: capture.body};
+  if (captureRedacted) data = {...data, repo: undefined, remote: undefined, cwd: undefined, home: undefined, branch: undefined, agent: undefined, sessionType: undefined, paths: [], tags: [], evidence: undefined, sessionRef: undefined, workaround: undefined};
   const repo = normalizeRepo(
     data.repo ? redactSecrets(data.repo).text : undefined,
   );
@@ -159,8 +182,8 @@ async function pushLearningAction(
   const vector = embedding ? JSON.stringify(embedding) : null;
   const normalizedTitle = title.text.toLowerCase().replace(/\s+/g, " ");
   const candidateRows = vector
-    ? await sql`SELECT id, title, body, revision FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} OR (embedding IS NOT NULL AND 1 - (embedding <=> ${vector}::vector) >= 0.8)) ORDER BY (lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) DESC, embedding <=> ${vector}::vector LIMIT 4`
-    : await sql`SELECT id, title, body, revision FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at DESC LIMIT 4`;
+    ? await sql`SELECT id, title, body, revision FROM learnings WHERE team_id = ${ctx.teamId} AND capture_redacted = ${captureRedacted} AND capture_flagged = ${captureFlagged} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} OR (embedding IS NOT NULL AND 1 - (embedding <=> ${vector}::vector) >= 0.8)) ORDER BY (lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) DESC, embedding <=> ${vector}::vector LIMIT 4`
+    : await sql`SELECT id, title, body, revision FROM learnings WHERE team_id = ${ctx.teamId} AND capture_redacted = ${captureRedacted} AND capture_flagged = ${captureFlagged} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle} ORDER BY created_at DESC LIMIT 4`;
   const judgment = await judgeMemory(
     { title: title.text, body: body.text, repo },
     candidateRows.map((row) => ({
@@ -208,7 +231,7 @@ async function pushLearningAction(
     sql.begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
       const current =
-        await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (id = ANY(${candidateRows.map((row) => row.id)}::text[]) OR lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) ORDER BY created_at DESC FOR UPDATE`;
+        await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND capture_redacted = ${captureRedacted} AND capture_flagged = ${captureFlagged} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) AND kind = ${kind} AND repo IS NOT DISTINCT FROM ${repo} AND lifecycle IN ('fresh','confirmed') AND (id = ANY(${candidateRows.map((row) => row.id)}::text[]) OR lower(regexp_replace(trim(title), '\\s+', ' ', 'g')) = ${normalizedTitle}) ORDER BY created_at DESC FOR UPDATE`;
       const relations = judgment.relations.filter((item) =>
         current.some(
           (row) => row.id === item.id && row.revision === item.revision,
@@ -236,9 +259,9 @@ async function pushLearningAction(
       let merged = Boolean(duplicate);
       let id: string = duplicate?.id ?? newId("lrn");
       if (merged) {
-        await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), lifecycle = 'confirmed', classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround) WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+        await tx`UPDATE learnings SET push_count = push_count + 1, last_pushed_at = now(), updated_at = now(), tags = ARRAY(SELECT DISTINCT unnest(tags || ${tags}::text[])), paths = ARRAY(SELECT DISTINCT unnest(paths || ${paths}::text[])), confidence = greatest(confidence, ${data.confidence}), lifecycle = 'confirmed', classification = ${classification ? tx.json(classificationJson(classification)) : null}, area = coalesce(area, ${data.area ?? null}), cost = CASE WHEN cost IS NULL AND ${data.cost ?? null}::integer IS NULL THEN NULL ELSE coalesce(cost, 0) + coalesce(${data.cost ?? null}::integer, 0) END, blocked = blocked OR ${data.blocked}, workaround = coalesce(nullif(${workaround.text}, ''), workaround), capture_redacted = capture_redacted OR ${captureRedacted}, capture_rule_ids = ARRAY(SELECT DISTINCT unnest(capture_rule_ids || ${captureRuleIds}::text[])), capture_categories = capture_categories || ${tx.json(capture.categories)}::jsonb, capture_context = CASE WHEN ${captureRedacted} THEN '{}'::jsonb ELSE capture_context END WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       } else {
-        await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref, area, cost, blocked, workaround, classification, verify_after) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${workaround.text || null}, ${classification ? tx.json(classificationJson(classification)) : null}, ${verificationHorizon(kind, data.area, tags, data.verify_after)})`;
+        await tx`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, paths, confidence, source, session_ref, area, cost, blocked, workaround, classification, verify_after, capture_flagged, capture_redacted, capture_rule_ids, capture_categories, capture_context) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title.text}, ${body.text}, ${kind}, ${tags}, ${repo}, ${paths}, ${data.confidence}, ${data.source}, ${data.sessionRef ? redactSecrets(data.sessionRef).text : null}, ${data.area ?? null}, ${data.cost ?? null}, ${data.blocked}, ${workaround.text || null}, ${classification ? tx.json(classificationJson(classification)) : null}, ${verificationHorizon(kind, data.area, tags, data.verify_after)}, ${captureFlagged}, ${captureRedacted}, ${captureRuleIds}, ${tx.json(capture.categories)}, ${tx.json(captureContext)})`;
         if (vector)
           await tx`UPDATE learnings SET embedding = ${vector}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       }
@@ -282,7 +305,7 @@ async function pushLearningAction(
               });
         for (const proposal of proposals) {
           const oldRows =
-            await tx`SELECT * FROM learnings WHERE id = ${proposal.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+            await tx`SELECT * FROM learnings WHERE id = ${proposal.id} AND team_id = ${ctx.teamId} AND capture_redacted = ${captureRedacted} AND capture_flagged = ${captureFlagged} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) FOR UPDATE`;
           const old = oldRows[0];
           if (!old) throw new HiveNotFoundError();
           if (old.superseded_by || old.lifecycle === "retracted")
@@ -324,14 +347,14 @@ async function pushLearningAction(
         }
       }
       const rows =
-        await tx`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
-      const learning = view(rows[0]);
+        await tx`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+      const learning = view(rows[0], ctx);
       return {
         id,
         pushId,
         merged,
         pushCount: learning.pushCount,
-        redactions: title.count + body.count + workaround.count,
+        redactions: title.count + body.count + workaround.count + Number(captureRedacted),
         learning,
       };
     }),
@@ -358,7 +381,7 @@ async function pushLearningAction(
   await Promise.all(
     applied.map((decision) => recordConflictEvent(ctx, decision)),
   );
-  const retried = await retryRelatedConflicts(
+  const retried = captureFlagged ? [] : await retryRelatedConflicts(
     ctx,
     result.id,
     applied.map((record) => record.edgeId),
@@ -386,13 +409,15 @@ async function pushLearningAction(
 export function searchLearnings(
   ctx: HiveContext,
   input: HiveSearchInput,
+  excludeFlagged = ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? ""),
 ): Promise<SearchHit[]> {
-  return withOperation(ctx, "search", () => searchLearningsAction(ctx, input));
+  return withOperation(ctx, "search", () => searchLearningsAction(ctx, input, excludeFlagged));
 }
 
 async function searchLearningsAction(
   ctx: HiveContext,
   input: HiveSearchInput,
+  excludeFlagged: boolean,
 ): Promise<SearchHit[]> {
   const started = performance.now();
   const data = validate(hiveSearchInput, input);
@@ -404,11 +429,11 @@ async function searchLearningsAction(
   const tsquery = sql`replace(plainto_tsquery('english', ${data.query})::text, '&', '|')::tsquery`;
   const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
   const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
-  const filter = sql`l.team_id = ${ctx.teamId} AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null})`;
+  const filter = sql`l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null})`;
   const ftsRows =
-    await sql`SELECT l.*, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
+    await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
-    ? await sql`SELECT l.*, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
+    ? await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
     : [];
   const candidates = new Map<
     string,
@@ -416,14 +441,14 @@ async function searchLearningsAction(
   >();
   for (const row of ftsRows)
     candidates.set(row.id, {
-      ...view(row),
+      ...view(row, ctx),
       vector: null,
       fts: Number(row.fts),
     });
   for (const row of vectorRows) {
     const vector = Number(row.vector);
     if (vector >= minimumVectorSimilarity || candidates.has(row.id))
-      candidates.set(row.id, { ...view(row), vector, fts: Number(row.fts) });
+      candidates.set(row.id, { ...view(row, ctx), vector, fts: Number(row.fts) });
   }
   let prefixUsed = false;
   if (!candidates.size) {
@@ -432,10 +457,10 @@ async function searchLearningsAction(
       prefixUsed = true;
       const prefix = words.map((word) => `${word}:*`).join(" & ");
       const rows =
-        await sql`SELECT l.*, m.name AS author_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
+        await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
       for (const row of rows)
         candidates.set(row.id, {
-          ...view(row),
+          ...view(row, ctx),
           vector: null,
           fts: Number(row.fts),
         });
@@ -486,10 +511,10 @@ async function askHiveAction(
     : null;
   if (friction && friction.count) {
     const cells =
-      await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
+      await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
     const result = appendLifecycleContext(
       frictionAnswer(friction),
-      await answerLifecycleContext(ctx, cells.map(view)),
+      await answerLifecycleContext(ctx, cells.map(row => view(row, ctx))),
     );
     await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((c) => c.id)}, false)`;
     await recordEvent({
@@ -513,7 +538,7 @@ async function askHiveAction(
       query: data.question.slice(0, 500),
       repo: data.repo,
       limit: 8,
-    }),
+    }, true),
   );
   const [context, relevance] = await Promise.all([
     answerLifecycleContext(ctx, hits),
@@ -589,13 +614,14 @@ async function recentLearningsAction(
     );
   }
   const repo = normalizeRepo(data.repo);
+  const excludeFlagged = ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
   const rows =
-    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
+    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
   await recordEvent({
     name: "recent.performed",
     properties: { resultCount: rows.length, kind: data.kind },
   });
-  return rows.map(view);
+  return rows.map(row => view(row, ctx));
 }
 
 export function recordFeedback(
@@ -614,7 +640,7 @@ async function recordFeedbackAction(
     getSql().begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
       const rows =
-        await tx`SELECT id, lifecycle FROM learnings WHERE id = ${data.id} AND team_id = ${ctx.teamId} FOR UPDATE`;
+        await tx`SELECT id, lifecycle FROM learnings WHERE id = ${data.id} AND team_id = ${ctx.teamId} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) FOR UPDATE`;
       if (!rows.length) throw new HiveNotFoundError();
       await tx`INSERT INTO feedback (learning_id, member_id, team_id, vote, note) VALUES (${data.id}, ${ctx.memberId}, ${ctx.teamId}, ${data.vote}, ${data.note ?? null}) ON CONFLICT (learning_id, member_id) DO UPDATE SET vote = EXCLUDED.vote, note = EXCLUDED.note, updated_at = now() WHERE feedback.team_id = ${ctx.teamId}`;
       const counts =
@@ -654,13 +680,13 @@ export async function getLearning(
   id: string,
 ): Promise<LearningView | null> {
   const rows =
-    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
-  return rows[0] ? view(rows[0]) : null;
+    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+  return rows[0] ? view(rows[0], ctx) : null;
 }
 
 export async function listMembers(ctx: HiveContext): Promise<MemberView[]> {
   const rows =
-    await getSql()`SELECT m.*, count(l.id)::int AS learning_count FROM members m LEFT JOIN learnings l ON l.member_id = m.id AND l.team_id = ${ctx.teamId} WHERE m.team_id = ${ctx.teamId} AND m.removed_at IS NULL GROUP BY m.id ORDER BY m.created_at`;
+    await getSql()`SELECT m.*, count(l.id)::int AS learning_count FROM members m LEFT JOIN learnings l ON l.member_id = m.id AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} WHERE m.team_id = ${ctx.teamId} AND m.removed_at IS NULL GROUP BY m.id ORDER BY m.created_at`;
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
@@ -676,10 +702,10 @@ export async function listMembers(ctx: HiveContext): Promise<MemberView[]> {
 export async function teamOverview(ctx: HiveContext): Promise<TeamOverview> {
   const sql = getSql();
   const rows =
-    await sql`SELECT name, invite_expires_at, (SELECT count(*)::int FROM learnings WHERE team_id = ${ctx.teamId}) AS learning_count, (SELECT count(*)::int FROM members WHERE team_id = ${ctx.teamId} AND removed_at IS NULL) AS member_count FROM teams WHERE id = ${ctx.teamId}`;
+    await sql`SELECT name, invite_expires_at, (SELECT count(*)::int FROM learnings WHERE team_id = ${ctx.teamId} AND (NOT capture_flagged OR member_id = ${ctx.memberId})) AS learning_count, (SELECT count(*)::int FROM members WHERE team_id = ${ctx.teamId} AND removed_at IS NULL) AS member_count FROM teams WHERE id = ${ctx.teamId}`;
   if (!rows[0]) throw new HiveNotFoundError("Team not found.");
   const repos =
-    await sql`SELECT DISTINCT repo FROM learnings WHERE team_id = ${ctx.teamId} AND repo IS NOT NULL ORDER BY repo`;
+    await sql`SELECT DISTINCT repo FROM learnings WHERE team_id = ${ctx.teamId} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) AND repo IS NOT NULL ORDER BY repo`;
   return {
     teamName: rows[0].name,
     role: (

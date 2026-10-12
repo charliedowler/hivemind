@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { bearerToken, endpoint, homeDirectory } from "./mcp.mjs";
 import { reportEvent } from "./telemetry.mjs";
+import { captureContext, effectiveCaptureRules, localCaptureDecision } from "./capture-rules.mjs";
 const hiveUrl = endpoint();
 import fs from "node:fs";
 import path from "node:path";
@@ -42,13 +43,19 @@ async function main() {
       if (server?.url?.replace(/\/$/, "") === hiveUrl + "/api/mcp") key = server.headers?.Authorization?.replace(/^Bearer /i, "");
     } catch {}
   }
+  const context = captureContext(input);
+  if (key) {
+    const rules = await effectiveCaptureRules({ token: key, baseUrl: hiveUrl });
+    const decision = await localCaptureDecision(rules, { ...context, title: "", body: facts.text });
+    if (decision.dropped || decision.action === "drop") return;
+  }
   let serverRecorded = false;
   if (key) {
     try {
       const response = await fetch(hiveUrl + "/api/app/capture", {
         method: "POST",
         headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify(facts),
+        body: JSON.stringify({ ...facts, ...context }),
         signal: AbortSignal.timeout(2000),
       });
       serverRecorded = response.ok;
