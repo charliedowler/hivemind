@@ -77,7 +77,8 @@ async function main() {
       if (!completeAgentSignIn(options, signIn)) { process.exitCode = 1; return; }
     } else completeSignIn(options, !yes && !!process.stdin.isTTY && !!process.stdout.isTTY, signIn);
     const results: DoctorResult[] = [];
-    doctor({ ...options, onDoctor: (agent, healthy) => results.push({ agent, healthy }) });
+    const healthy = doctor({ ...options, onDoctor: (agent, healthy) => results.push({ agent, healthy }) });
+    if (mode === 'agent' && !healthy) process.exitCode = 1;
     await reportDoctor(results, home);
   } else if (command === 'doctor') {
     const results: DoctorResult[] = [];

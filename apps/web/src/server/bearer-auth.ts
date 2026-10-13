@@ -28,6 +28,7 @@ export async function withHiveBearerAuth(request: Request, handler: (request: Re
   const auth = await getAuth();
   const resource = mcpResource(auth);
   return requireMcpAuth(auth, async (req, claims) => {
+    if (claims.hive_credential_version !== credentialVersion || claims.hive_credential_epoch !== await credentialEpoch()) return Response.json({ error: "Sign in to Hive again and allow access to your personal hive and organisations you join." }, { status: 401, headers: { "WWW-Authenticate": 'Bearer error="invalid_token"' } });
     const ctx = await contextFromClaims(claims);
     if (!ctx) return Response.json({ error: "This token has no active membership in its hive." }, { status: 403 });
     return withCredentialScope(ctx.memberId, claims.hive_access === "person", () => handler(req, ctx, claims));

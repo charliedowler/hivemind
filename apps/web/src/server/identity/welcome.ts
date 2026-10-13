@@ -5,6 +5,7 @@ import { hashToken, newId, newToken } from "../db/ids";
 import { HiveError } from "../errors";
 import { deliverEmail } from "./email";
 import { claimProvisionalHuman } from "./owner-bindings";
+import { renderWelcome } from "./welcome-template";
 
 type Welcome = { email: string; nonce: string; issued: number; expires: number; consumed?: boolean; delivered?: boolean; attempts: number; message?: { subject: string; text: string; html?: string } };
 const identifier = (id: string) => `hive-welcome:${id}`;
@@ -65,7 +66,12 @@ export async function deliverWelcome(memberId: string): Promise<void> {
     const member = await provisional(tx, memberId);
     const value = await state(tx, memberId, member.email);
     if (value.delivered || value.expires <= Math.floor(Date.now() / 1000)) return;
-    value.message ??= { subject: "Your personal Hive is ready", text: `Your agent set up your personal Hive. Open Hive to see its learnings and join your organisation.\n\n${await link(memberId, value)}\n\nThis link expires in 24 hours.` };
+    if (!value.message) {
+      const claimUrl = await link(memberId, value);
+      try { value.message = renderWelcome({ name: String(member.name), claimUrl }); }
+      catch { value.message = { subject: "Your personal Hive is ready", text: `Your agent set up your personal Hive. Open Hive to see its learnings and join your organisation.\n\n${claimUrl}` }; }
+      value.message.text += "\n\nThis link expires in 24 hours.";
+    }
     value.attempts++;
     value.delivered = await deliverEmail(value.email, value.message.subject, value.message.text, `hive-welcome/${memberId}/${value.nonce}`, value.message.html);
     await tx`UPDATE auth_verification SET value = ${JSON.stringify(value)}, updated_at = now() WHERE id = ${identifier(memberId)}`;

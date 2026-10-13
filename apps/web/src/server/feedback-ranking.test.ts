@@ -252,7 +252,7 @@ describe.skipIf(!process.env.DATABASE_URL)("feedback decides retrieval", () => {
     );
     const agentId = newId("mem");
     members.push(agentId);
-    await sql`INSERT INTO members (id, name, actor_type, role, email, email_verified) VALUES (${agentId}, 'Owner agent', 'agent', 'member', ${`${agentId}@agentmail.to`}, true)`;
+    await sql`INSERT INTO members (id, name, actor_type, email, email_verified) VALUES (${agentId}, 'Owner agent', 'agent', ${`${agentId}@agentmail.to`}, true)`;
     await sql`INSERT INTO auth_accounts (id, user_id, account_id, provider_id, owner_sub, owner_email_verified) VALUES (${newId("auth")}, ${agentId}, ${agentId}, 'agentid', ${ownerSub}, true)`;
     await sql.begin((tx) => followOwnerMemberships(tx, personal.memberId));
     const agent = (await memberContext(agentId, personal.teamId))!;
