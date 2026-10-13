@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { forbidden, redirect } from "next/navigation";
 import { getWebContext } from "@/server/auth";
 import { slackSettings } from "@/server/slack/store";
 import { SlackSettings } from "@/components/slack-settings";
@@ -10,12 +10,7 @@ export default async function Page() {
     return <SlackSettings initial={await slackSettings(ctx)} />;
   } catch (error) {
     if (error instanceof Error && "status" in error && error.status === 403)
-      return (
-        <div className="stack">
-          <h1>Slack settings</h1>
-          <p>A team admin connects Slack and selects channels for your hive.</p>
-        </div>
-      );
+      forbidden();
     throw error;
   }
 }

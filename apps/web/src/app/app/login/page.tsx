@@ -1,3 +1,4 @@
+import { AuthErrorPage } from "@/components/auth-error-page";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
@@ -12,6 +13,7 @@ import { getAuth } from "@/server/better-auth";
 export const dynamic = "force-dynamic";
 export default async function LoginPage({ searchParams }: { searchParams: Promise<PageQuery> }) {
   const params = await searchParams;
+  if (params.error) return <AuthErrorPage reason={typeof params.error === "string" ? params.error : "unknown"} />;
   const jar = await cookies();
   if (jar.get("better-auth.session_token") || jar.get("__Secure-better-auth.session_token")) {
     const session = await (await getAuth()).api.getSession({ headers: await headers() });

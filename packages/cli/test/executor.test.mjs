@@ -97,12 +97,12 @@ test('Executor prefills and probes a new integration without changing policy or 
     else if (args.includes('probe') && args.includes('oauth')) data = { issuer: 'https://gohive.dev', authorizationUrl: 'https://gohive.dev/auth', tokenUrl: 'https://gohive.dev/token', resource: url, scopesSupported: ['hive'], registrationEndpoint: 'https://gohive.dev/register' };
     else if (args.includes('clients') && args.includes('list')) data = { clients: [] };
     else if (args.includes('registerDynamic')) data = { client: 'hive-installer' };
-    else if (args.includes('start')) data = { status: 'redirect', authorizationUrl: 'https://gohive.dev/auth?state=fixture' };
+    else if (args.includes('start')) data = { status: 'redirect', authorizationUrl: 'https://hive.example.test/oauth/authorize?state=fixture' };
     if (data) return { status: 0, stdout: JSON.stringify({ ok: true, data }), stderr: '' };
     return f.options.run(command, args);
   };
   const result = installExecutor({ ...f.options, run, open: true });
-  assert.equal(result.link, 'https://gohive.dev/auth?state=fixture');
+  assert.equal(result.link, 'https://hive.example.test/oauth/authorize?state=fixture');
   const added = JSON.parse(calls.find(call => call.includes('addServer')).at(-1));
   assert.equal(added.name, 'Hive');
   assert.equal(added.slug, 'hive');

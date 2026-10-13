@@ -1,0 +1,16 @@
+.error-page { width: min(880px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 80px; color: var(--text-body); }
+.error-page header { margin-bottom: 64px; }
+.error-brand { display: inline-flex; align-items: center; gap: 12px; font: 28px/1 var(--font-display); color: var(--ink); text-decoration: none; }
+.error-card { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 32px; align-items: center; padding: 40px; background: var(--surface-card); }
+.error-scene { display: grid; place-items: center; min-height: 176px; background: var(--honey-100); border: var(--outline-ink); border-radius: var(--radius-md); }
+.error-copy { display: grid; gap: 20px; min-width: 0; }
+.error-copy h1 { margin: 0; font-size: clamp(30px, 5vw, 44px); line-height: 1.1; }
+.error-copy p { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.error-actions { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.error-reference { font: 12px/1.6 var(--font-mono); color: var(--text-subtle); overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .error-page { padding-top: 24px; }
+  .error-page header { margin-bottom: 32px; }
+  .error-card { grid-template-columns: minmax(0, 1fr); padding: 24px; gap: 24px; }
+  .error-scene { min-height: 144px; }
+}
