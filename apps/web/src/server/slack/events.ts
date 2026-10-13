@@ -188,7 +188,7 @@ export async function saveSlackMessage(
     if (!selected.length) throw new Error("SelectedMessageUnavailable");
     const link = await permalink(token, channel, ts);
     const text = selected.map((m) => m.text).join("\n\n");
-    const result = await pushLearning(ctx, {
+    const result = await withOrigin(originFor(ctx, "slack", "system"), () => pushLearning(ctx, {
       title: text.split("\n")[0].slice(0, 180),
       body: `${text.slice(0, 18000)}\n\nSource: ${link}${page.cursor && wholeThread ? "\nThis capture includes the first 15 messages. The original thread has more messages." : ""}`,
       tags: ["slack"],
@@ -197,7 +197,7 @@ export async function saveSlackMessage(
       confidence: 0.7,
       blocked: false,
       paths: [],
-    });
+    }));
     await sql`UPDATE slack_jobs SET status='done',error=${result.dropped ? "capture_rule" : result.id} WHERE team_id=${ctx.teamId} AND id=${claim[0].id}`;
     return result;
   } catch (error) {

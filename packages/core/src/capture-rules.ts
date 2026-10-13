@@ -7,7 +7,7 @@ export const captureCategories = [
   "non_work",
 ] as const;
 export type CaptureCategory = (typeof captureCategories)[number];
-export { evaluateCaptureRules, capturePatternLimit, captureInputLimit } from "./capture-matchers.mjs";
+export { evaluateCaptureRules, capturePatternLimit, captureInputLimit, canonicalProject, projectFromContext, projectPatternMatches, evaluateProjectPolicy } from "./capture-matchers.mjs";
 import { capturePatternLimit, isSafeCaptureRegex } from "./capture-matchers.mjs";
 
 const common = {
@@ -31,7 +31,7 @@ export const captureRuleInputSchema = z.discriminatedUnion("kind", [
     owner: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9_.-]+$/).optional(),
     mode: z.enum(["only_allow", "deny"]),
   }).refine((rule) => !!rule.owners?.length || !!rule.owner, { path: ["owners"], message: "Enter at least one repo owner." }).overwrite((rule) => ({ ...rule, owners: [...new Set((rule.owners.length ? rule.owners : rule.owner ? [rule.owner] : []).map((owner) => owner.toLowerCase()))] })),
-  z.object({ ...common, kind: z.literal("repo_match"), pattern: globPattern }),
+  z.object({ ...common, kind: z.literal("repo_match"), pattern: globPattern, mode: z.enum(["deny", "only_allow"]).optional() }),
   z.object({ ...common, kind: z.literal("path_match"), pattern: globPattern }),
   z.object({
     ...common,

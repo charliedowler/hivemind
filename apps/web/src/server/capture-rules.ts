@@ -10,6 +10,7 @@ import {
   type CaptureRuleInput,
   type HiveContext,
 } from "@hivemind/core";
+import { captureOwner, recheckOrganisationPublications } from "./project-sharing";
 import { getSql, hasEmbeddingColumn } from "./db/client";
 import { newId } from "./db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "./errors";
@@ -52,7 +53,7 @@ function ruleView(row: Row): CaptureRule {
 }
 
 async function membership(ctx: HiveContext, sql = getSql()) {
-  const rows = await sql`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
+  const rows = await sql`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows.length) throw new HiveNotFoundError("Member not found in your hive.");
   return rows[0].role === "admin";
 }
@@ -69,13 +70,15 @@ function canManage(row: Row, ctx: HiveContext, admin: boolean) {
 
 export async function listCaptureRules(ctx: HiveContext): Promise<CaptureRule[]> {
   await membership(ctx);
-  const rows = await getSql()`SELECT * FROM capture_rules WHERE team_id = ${ctx.teamId} AND (scope = 'team' OR member_id = ${ctx.memberId}) ORDER BY CASE WHEN scope = 'team' THEN 0 ELSE 1 END, created_at, id`;
+  const owner = await captureOwner(ctx);
+  const rows = await getSql()`SELECT * FROM capture_rules WHERE ((team_id = ${ctx.teamId} AND scope = 'team') OR (scope = 'member' AND member_id = ${owner.ownerId})) ORDER BY CASE WHEN scope = 'team' THEN 0 ELSE 1 END, created_at, id`;
   return rows.map(ruleView);
 }
 
 export async function effectiveRules(ctx: HiveContext): Promise<CaptureRule[]> {
   await membership(ctx);
-  const rows = await getSql()`SELECT * FROM capture_rules WHERE team_id = ${ctx.teamId} AND enabled AND (scope = 'team' OR member_id = ${ctx.memberId}) ORDER BY CASE WHEN scope = 'team' THEN 0 ELSE 1 END, created_at, id`;
+  const owner = await captureOwner(ctx);
+  const rows = await getSql()`SELECT * FROM capture_rules WHERE enabled AND ((team_id = ${ctx.teamId} AND scope = 'team') OR (scope = 'member' AND member_id = ${owner.ownerId})) ORDER BY CASE WHEN scope = 'team' THEN 0 ELSE 1 END, created_at, id`;
   return rows.map(ruleView);
 }
 
@@ -86,11 +89,12 @@ export async function createCaptureRule(ctx: HiveContext, input: CaptureRuleInpu
 export async function insertCaptureRule(tx: Parameters<typeof lockLearningWrites>[0], ctx: HiveContext, input: CaptureRuleInput): Promise<CaptureRule> {
   const data = parseRule(input);
   await lockLearningWrites(tx, ctx);
-  const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+  const members = await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
   if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
   if (data.scope === "team" && members[0].role !== "admin")
     throw new HiveError("Only a team admin can change what Hive keeps for the team.", 403);
   const rows = await tx`INSERT INTO capture_rules (id, team_id, member_id, created_by, name, scope, kind, action, enabled, config, source, natural_text) VALUES (${newId("crule")}, ${ctx.teamId}, ${data.scope === "team" ? null : ctx.memberId}, ${ctx.memberId}, ${data.name}, ${data.scope}, ${data.kind}, ${data.action}, ${data.enabled}, ${tx.json(data)}, ${data.source ?? "web"}, ${data.naturalText ? redactSecrets(data.naturalText).text : null}) RETURNING *`;
+  if (data.scope === "team") await recheckOrganisationPublications(tx, ctx);
   return ruleView(rows[0]);
 }
 
@@ -98,13 +102,15 @@ export async function updateCaptureRule(ctx: HiveContext, id: string, input: Cap
   const data = parseRule(input);
   const rows = await getSql().begin(async tx => {
     await lockLearningWrites(tx, ctx);
-    const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+    const members = await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
     const found = await tx`SELECT * FROM capture_rules WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
     if (!members.length || !found.length) throw new HiveNotFoundError("Saved choice not found in your hive.");
     const admin = members[0].role === "admin";
     if (!canManage(found[0], ctx, admin) || (data.scope === "team" && !admin))
       throw new HiveError("You can change your own choices. Only a team admin can change team choices.", 403);
-    return tx`UPDATE capture_rules SET name = ${data.name}, scope = ${data.scope}, member_id = ${data.scope === "team" ? null : ctx.memberId}, kind = ${data.kind}, action = ${data.action}, enabled = ${data.enabled}, config = ${tx.json(data)}, source = ${data.source ?? "web"}, natural_text = ${data.naturalText ? redactSecrets(data.naturalText).text : null}, revision = revision + 1, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} RETURNING *`;
+    const updated = await tx`UPDATE capture_rules SET name = ${data.name}, scope = ${data.scope}, member_id = ${data.scope === "team" ? null : ctx.memberId}, kind = ${data.kind}, action = ${data.action}, enabled = ${data.enabled}, config = ${tx.json(data)}, source = ${data.source ?? "web"}, natural_text = ${data.naturalText ? redactSecrets(data.naturalText).text : null}, revision = revision + 1, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} RETURNING *`;
+    await recheckOrganisationPublications(tx, ctx);
+    return updated;
   });
   return ruleView(rows[0]);
 }
@@ -112,7 +118,7 @@ export async function updateCaptureRule(ctx: HiveContext, id: string, input: Cap
 export async function deleteCaptureRule(ctx: HiveContext, id: string): Promise<{id: string}> {
   await getSql().begin(async tx => {
     await lockLearningWrites(tx, ctx);
-    const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+    const members = await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
     const rows = await tx`SELECT * FROM capture_rules WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
     if (!members.length || !rows.length) throw new HiveNotFoundError("Saved choice not found in your hive.");
     if (!canManage(rows[0], ctx, members[0].role === "admin"))
@@ -168,7 +174,7 @@ export async function proposeRuleFromText(teamId: string, memberId: string, text
   const cleaned = z.string().trim().min(1).max(4000).safeParse(text);
   if (!cleaned.success) throw new HiveInputError("Describe what Hive should keep in 4000 characters or fewer.");
   const sql = getSql();
-  const members = await sql`SELECT m.name, m.role, t.name AS team_name FROM members m JOIN teams t ON t.id = m.team_id WHERE m.id = ${memberId} AND m.team_id = ${teamId} AND m.removed_at IS NULL`;
+  const members = await sql`SELECT m.name, h.role, t.name AS team_name FROM members m JOIN hive_memberships h ON h.member_id = m.id JOIN teams t ON t.id = h.team_id WHERE m.id = ${memberId} AND h.team_id = ${teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
   const ctx = {teamId, memberId, teamName: members[0].team_name, memberName: members[0].name};
   const repos = await sql`SELECT DISTINCT repo FROM learnings WHERE team_id = ${teamId} AND repo IS NOT NULL AND (NOT capture_flagged OR member_id = ${memberId}) ORDER BY repo LIMIT 50`;
@@ -262,7 +268,7 @@ export function applyInstructionCells(ctx: HiveContext, id: string, batch: Await
     return analyticsTransaction(async () => {
     const result = await getSql().begin(async tx => {
       await lockLearningWrites(tx, ctx);
-      const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+      const members = await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
       const rules = await tx`SELECT * FROM capture_rules WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
       if (!members.length || !rules.length) throw new HiveNotFoundError("Saved exclusion not found in your hive.");
       if (!canManage(rules[0], ctx, members[0].role === "admin")) throw new HiveError("Only the person who saved this choice or a team admin can apply it.", 403);
@@ -319,7 +325,7 @@ export function applyInstructionCells(ctx: HiveContext, id: string, batch: Await
 
 export async function reverseCaptureRuleApplicationInTransaction(tx: Parameters<typeof lockLearningWrites>[0], ctx: HiveContext, logId: string, reason: string, instructionId: string) {
   await lockLearningWrites(tx, ctx);
-  const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+  const members = await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
   if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
   const instructions = await tx`SELECT id, rule_snapshot FROM capture_rule_instructions WHERE id = ${instructionId} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND job_status = 'undo_pending' AND undo_started_at < undo_until FOR UPDATE`;
   if (!instructions.length) throw new HiveError("This instruction cannot be undone.", 403);
@@ -369,7 +375,7 @@ export function confirmFlaggedCapture(ctx: HiveContext, id: string) {
   return withActor(ctx, () => analyticsTransaction(async () => {
     const result = await getSql().begin(async tx => {
       await lockLearningWrites(tx, ctx);
-      const members = await tx`SELECT id FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+      const members = await tx`SELECT h.member_id AS id FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
       const cells = await tx`SELECT id, lifecycle, capture_flagged FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} FOR UPDATE`;
       if (!members.length || !cells.length) throw new HiveNotFoundError();
       if (!cells[0].capture_flagged) throw new HiveError("This cell is already shared.", 409);

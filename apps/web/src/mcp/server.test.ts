@@ -5,6 +5,8 @@ import {
   type ToolCallback,
 } from "@modelcontextprotocol/server";
 import {
+  hiveShareProjectsInput,
+  hiveJoinInput,
   hivePushInput,
   hiveReadInput,
   hiveRecentInput,
@@ -12,11 +14,16 @@ import {
   type LearningView,
 } from "@hivemind/core";
 import { pushLearning, recentLearnings, searchLearnings, recordFeedback } from "@/server/hive";
+import {shareProjects} from "@/server/project-sharing";
+import {mcpJoin} from "@/server/identity/mcp-join";
 import {readKnowledge} from "@/server/knowledge-tree";
 import { reverseDecision } from "@/server/conflict-decisions";
 import { HiveError } from "@/server/errors";
 import { z } from "zod";
 import { registerHiveTools } from "./server";
+
+vi.mock("@/server/project-sharing", () => ({shareProjects: vi.fn()}));
+vi.mock("@/server/identity/mcp-join", () => ({mcpJoin: vi.fn()}));
 
 vi.mock("@/server/knowledge-tree", () => ({browseKnowledge: vi.fn(), readKnowledge: vi.fn(), snapshotKnowledge: vi.fn()}));
 
@@ -180,4 +187,32 @@ it("never casts feedback when reading the knowledge tree", async () => {
   vi.mocked(recordFeedback).mockClear();
   expect(await call({path: "INDEX.md"}, toolContext)).toMatchObject({content: [{text: "Revision 1: INDEX.md\n\nA saved fact"}]});
   expect(recordFeedback).not.toHaveBeenCalled();
+});
+
+
+it("registers bounded owner-free project selection and returns one line", async () => {
+  const server = new McpServer({name: "test", version: "1"});
+  const registered = vi.spyOn(server, "registerTool");
+  registerHiveTools(server);
+  const callback = registered.mock.calls.find(([name]) => name === "hive_share_projects")![2] as ToolCallback<typeof hiveShareProjectsInput>;
+  vi.mocked(shareProjects).mockResolvedValue({include: ["github.com/team/repo"], exclude: [], revision: 1});
+  const input = hiveShareProjectsInput.parse({include: ["https://github.com/team/repo.git"], revision: 0, humanInstruction: "Only this repository."});
+  const result = await callback(input, toolContext);
+  expect(result.content).toEqual([{type: "text", text: '{"include":["github.com/team/repo"],"exclude":[],"revision":1}'}]);
+  expect(hiveShareProjectsInput.safeParse({ownerId: "another", revision: 0}).success).toBe(false);
+  expect(hiveShareProjectsInput.safeParse({include: Array(101).fill("team/repo"), revision: 0}).success).toBe(false);
+  expect(hiveShareProjectsInput.safeParse({revision: -1}).success).toBe(false);
+});
+
+it("returns the sole human join blocker and passes only the boundary's trusted IP", async () => {
+  const server = new McpServer({name: "test", version: "1"});
+  const registered = vi.spyOn(server, "registerTool");
+  registerHiveTools(server);
+  const callback = registered.mock.calls.find(([name]) => name === "hive_join")![2] as ToolCallback<typeof hiveJoinInput>;
+  vi.mocked(mcpJoin).mockResolvedValue({status: "needs_human", joinUrl: "https://gohive.dev/j/amber-honey-fox"});
+  const requestContext = {...toolContext, http: {...toolContext.http, req: {headers: new Headers({"x-forwarded-for": "203.0.113.1"})}}} as ServerContext;
+  const result = await callback({phrase: "amber-honey-fox"}, requestContext);
+  expect(result.content).toEqual([{type: "text", text: '{"status":"needs_human","joinUrl":"https://gohive.dev/j/amber-honey-fox"}'}]);
+  expect(mcpJoin).toHaveBeenCalledWith(expect.objectContaining(context), "amber-honey-fox", {trustedProxyIp: null, sessionKind: undefined});
+  expect(hiveJoinInput.safeParse({phrase: "amber-honey-fox", ownerSaysYes: true}).success).toBe(false);
 });

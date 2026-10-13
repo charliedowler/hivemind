@@ -1,3 +1,4 @@
+import {originFor, withOrigin} from "./analytics/events";
 import { gunzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import tar from "tar-stream";
@@ -15,7 +16,7 @@ import { createTeam } from "./auth";
 import { newId } from "./db/ids";
 import { learningView } from "./learning-view";
 import { getSql } from "./db/client";
-import { pushLearning } from "./hive";
+import { pushLearning as pushOrganisationFixture } from "./hive";
 import {
   browseKnowledge,
   downloadKnowledge,
@@ -297,3 +298,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     }, 15000);
   },
 );
+
+async function pushLearning(ctx: HiveContext, input: Parameters<typeof pushOrganisationFixture>[1]) {
+  return withOrigin(originFor(ctx, "slack"), () => pushOrganisationFixture(ctx, input));
+}

@@ -328,3 +328,27 @@ describe("capture push metadata", () => {
     expect(hivePushInput.safeParse({ ...observation, agent: "x".repeat(121) }).success).toBe(false);
   });
 });
+
+it("canonicalises projects without credentials and keeps hosts and nested namespaces distinct", async () => {
+  const {canonicalProject, projectFromContext, evaluateProjectPolicy} = await import("./capture-matchers.mjs");
+  expect(canonicalProject("https://user:credential@GitHub.com/Team/Repo.git?token=secret")).toBe("github.com/team/repo");
+  expect(canonicalProject("git@gitlab.com:group/subgroup/repo.git")).toBe("gitlab.com/group/subgroup/repo");
+  expect(canonicalProject("git@gitlab.example:Group/Repo.git")).toBe("gitlab.example/Group/Repo");
+  expect(canonicalProject("file:///tmp/project")).toBeNull();
+  expect(canonicalProject("github.com/team/../repo")).toBeNull();
+  expect(canonicalProject("github.com/team/**", true)).toBeNull();
+  expect(projectFromContext({repo: "team/repo", remote: "git@gitlab.com:team/repo.git"})).toBe("gitlab.com/team/repo");
+  expect(projectFromContext({repo: "github.com/team/repo", remote: "git@gitlab.com:team/repo.git"})).toBeNull();
+  const policy = {include: ["github.com/team/*"], exclude: ["github.com/team/private-*"], revision: 1};
+  expect(evaluateProjectPolicy(policy, {repo: "team/allowed"}).allowed).toBe(true);
+  for (const context of [{}, {repo: "team/private-tool"}, {repo: "another/allowed"}, {repo: "gitlab.com/team/allowed"}, {repo: "team/allowed", remote: "git@github.com:other/repo.git"}]) expect(evaluateProjectPolicy(policy, context).allowed).toBe(false);
+  expect(evaluateProjectPolicy({...policy, include: []}, {repo: "team/allowed"}).allowed).toBe(false);
+});
+
+it("supports inverted repository matching with unknown repositories denied", () => {
+  const rule = captureRuleInputSchema.parse({name: "One project", kind: "repo_match", pattern: "team/allowed", mode: "only_allow", action: "drop"});
+  const stored = {...rule, id: "allow", teamId: "team", memberId: "owner", createdBy: "owner", createdAt: "", updatedAt: ""};
+  expect(evaluateCaptureRules([stored], {repo: "team/allowed", title: "", body: ""}).action).toBe("allow");
+  expect(evaluateCaptureRules([stored], {repo: "team/other", title: "", body: ""}).action).toBe("drop");
+  expect(evaluateCaptureRules([stored], {title: "", body: ""}).action).toBe("drop");
+});

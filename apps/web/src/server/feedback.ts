@@ -22,7 +22,7 @@ import {
   recordMutation,
   withOperation,
 } from "./analytics/events";
-import { learningVisibleSql } from "./capture-visibility";
+import { audienceCellsSql, learningVisibleSql } from "./capture-visibility";
 import { enforceCaptureRules } from "./capture-rules";
 import { cleanEvidence, evidenceText } from "./llm/capture";
 import { classifyOutcome } from "./outcome-judgments";
@@ -30,7 +30,7 @@ import { scheduleKnowledge } from "./knowledge-tree";
 
 async function scopedCell(ctx: HiveContext, id: string) {
   const rows =
-    await getSql()`SELECT l.* FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+    await getSql()`SELECT l.* FROM ${audienceCellsSql(ctx)} l WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`;
   if (!rows[0]) throw new HiveNotFoundError();
   return rows[0];
 }
@@ -154,12 +154,16 @@ async function writeFeedback(
   id: string,
   change: FeedbackChange,
 ): Promise<FeedbackResult> {
+  const audience = await scopedCell(ctx, id);
+  ctx = {...ctx, teamId: String(audience.team_id)};
   const result = await analyticsTransaction(() =>
     getSql().begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
+      await tx`SELECT id FROM learnings WHERE id = ${id} FOR UPDATE`;
+      await tx`SELECT learning_id FROM learning_shares WHERE learning_id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
       const [members, rows] = await Promise.all([
-        tx`SELECT id FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`,
-        tx`SELECT l.* FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} FOR UPDATE`,
+        tx`SELECT h.member_id FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`,
+        tx`SELECT l.* FROM ${audienceCellsSql(ctx)} l WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`,
       ]);
       const cell = rows[0];
       if (!cell || !members.length) throw new HiveNotFoundError();
@@ -222,7 +226,7 @@ async function writeFeedback(
             await tx`DELETE FROM feedback WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId}`;
         }
       } else if (change.vote) {
-        await tx`INSERT INTO feedback (learning_id, member_id, team_id, vote, note, receipt_id) VALUES (${id}, ${ctx.memberId}, ${ctx.teamId}, ${change.vote}, ${change.outcome ?? null}, ${receipt}) ON CONFLICT (learning_id, member_id) DO UPDATE SET vote = EXCLUDED.vote, note = EXCLUDED.note, receipt_id = EXCLUDED.receipt_id, updated_at = now() WHERE feedback.team_id = ${ctx.teamId}`;
+        await tx`INSERT INTO feedback (learning_id, member_id, team_id, vote, note, receipt_id) VALUES (${id}, ${ctx.memberId}, ${ctx.teamId}, ${change.vote}, ${change.outcome ?? null}, ${receipt}) ON CONFLICT (learning_id, team_id, member_id) DO UPDATE SET vote = EXCLUDED.vote, note = EXCLUDED.note, receipt_id = EXCLUDED.receipt_id, updated_at = now() WHERE feedback.team_id = ${ctx.teamId}`;
       }
       const counts = (
         await tx`SELECT count(*) FILTER (WHERE vote = 'up')::int AS up, count(*) FILTER (WHERE vote = 'down')::int AS down, count(*) FILTER (WHERE vote = 'outdated')::int AS outdated FROM feedback WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`
@@ -236,7 +240,7 @@ async function writeFeedback(
         await tx`UPDATE learnings SET up_votes = ${votes.up}, down_votes = ${votes.down}, outdated_votes = ${votes.outdated}, lifecycle = CASE WHEN lifecycle IN ('superseded','retracted') THEN lifecycle WHEN admin_outdated OR ${votes.outdated} > ${votes.up} THEN 'outdated' WHEN ${votes.up} > 0 OR push_count > 1 THEN 'confirmed' ELSE 'fresh' END, updated_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       }
       const updated = (
-        await tx`SELECT lifecycle FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`
+        await tx`SELECT lifecycle FROM ${audienceCellsSql(ctx)} l WHERE id = ${id}`
       )[0];
       await tx`INSERT INTO feedback_receipts (id, team_id, learning_id, member_id, action, outcome, evidence, classification, judgment, vote, target_receipt_id, before_state, after_state, capture_flagged) VALUES (${receipt}, ${ctx.teamId}, ${id}, ${ctx.memberId}, ${change.withdraw ? "withdraw" : "report"}, ${change.outcome ?? null}, ${change.evidence ? tx.json(change.evidence) : null}, ${change.classification ?? null}, ${change.judgment ? tx.json(change.judgment) : null}, ${change.withdraw ? restoredVote : (change.vote ?? null)}, ${target}, ${tx.json(before)}, ${tx.json({ lifecycle: updated.lifecycle, votes })}, ${change.flagged ?? false})`;
       if (cell.lifecycle !== updated.lifecycle)
@@ -272,9 +276,10 @@ export async function feedbackHistory(
   ctx: HiveContext,
   id: string,
 ): Promise<FeedbackHistoryEntry[]> {
-  await scopedCell(ctx, id);
+  const cell = await scopedCell(ctx, id);
+  ctx = {...ctx, teamId: String(cell.team_id)};
   const rows =
-    await getSql()`SELECT r.*, m.name AS actor, EXISTS (SELECT 1 FROM feedback f WHERE f.receipt_id = r.id AND f.team_id = r.team_id AND f.member_id = r.member_id AND f.learning_id = r.learning_id) AS current FROM feedback_receipts r JOIN learnings l ON l.id = r.learning_id AND l.team_id = r.team_id JOIN members m ON m.id = r.member_id WHERE r.learning_id = ${id} AND r.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT r.capture_flagged OR r.member_id = ${ctx.memberId}) ORDER BY r.created_at DESC, r.id DESC LIMIT 100`;
+    await getSql()`SELECT r.*, m.name AS actor, EXISTS (SELECT 1 FROM feedback f WHERE f.receipt_id = r.id AND f.team_id = r.team_id AND f.member_id = r.member_id AND f.learning_id = r.learning_id) AS current FROM feedback_receipts r JOIN ${audienceCellsSql(ctx)} l ON l.id = r.learning_id AND l.team_id = r.team_id JOIN members m ON m.id = r.member_id WHERE r.learning_id = ${id} AND r.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT r.capture_flagged OR r.member_id = ${ctx.memberId}) ORDER BY r.created_at DESC, r.id DESC LIMIT 100`;
   return rows.map((row) => ({
     receipt: row.id,
     actor: row.actor,

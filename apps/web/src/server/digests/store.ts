@@ -71,7 +71,7 @@ export async function saveSchedule(
 ) {
   if (transaction) {
     const members =
-      await transaction`SELECT role FROM members WHERE id=${ctx.memberId} AND team_id=${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+      await transaction`SELECT h.role FROM hive_memberships h JOIN members m ON m.id=h.member_id WHERE h.member_id=${ctx.memberId} AND h.team_id=${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
     if (members[0]?.role !== "admin")
       throw new HiveError("Only a team admin can do this.", 403);
   } else await requireAdmin(ctx);
@@ -150,6 +150,7 @@ export async function scheduleEvent(
 }
 export async function disableSchedule(ctx: HiveContext, id: string) {
   await requireAdmin(ctx);
+  if (!(await getSql()`SELECT id FROM teams WHERE id = ${ctx.teamId} AND personal_owner_member_id IS NULL`).length) throw new HiveError("Scheduled updates belong to an organisation hive.", 403);
   const result = await getSql().begin(async (tx) => {
     const rows =
       await tx`SELECT id FROM slack_digest_schedules WHERE team_id=${ctx.teamId} AND id=${id} FOR UPDATE`;

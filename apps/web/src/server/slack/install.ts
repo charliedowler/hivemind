@@ -28,6 +28,7 @@ export function slackCallback() {
 }
 export async function beginInstall(ctx: HiveContext) {
   await requireAdmin(ctx);
+  if (!(await getSql()`SELECT id FROM teams WHERE id = ${ctx.teamId} AND personal_owner_member_id IS NULL`).length) throw new HiveError("Slack belongs to an organisation hive.", 403);
   if (
     !process.env.SLACK_CLIENT_ID ||
     !process.env.SLACK_CLIENT_SECRET ||
@@ -58,6 +59,7 @@ export async function finishInstall(
   code: string,
 ) {
   await requireAdmin(ctx);
+  if (!(await getSql()`SELECT id FROM teams WHERE id = ${ctx.teamId} AND personal_owner_member_id IS NULL`).length) throw new HiveError("Slack belongs to an organisation hive.", 403);
   const jar = await cookies();
   const browser = jar.get("hive_slack_install")?.value;
   if (!browser)
@@ -161,7 +163,7 @@ export async function resolveActor(
     .parse(data.user);
   if (user.deleted || user.is_bot || !user.profile.email) return null;
   const rows =
-    await getSql()`SELECT m.id,m.name,t.name AS team_name FROM members m JOIN teams t ON t.id=m.team_id WHERE m.team_id=${teamId} AND lower(m.email)=${user.profile.email.toLowerCase()} AND m.email_verified=true AND m.removed_at IS NULL`;
+    await getSql()`SELECT m.id,m.name,t.name AS team_name FROM members m JOIN hive_memberships h ON h.member_id=m.id JOIN teams t ON t.id=h.team_id WHERE h.team_id=${teamId} AND lower(m.email)=${user.profile.email.toLowerCase()} AND m.email_verified=true AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows[0]) return null;
   await getSql()`INSERT INTO slack_actor_links(team_id,slack_user_id,member_id) VALUES(${teamId},${slackUserId},${rows[0].id}) ON CONFLICT(team_id,slack_user_id) DO UPDATE SET member_id=excluded.member_id`;
   return {
@@ -173,6 +175,7 @@ export async function resolveActor(
 }
 export async function syncChannels(ctx: HiveContext) {
   await requireAdmin(ctx);
+  if (!(await getSql()`SELECT id FROM teams WHERE id = ${ctx.teamId} AND personal_owner_member_id IS NULL`).length) throw new HiveError("Slack belongs to an organisation hive.", 403);
   const channels = await listSlackChannels(ctx.teamId);
   const sql = getSql();
   if (channels.length) {

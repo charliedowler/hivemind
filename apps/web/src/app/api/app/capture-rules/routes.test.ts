@@ -1,3 +1,4 @@
+vi.mock("@/server/project-sharing", () => ({ownerCapturePolicy: async () => ({include: [], exclude: [], revision: 0}), captureOwner: async (ctx: unknown) => ({personal: ctx})}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as effective } from "./effective/route";
 import { GET as list, POST as create } from "./route";
@@ -148,7 +149,7 @@ describe("effective capture rule bearer boundary", () => {
       request(undefined, { Authorization: `Bearer ${key}` }),
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ rules: [{ id: "crule_test" }] });
+    expect(await response.json()).toEqual({ rules: [{ id: "crule_test" }], policy: {include: [], exclude: [], revision: 0} });
     expect(fixture.authenticateApiKey).toHaveBeenCalledWith(key);
     expect(fixture.effectiveRules).toHaveBeenCalledWith(fixture.ctx);
     expect(fixture.getWebContext).not.toHaveBeenCalled();

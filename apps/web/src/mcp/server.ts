@@ -8,6 +8,8 @@ import {
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
+  hiveShareProjectsInput,
+  hiveJoinInput,
   hiveSlackSearchInput,
   hiveBrowseInput,
   hiveReadInput,
@@ -39,6 +41,9 @@ import { correctLearning } from "@/server/lifecycle";
 import { reportOutcome } from "@/server/feedback";
 import { reverseDecision } from "@/server/conflict-decisions";
 
+import { shareProjects } from "@/server/project-sharing";
+import { mcpJoin } from "@/server/identity/mcp-join";
+
 import { searchSlack } from "@/server/slack/search";
 
 const contextSchema = z.object({
@@ -49,6 +54,7 @@ const contextSchema = z.object({
   apiKeyId: z.string().nullish(),
   role: z.enum(["admin", "member"]).nullish(),
   sessionKind: z.enum(["api_key", "oauth"]).optional(),
+  trustedProxyIp: z.string().nullable().optional(),
 });
 type ToolContext = {
   http?: { authInfo?: AuthInfo; req?: { headers: Headers } };
@@ -119,6 +125,22 @@ async function reply(action: () => Promise<string>, ctx: ToolContext) {
 }
 
 export function registerHiveTools(server: McpServer) {
+  server.registerTool("hive_share_projects", {
+    title: "Choose projects for private capture",
+    description: "Read the owner's selection, or save include/exclude patterns at its revision. Initial agent setup records the supplied humanInstruction. Adding projects later requires human authority. Captures stay personal; this never publishes to an organisation.",
+    inputSchema: hiveShareProjectsInput,
+  }, async (input, ctx) => reply(async () => {
+    const policy = await shareProjects(getContext(ctx), input);
+    return JSON.stringify(policy);
+  }, ctx));
+  server.registerTool("hive_join", {
+    title: "Join an organisation hive",
+    description: "Join by its domain-gated phrase using a human sign-in or live human-granted capability. Otherwise returns the owner's human join link. Joining never publishes projects.",
+    inputSchema: hiveJoinInput,
+  }, async (input, ctx) => reply(async () => {
+    const auth = contextSchema.parse(ctx.http?.authInfo?.extra);
+    return JSON.stringify(await mcpJoin(getContext(ctx), input.phrase, {trustedProxyIp: auth.trustedProxyIp ?? null, sessionKind: auth.sessionKind}));
+  }, ctx));
   server.registerTool(
     "hive_slack_search",
     {

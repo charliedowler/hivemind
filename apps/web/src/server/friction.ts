@@ -4,6 +4,7 @@ import {
   type FrictionSummary,
   type AskResult,
 } from "@hivemind/core";
+import { audienceCellsSql } from "./capture-visibility";
 import { getSql } from "./db/client";
 export function isFrictionAsk(question: string): boolean {
   return /\b(friction|bottlenecks?|minutes lost)\b|\b(?:slowing|blocking) (?:us|the team|our team)\b/i.test(
@@ -18,7 +19,9 @@ export async function frictionSummary(
     repo = normalizeRepo(repoInput);
   const since = new Date(Date.now() - 7 * 86400000);
   const rows =
-    await sql`SELECT p.learning_id AS id, l.title, p.area, p.cost, p.blocked FROM learning_pushes p JOIN learnings l ON l.id = p.learning_id AND l.team_id = p.team_id WHERE p.team_id = ${ctx.teamId} AND NOT p.is_correction AND l.capture_flagged = false AND l.kind = 'friction' AND l.lifecycle IN ('fresh','confirmed') AND p.created_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY p.created_at DESC`;
+    await sql`SELECT p.learning_id AS id, l.title, p.area, p.cost, p.blocked FROM learning_pushes p JOIN ${audienceCellsSql(ctx)} l ON l.id = p.learning_id AND l.team_id = p.team_id WHERE NOT l.is_share AND NOT p.is_correction AND l.capture_flagged = false AND l.kind = 'friction' AND l.lifecycle IN ('fresh','confirmed') AND p.created_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY p.created_at DESC`;
+  const shared = await sql`SELECT l.id, l.title, l.area, l.cost, l.blocked FROM ${audienceCellsSql(ctx)} l WHERE l.is_share AND l.capture_flagged = false AND l.kind = 'friction' AND l.lifecycle IN ('fresh','confirmed') AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo})`;
+  rows.push(...shared);
   const areas = new Map<string, FrictionSummary["areas"][number]>();
   const titles = new Map<string, FrictionSummary["recurring"][number]>();
   const cells = new Map<string, string>();

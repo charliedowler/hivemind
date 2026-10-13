@@ -66,7 +66,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     models.create.mockResolvedValue(proposal());
     models.systemOne.mockResolvedValue({model: "jev-1.13.0", answers: answers()});
     models.after.mockImplementation(() => {throw new Error("No request context in test");});
-    await getSql()`UPDATE members SET removed_at = NULL, role = CASE WHEN id = ${admin.memberId} THEN 'admin' ELSE 'member' END WHERE team_id = ${admin.teamId}`;
+    await getSql()`UPDATE hive_memberships SET removed_at = NULL, role = CASE WHEN member_id = ${admin.memberId} THEN 'admin' ELSE 'member' END WHERE team_id = ${admin.teamId}`;
     for (const table of ["slack_tool_actions", "capture_rule_applications", "capture_rule_previews", "capture_rule_instructions", "capture_rules", "learning_evidence", "learning_pushes", "learnings"])
       await getSql()`DELETE FROM ${getSql()(table)} WHERE team_id = ANY(${teams}::text[])`;
   });
@@ -228,9 +228,9 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
   it("rechecks current membership and current team-admin scope before exposing a replay", async () => {
     models.create.mockResolvedValue(proposal(input({scope: "team"})));
     await save(admin, slack);
-    await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'member' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     await expect(save(admin, slack)).rejects.toMatchObject({status: 403});
-    await getSql()`UPDATE members SET role = 'admin', removed_at = now() WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'admin', removed_at = now() WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     await expect(save(admin, slack)).rejects.toMatchObject({status: 404});
     expect(models.create).toHaveBeenCalledTimes(1);
     expect(await audits()).toHaveLength(1);
@@ -317,7 +317,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     await cell(elsewhere, {repo: "outside/repo"});
     models.create.mockResolvedValue(proposal(input({kind: "repo_owner", owners: ["work"], mode: "only_allow"})));
     const result = await setCaptureRuleFromText(member, "don't include anything from my personal repos on gh", web);
-    expect(result).toMatchObject({status: "saved", rule: {kind: "repo_owner", owners: ["work"], mode: "only_allow"}});
+    expect(result).toMatchObject({status: "saved", policy: {include: ["github.com/work/*"]}});
     expect(models.systemOne.mock.calls[0][0].state.knownRepos).toEqual(["billing-cutoff", "personal/scratch", "work/repo"]);
     expect(models.create.mock.calls[0][0].system).not.toContain("confirm that list");
   });
@@ -326,7 +326,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     await cell(member, {repo: "personal/scratch"});
     await cell(member, {repo: "work/repo"});
     models.create.mockResolvedValue(proposal(input({kind: "repo_owner", owners: ["personal"], mode: "deny"})));
-    expect(await setCaptureRuleFromText(member, "Exclude my personal repos", web)).toMatchObject({status: "saved", rule: {owners: ["work"], mode: "only_allow"}});
+    expect(await setCaptureRuleFromText(member, "Exclude my personal repos", web)).toMatchObject({status: "saved", policy: {include: ["github.com/work/*"]}});
   });
 
   it("asks one work-org detail when several possible work organisations remain", async () => {
@@ -338,11 +338,11 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
   });
 
   it("rejects removed membership and rechecks an admin downgrade during model work", async () => {
-    await getSql()`UPDATE members SET removed_at = now() WHERE id = ${member.memberId}`;
+    await getSql()`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${member.memberId} AND team_id = ${member.teamId}`;
     await expect(save()).rejects.toMatchObject({status: 404});
     expect(models.create).not.toHaveBeenCalled();
     models.create.mockImplementation(async () => {
-      await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+      await getSql()`UPDATE hive_memberships SET role = 'member' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
       return proposal(input({scope: "team"}));
     });
     await expect(save(admin)).rejects.toMatchObject({status: 403});
@@ -360,7 +360,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
 
   it("rechecks membership removed while the proposal is in flight", async () => {
     models.create.mockImplementation(async () => {
-      await getSql()`UPDATE members SET removed_at = now() WHERE id = ${member.memberId}`;
+      await getSql()`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${member.memberId} AND team_id = ${member.teamId}`;
       return proposal();
     });
     await expect(save()).rejects.toMatchObject({status: 404});
@@ -418,11 +418,11 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     expect((await read(external)).lifecycle).toBe("fresh");
     expect(await getSql()`SELECT id FROM capture_rule_applications WHERE team_id = ${admin.teamId}`).toHaveLength(2);
     expect(JSON.stringify(result)).not.toContain("A finding with");
-    await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'member' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     await expect(undoCaptureRuleInstruction(admin, web)).rejects.toMatchObject({status: 403});
     expect(await getSql()`SELECT id FROM capture_rules WHERE id = ${result.rule!.id}`).toHaveLength(1);
     expect((await read(own)).lifecycle).toBe("retracted");
-    await getSql()`UPDATE members SET role = 'admin' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'admin' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     expect((await undoCaptureRuleInstruction(admin, web)).counts).toMatchObject({restored: 2, retained: 0});
     expect((await read(own)).lifecycle).toBe("fresh");
     expect(await read(privateId)).toMatchObject({lifecycle: "fresh", capture_flagged: true});
@@ -434,10 +434,10 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     await save(admin);
     await drain();
     expect((await undoCaptureRuleInstruction(admin, web)).counts).toMatchObject({restored: 16, pending: true});
-    await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'member' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     expect(await runPendingCaptureRuleInstructions()).toMatchObject({restored: 0, pending: 1, failed: 1});
     expect((await audits())[0].counts.restored).toBe(16);
-    await getSql()`UPDATE members SET role = 'admin' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'admin' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     expect(await runPendingCaptureRuleInstructions()).toMatchObject({restored: 4, pending: 0, failed: 0});
   });
 
@@ -446,11 +446,11 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     models.create.mockResolvedValue(proposal(input({scope: "team"})));
     const saved = await save(admin);
     await captureRules.deleteCaptureRule(admin, saved.rule!.id);
-    await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'member' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     await expect(undoCaptureRuleInstruction(admin, web)).rejects.toMatchObject({status: 403});
     expect((await read(id)).lifecycle).toBe("retracted");
     expect((await audits())[0].undo_started_at).toBeNull();
-    await getSql()`UPDATE members SET role = 'admin' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'admin' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     expect((await undoCaptureRuleInstruction(admin, web)).counts!.restored).toBe(1);
   });
 
@@ -585,11 +585,11 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     const saved = await save(admin, slack);
     const [pointer] = await actions();
     await captureRules.deleteCaptureRule(admin, saved.rule!.id);
-    await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'member' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     await expect(undoCaptureRuleInstruction(admin, slackUndo, pointer.inverse.payload.instructionId)).rejects.toMatchObject({status: 403});
     expect((await actions())[0].undone_at).toBeNull();
     expect((await read(id)).lifecycle).toBe("retracted");
-    await getSql()`UPDATE members SET role = 'admin' WHERE id = ${admin.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role = 'admin' WHERE member_id = ${admin.memberId} AND team_id = ${admin.teamId}`;
     expect((await undoCaptureRuleInstruction(admin, slackUndo, pointer.inverse.payload.instructionId)).counts!.restored).toBe(1);
   });
 
@@ -705,7 +705,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
 
   it("refuses an instruction owner removed before undo or job recovery", async () => {
     await save();
-    await getSql()`UPDATE members SET removed_at = now() WHERE id = ${member.memberId}`;
+    await getSql()`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${member.memberId} AND team_id = ${member.teamId}`;
     await expect(undoCaptureRuleInstruction(member, web)).rejects.toMatchObject({status: 404});
     expect(await getSql()`SELECT id FROM capture_rules WHERE team_id = ${member.teamId}`).toHaveLength(1);
   });

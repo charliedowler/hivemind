@@ -1,7 +1,8 @@
 import { after } from "next/server";
 import { TypeSafeClient, noul } from "@typesafe-ai/sdk";
 import { z } from "zod";
-import { captureRuleInputSchema, redactSecrets, type CaptureRule, type HiveContext } from "@hivemind/core";
+import { captureRuleInputSchema, redactSecrets, type OwnerCapturePolicy, type CaptureRule, type HiveContext } from "@hivemind/core";
+import { ownerCapturePolicy, shareProjects } from "./project-sharing";
 import { getSql } from "./db/client";
 import { newId } from "./db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "./errors";
@@ -30,6 +31,7 @@ export type CaptureRuleInstructionCounts = {
 export type CaptureRuleInstructionResult = {
   status: "saved" | "question" | "undone";
   rule?: CaptureRule;
+  policy?: OwnerCapturePolicy;
   restatement: string;
   question?: string;
   counts?: CaptureRuleInstructionCounts;
@@ -165,11 +167,11 @@ export async function setCaptureRuleFromText(ctx: HiveContext, text: string, con
   const request = z.string().trim().min(1).max(4000).safeParse(text);
   if (!request.success) throw new HiveInputError("Describe what Hive should keep in 4000 characters or fewer.");
   return serializeSlackRequest(ctx, location, () => withActor(ctx, async () => {
-    const members = await getSql()`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
+    const members = await getSql()`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
     if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
     if (location.source === "slack") {
       const replay = await getSql().begin(async tx => {
-        const live = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+        const live = await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
         if (!live.length) throw new HiveNotFoundError("Member not found in your hive.");
         return replaySlackInstruction(tx, ctx, location, live[0].role);
       });
@@ -187,6 +189,14 @@ export async function setCaptureRuleFromText(ctx: HiveContext, text: string, con
     }
     const specificQuestion = isRequiredDetailQuestion(proposal.question);
     const save = judgement.clearInstruction && judgement.requiredDetails && judgement.allowedScope && proposal.rule && !specificQuestion;
+    if (save && proposal.rule?.scope === "member" && ["repo_owner", "repo_match"].includes(proposal.rule.kind)) {
+      const selected = await ownerCapturePolicy(ctx);
+      const rule = proposal.rule;
+      const include = rule.kind === "repo_owner" && rule.mode === "only_allow" ? rule.owners.map(owner => `github.com/${owner}/*`) : rule.kind === "repo_match" && rule.mode === "only_allow" ? [rule.pattern] : selected.include;
+      const exclude = rule.kind === "repo_owner" && rule.mode === "deny" ? [...selected.exclude, ...rule.owners.map(owner => `github.com/${owner}/*`)] : rule.kind === "repo_match" && rule.mode !== "only_allow" ? [...selected.exclude, rule.pattern] : selected.exclude;
+      const policy = await shareProjects(ctx, {include, exclude, revision: selected.revision, humanInstruction: request.data});
+      return {status: "saved", policy, restatement: "Saved your projects for private capture."};
+    }
     const id = newId("cinstr");
     const naturalText = redactSecrets(request.data).text;
     const restatement = save ? redactSecrets(proposal.restatement).text : "No changes were saved.";
@@ -194,7 +204,7 @@ export async function setCaptureRuleFromText(ctx: HiveContext, text: string, con
     const result = await getSql().begin(async tx => {
       if (location.source === "slack") await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`slack-action:${ctx.teamId}:${location.channelId}:${location.threadTs}`}, 0))`;
       await lockLearningWrites(tx, ctx);
-      const live = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+      const live = await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
       if (!live.length) throw new HiveNotFoundError("Member not found in your hive.");
       const replay = await replaySlackInstruction(tx, ctx, location, live[0].role);
       if (replay) return {replay};
@@ -218,7 +228,7 @@ export async function setCaptureRuleFromText(ctx: HiveContext, text: string, con
 async function undoPage(ctx: HiveContext, id: string) {
   return withActor(ctx, () => analyticsTransaction(() => getSql().begin(async tx => {
     await lockLearningWrites(tx, ctx);
-    const members = await tx`SELECT id, role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+    const members = await tx`SELECT h.member_id AS id, h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
     if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
     const [instruction] = await tx`SELECT * FROM capture_rule_instructions WHERE id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND job_status = 'undo_pending' AND undo_started_at < undo_until FOR UPDATE`;
     if (!instruction) return {pending: false, restored: 0, retained: 0};
@@ -280,7 +290,7 @@ export async function undoCaptureRuleInstruction(ctx: HiveContext, context: Capt
   const instruction = await getSql().begin(async tx => {
     if (location.source === "slack") await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`slack-action:${ctx.teamId}:${location.channelId}:${location.threadTs}`}, 0))`;
     await lockLearningWrites(tx, ctx);
-    const members = await tx`SELECT id, role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+    const members = await tx`SELECT h.member_id AS id, h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
     if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
     const [row] = await tx`SELECT * FROM capture_rule_instructions WHERE team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND source = ${location.source} AND channel_id IS NOT DISTINCT FROM ${location.channelId} AND thread_ts IS NOT DISTINCT FROM ${location.threadTs} AND outcome = 'saved' ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE`;
     if (expectedInstructionId !== undefined && row?.id !== expectedInstructionId)
@@ -308,7 +318,7 @@ export async function undoCaptureRuleInstruction(ctx: HiveContext, context: Capt
 
 export async function runPendingCaptureRuleInstructions(limit = 10) {
   const boundedLimit = z.number().int().min(1).max(10).parse(limit);
-  const pending = await getSql()`SELECT i.id, i.team_id, i.member_id, i.counts, m.name AS member_name, t.name AS team_name FROM capture_rule_instructions i JOIN members m ON m.id = i.member_id AND m.team_id = i.team_id JOIN teams t ON t.id = i.team_id WHERE i.job_status IN ('pending', 'undo_pending') ORDER BY i.updated_at, i.id LIMIT ${boundedLimit}`;
+  const pending = await getSql()`SELECT i.id, i.team_id, i.member_id, i.counts, m.name AS member_name, t.name AS team_name FROM capture_rule_instructions i JOIN members m ON m.id = i.member_id JOIN hive_memberships h ON h.member_id = i.member_id AND h.team_id = i.team_id AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional JOIN teams t ON t.id = i.team_id WHERE i.job_status IN ('pending', 'undo_pending') ORDER BY i.updated_at, i.id LIMIT ${boundedLimit}`;
   const aggregate = {instructions: 0, ...emptyCounts, pending: 0, failed: 0};
   for (const instruction of pending) {
     const ctx = {teamId: instruction.team_id, memberId: instruction.member_id, teamName: instruction.team_name, memberName: instruction.member_name};

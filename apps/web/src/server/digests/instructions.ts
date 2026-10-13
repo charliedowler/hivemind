@@ -48,7 +48,7 @@ export async function digestInstruction(
       ? { text: "", react: String(prior.reaction) }
       : { text: String(prior.reply) };
   const role = (
-    await getSql()`SELECT role FROM members WHERE team_id=${ctx.teamId} AND id=${ctx.memberId} AND removed_at IS NULL`
+    await getSql()`SELECT h.role FROM hive_memberships h JOIN members m ON m.id=h.member_id WHERE h.member_id=${ctx.memberId} AND h.team_id=${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`
   )[0];
   ctx = { ...ctx, isAdmin: ctx.isAdmin && role?.role === "admin" };
   const raw = (ctx.requestText ?? ctx.instructionText ?? text).slice(0, 2000);
@@ -127,7 +127,7 @@ export async function applyDigestInstruction(
   const result = await getSql().begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.teamId},7295))`;
     const admin = (
-      await tx`SELECT role FROM members WHERE team_id=${ctx.teamId} AND id=${ctx.memberId} AND removed_at IS NULL FOR SHARE`
+      await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id=h.member_id WHERE h.member_id=${ctx.memberId} AND h.team_id=${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`
     )[0];
     if (admin?.role !== "admin")
       throw new HiveError("Only hive admins can change weekly updates.", 403);

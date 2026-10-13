@@ -33,7 +33,7 @@ export type ReversibleChange = {
 };
 async function authorize(tx: postgres.TransactionSql, ctx: SlackToolContext) {
   const rows =
-    await tx`SELECT role FROM members WHERE team_id=${ctx.teamId} AND id=${ctx.memberId} AND removed_at IS NULL FOR SHARE`;
+    await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id=h.member_id WHERE h.member_id=${ctx.memberId} AND h.team_id=${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE`;
   if (rows[0]?.role !== "admin")
     throw new HiveError(
       "A team admin is needed to change Hive from Slack.",
@@ -133,7 +133,7 @@ export async function undoLastAction(ctx: SlackToolContext, expectedActionId?: s
       await tx`UPDATE slack_digest_schedules SET enabled=${inverse.enabled},updated_at=now() WHERE team_id=${ctx.teamId} AND id=${inverse.id}`;
     } else if (inverse.kind === "decision_reversed") {
       const member = (
-        await tx`SELECT m.name, t.name AS team_name FROM members m JOIN teams t ON t.id = m.team_id WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.removed_at IS NULL`
+        await tx`SELECT m.name, t.name AS team_name FROM members m JOIN hive_memberships h ON h.member_id = m.id JOIN teams t ON t.id = h.team_id WHERE m.id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`
       )[0];
       decisionActor = {
         teamId: ctx.teamId,

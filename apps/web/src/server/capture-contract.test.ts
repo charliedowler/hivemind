@@ -1,3 +1,4 @@
+import {originFor, withOrigin} from "./analytics/events";
 import {
   afterAll,
   beforeAll,
@@ -13,7 +14,7 @@ import { createTeam } from "./auth";
 import { getSql } from "./db/client";
 import { newId } from "./db/ids";
 import {
-  pushLearning,
+  pushLearning as pushOrganisationFixture,
   getLearning,
   searchLearnings,
   recentLearnings,
@@ -543,3 +544,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     });
   },
 );
+
+async function pushLearning(ctx: HiveContext, input: Parameters<typeof pushOrganisationFixture>[1]) {
+  return withOrigin(originFor(ctx, "slack"), () => pushOrganisationFixture(ctx, input));
+}

@@ -61,6 +61,7 @@ export async function storeMessage(
     !message.text.trim()
   )
     return false;
+  if (!(await getSql()`SELECT id FROM teams WHERE id = ${teamId} AND personal_owner_member_id IS NULL`).length) return false;
   const permission = await channelPermission(teamId, channelId, true);
   if (
     !permission ||

@@ -1,3 +1,4 @@
+vi.mock("@/server/project-sharing", () => ({ownerCapturePolicy: async () => ({include: [], exclude: [], revision: 0})}));
 import { JSDOM } from "jsdom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";

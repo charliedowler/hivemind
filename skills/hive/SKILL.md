@@ -7,7 +7,17 @@ metadata:
 
 # Hive
 
-Bring back what a teammate's agent would otherwise rediscover. Hive cells are shared team memory, not private scratch notes.
+Bring back what a teammate's agent would otherwise rediscover. Selected projects are captured in the owner's personal hive. Organisation publication requires a separate human grant.
+
+## Select projects after sign-in
+
+Read `hive_share_projects({revision: 0})` before the first capture. If no projects are selected and the human is present, discover candidates from the current directory, its git remotes and `git worktree list --porcelain`. Read remotes only for those listed worktrees. Worktrees usually belong to one repository; use only other projects already known in this conversation. Never sweep the home directory or transcripts.
+
+Ask one question listing the candidates: “Which of these should Hive learn from? <list>. Anything else stays private.” Resolve the answer into canonical host/namespace/repo include and exclude patterns. Call `hive_share_projects` at the returned revision with `humanInstruction` containing the human's stated answer. Report the saved selection in one line. Initial setup permits private capture only. Adding projects to an established selection requires a human sign-in or an explicit delegation granted in Hive.
+
+With no human and no existing selection, capture nothing and say once: “No projects selected yet; tell me which projects Hive may learn from”. Unselected, unknown or contradictory repository context permits no upload or model call. Fetch failures permit no capture. Supply a consistent repo and remote for each capture. Never ask the human to sign up.
+
+`hive_join({phrase})` joins only with a human token or a live human-granted capability. A `needs_human` result contains the owner's join link as the sole blocker. Joining never publishes projects.
 
 ## Consult the hive
 

@@ -23,6 +23,7 @@ import {
 } from "./hive";
 import * as classifier from "./classify";
 import {
+  currentOrigin,
   bindApiKey,
   originFor,
   withOrigin,
@@ -43,7 +44,7 @@ vi.mock("next/headers", () => ({
 }));
 
 async function pushLearning(...args: Parameters<typeof pushLearningRaw>) {
-  const result = await pushLearningRaw(...args);
+  const result = await withOrigin({...originFor(args[0], "slack"), ...(currentOrigin() ?? {}), entrypoint: "slack"}, () => pushLearningRaw(...args));
   if (result.dropped) throw new Error("Unexpected capture drop in accepted push fixture.");
   return result;
 }
@@ -510,7 +511,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
           row.team_id === a.teamId &&
           row.member_id === a.memberId &&
           row.api_key_id === "key_aaaaaaaaaaaa" &&
-          row.entrypoint === "mcp",
+          ["mcp", "slack"].includes(row.entrypoint),
       ),
     ).toBe(true);
     expect(new Set(rows.map((row) => row.request_id)).size).toBe(1);

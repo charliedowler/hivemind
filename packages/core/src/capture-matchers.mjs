@@ -181,6 +181,7 @@ function repoIdentity(value) {
     else if (/^[^/\s]+@[^/\s]+:/.test(path))
         path = path.slice(path.indexOf(":") + 1);
     path = path.replace(/^\/+|\/+$/g, "").replace(/\.git$/i, "");
+    if (path.split("/").length >= 3 && path.split("/")[0].includes(".")) path = path.split("/").slice(1).join("/");
     return /^[^/\s]+\/[^/\s]+$/.test(path) ? path.toLowerCase() : null;
 }
 function absoluteHome(value) {
@@ -250,10 +251,12 @@ export function evaluateCaptureRules(rules, input) {
                     record(rule);
                 break;
             }
-            case "repo_match":
-                if ((repo && globMatches(rule.pattern.toLowerCase(), repo)) || (input.remote && globMatches(rule.pattern, input.remote)))
-                    record(rule);
+            case "repo_match": {
+                const project = projectFromContext(input);
+                const matches = Boolean((repo && globMatches(rule.pattern.toLowerCase(), repo)) || (input.remote && globMatches(rule.pattern, input.remote)) || (canonicalProject(rule.pattern, true) === rule.pattern && projectPatternMatches(rule.pattern, project)));
+                if (rule.mode === "only_allow" ? !matches : matches) record(rule);
                 break;
+            }
             case "path_match":
                 if ([input.cwd, ...(input.paths ?? [])].some((path) => path && pathMatches(rule.pattern, path, input)))
                     record(rule);
@@ -289,3 +292,55 @@ export function evaluateCaptureRules(rules, input) {
     return result;
 }
 export function isSafeCaptureRegex(pattern, caseSensitive = false) { return parseRegex(pattern, caseSensitive) !== null; }
+
+export function canonicalProject(value, pattern = false) {
+    if (typeof value !== "string" || !value.trim() || value.length > 1000) return null;
+    let host = "github.com";
+    let path = value.trim();
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(path)) {
+        try {
+            const url = new URL(path);
+            if (!["https:", "http:", "ssh:", "git:"].includes(url.protocol) || url.port) return null;
+            host = url.hostname.toLowerCase();
+            path = url.pathname;
+        } catch { return null; }
+    } else {
+        const scp = /^(?:[^@/\s]+@)?([a-z\d.-]+):([^\s]+)$/i.exec(path);
+        if (scp) { host = scp[1].toLowerCase(); path = scp[2]; }
+        else {
+            const pieces = path.split("/");
+            if (pieces.length >= 3 && pieces[0].includes(".")) { host = pieces.shift().toLowerCase(); path = pieces.join("/"); }
+        }
+    }
+    path = path.replace(/^\/+|\/+$/g, "").replace(/\.git$/i, "");
+    if (host === "github.com") path = path.toLowerCase();
+    const segments = path.split("/");
+    const allowed = pattern ? /^[a-z\d_.?*-]+$/i : /^[a-z\d_.-]+$/i;
+    if (!/^[a-z\d](?:[a-z\d.-]*[a-z\d])?$/i.test(host) || host.includes("..") || segments.length < 2 || segments.some(s => !allowed.test(s) || s === "." || s === ".." || s.includes("**"))) return null;
+    const result = `${host}/${path}`;
+    return result.length <= 256 ? result : null;
+}
+export function projectFromContext(input) {
+    const repo = input.repo == null ? null : canonicalProject(input.repo);
+    const remote = input.remote == null ? null : canonicalProject(input.remote);
+    if ((input.repo != null && !repo) || (input.remote != null && !remote)) return null;
+    if (repo && remote) {
+        const rawRepo = input.repo.trim();
+        const explicitHost = /^[a-z][a-z\d+.-]*:\/\//i.test(rawRepo) || rawRepo.split("/")[0].includes(".") || rawRepo.includes("@");
+        const resolvedRepo = explicitHost ? repo : canonicalProject(`${remote.split("/")[0]}/${input.repo}`);
+        if (resolvedRepo !== remote) return null;
+    }
+    return remote ?? repo;
+}
+export function projectPatternMatches(pattern, project) {
+    const canonical = canonicalProject(pattern, true);
+    return Boolean(canonical && project && globMatches(canonical, project));
+}
+export function evaluateProjectPolicy(policy, input) {
+    const project = projectFromContext(input);
+    if (!policy || !Array.isArray(policy.include) || !Array.isArray(policy.exclude) || !policy.include.length) return {allowed: false, project, reason: "no_selection"};
+    if (policy.include.length > 100 || policy.exclude.length > 100 || [...policy.include, ...policy.exclude].some(pattern => !canonicalProject(pattern, true))) return {allowed: false, project, reason: "invalid_policy"};
+    if (!project) return {allowed: false, project: null, reason: "unknown_project"};
+    const allowed = policy.include.some(pattern => projectPatternMatches(pattern, project)) && !policy.exclude.some(pattern => projectPatternMatches(pattern, project));
+    return {allowed, project, reason: allowed ? "selected" : "unselected_project"};
+}

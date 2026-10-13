@@ -3,6 +3,7 @@ import { z } from "zod";
 import { withHiveBearerAuth } from "@/server/bearer-auth";
 import { HiveError } from "@/server/errors";
 import { enforceCaptureRules } from "@/server/capture-rules";
+import { requireSelectedProject } from "@/server/project-sharing";
 import { classifyCapture } from "@/server/classify";
 import { rateLimit } from "@/server/identity/rate-limit";
 import { httpError, readJson } from "@/lib/http";
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
   try {
     return await withHiveBearerAuth(request, async (request, ctx, claims) => {
     const input = inputSchema.parse(await readJson(request));
+    ctx = (await requireSelectedProject(ctx, input)).personal;
     await rateLimit("capture", `${ctx.teamId}/${ctx.memberId}`, 30, 60);
     const result = await withOrigin(originFor(ctx, "hook", claims ? "oauth" : "api_key"), async () => {
       const capture = await enforceCaptureRules(ctx, {title: "", body: input.text, repo: input.repo, remote: input.remote, cwd: input.cwd, home: input.home, paths: input.paths, agent: input.agent ?? "claude-code", sessionType: input.sessionType}, "hook", [input.branch, input.sessionRef].filter((value): value is string => Boolean(value)));

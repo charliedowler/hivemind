@@ -1,3 +1,4 @@
+vi.mock("@/server/project-sharing", () => ({requireSelectedProject: vi.fn(async (ctx: unknown) => ({personal: ctx}))}));
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import {POST} from "./route";
 import {enforceCaptureRules} from "@/server/capture-rules";

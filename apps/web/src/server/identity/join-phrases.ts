@@ -78,7 +78,7 @@ export async function adminJoinPhrase(ctx: HiveContext): Promise<HiveJoinPhrase 
   });
 }
 
-type JoinOptions = { trustedProxyIp: string | null; capability?: string };
+type JoinOptions = { trustedProxyIp: string | null; capability?: string; capabilityHash?: string };
 async function authenticatedActor(ctx: HiveContext) {
   const rows = await getSql()`SELECT m.*, b.owner_member_id FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' AND a.owner_email_verified LEFT JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE m.id = ${ctx.memberId} AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows[0]) throw new HiveError("Sign in first.", 401);
@@ -98,8 +98,8 @@ async function attempt<T>(ctx: HiveContext, input: string, options: JoinOptions,
     const human = people[0];
     let capability: postgres.Row | undefined;
     if (actor.actor_type === "agent") {
-      if (!options.capability) throw failure();
-      const grants = await tx`SELECT * FROM hive_join_capabilities WHERE token_hash = ${hashToken(options.capability)} AND owner_member_id = ${ownerId} AND agent_member_id = ${ctx.memberId} AND revoked_at IS NULL AND expires_at > now() FOR UPDATE`;
+      if (!options.capability && !options.capabilityHash) throw failure();
+      const grants = await tx`SELECT * FROM hive_join_capabilities WHERE token_hash = ${options.capabilityHash ?? hashToken(options.capability!)} AND owner_member_id = ${ownerId} AND agent_member_id = ${ctx.memberId} AND revoked_at IS NULL AND expires_at > now() FOR UPDATE`;
       capability = grants[0];
       if (!capability) throw failure();
     }

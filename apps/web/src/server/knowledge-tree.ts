@@ -18,7 +18,7 @@ import {
 } from "@hivemind/core";
 import { getSql } from "./db/client";
 import { learningView } from "./learning-view";
-import { learningVisible, learningVisibleSql } from "./capture-visibility";
+import { audienceCellsSql, learningVisible, learningVisibleSql } from "./capture-visibility";
 import {
   HiveError,
   HiveInputError,
@@ -233,7 +233,7 @@ export async function ensureKnowledge(
         manifest: state.manifest as Manifest,
       };
     const rows =
-      await sql`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.team_id = ${ctx.teamId} AND l.capture_flagged = false ORDER BY l.id LIMIT 10001`;
+      await sql`SELECT l.*, m.name AS author_name FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE l.team_id = ${ctx.teamId} AND l.capture_flagged = false ORDER BY l.id LIMIT 10001`;
     if (rows.length > 10000)
       throw new HiveUnavailableError(
         "This hive needs a streamed rebuild before it can publish more than 10000 cells.",
@@ -310,7 +310,7 @@ export function browseKnowledge(ctx: HiveContext, path = "") {
 async function contextKnowledge(ctx: HiveContext) {
   const { revision } = await ensureKnowledge(ctx);
   const rows =
-    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} ORDER BY l.id LIMIT 10001`;
+    await getSql()`SELECT l.*, m.name AS author_name FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} ORDER BY l.id LIMIT 10001`;
   if (rows.length > 10000)
     throw new HiveUnavailableError(
       "This hive needs a streamed rebuild before it can read more than 10000 cells.",
@@ -372,7 +372,12 @@ export function snapshotKnowledge(ctx: HiveContext) {
   return withOperation(ctx, "snapshot", () => snapshotKnowledgeAction(ctx));
 }
 async function snapshotKnowledgeAction(ctx: HiveContext) {
-  const { revision, manifest } = await ensureKnowledge(ctx);
+  const { revision } = await ensureKnowledge(ctx);
+  const rows = await getSql()`SELECT l.*, m.name AS author_name FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE NOT l.capture_flagged ORDER BY l.id LIMIT 10001`;
+  if (rows.length > 10000) throw new HiveUnavailableError("This archive needs a streamed export.");
+  const files = renderKnowledgeTree(rows.map(row => learningView(row, ctx)));
+  const stamp = digest(canonicalJson(rows));
+  const audiences = [...new Set([ctx.teamId, ...rows.map(row => String(row.team_id))])];
   const pack = tar.pack(),
     chunks: Buffer[] = [];
   const complete = new Promise<Buffer>((resolve, reject) => {
@@ -384,12 +389,8 @@ async function snapshotKnowledgeAction(ctx: HiveContext) {
   });
   let bytes = 0;
   try {
-    await withStorageWorkers(Object.entries(manifest), async ([path, file]) => {
-      const content = await readPrivateObject(file.key);
-      if (digest(content) !== file.digest)
-        throw new HiveUnavailableError(
-          "An archive file failed its integrity check.",
-        );
+    await withStorageWorkers(files, async ([path, text]) => {
+      const content = Buffer.from(text);
       bytes += content.length;
       if (bytes > 50 * 1024 * 1024)
         throw new HiveUnavailableError(
@@ -411,12 +412,17 @@ async function snapshotKnowledgeAction(ctx: HiveContext) {
     await putPrivateObject(key, archive, "application/gzip");
     const token = randomBytes(32).toString("base64url"),
       expiresAt = new Date(Date.now() + 15 * 60000);
-    await getSql()`INSERT INTO knowledge_snapshots (token_hash, team_id, member_id, revision, object_key, expires_at) VALUES (${digest(token)}, ${ctx.teamId}, ${ctx.memberId}, ${revision}, ${key}, ${expiresAt})`;
+    await getSql().begin(async tx => {
+      await tx`SELECT pg_advisory_xact_lock(7288, 3)`;
+      const current = await tx`SELECT l.*, m.name AS author_name FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE NOT l.capture_flagged ORDER BY l.id LIMIT 10001`;
+      if (digest(canonicalJson(current)) !== stamp) throw new HiveError("Cell permissions changed while Hive built this archive. Retry it.", 409);
+      await tx`INSERT INTO knowledge_snapshots (token_hash, team_id, member_id, revision, object_key, expires_at, audience_team_ids) VALUES (${digest(token)}, ${ctx.teamId}, ${ctx.memberId}, ${revision}, ${key}, ${expiresAt}, ${audiences})`;
+    });
     await recordEvent({
       name: "snapshot.exported",
       properties: {
         revision,
-        files: Object.keys(manifest).length,
+        files: files.size,
         bytes: archive.length,
       },
     });
@@ -424,7 +430,7 @@ async function snapshotKnowledgeAction(ctx: HiveContext) {
       revision,
       url: `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/api/knowledge/snapshot?token=${token}`,
       expiresAt: expiresAt.toISOString(),
-      files: Object.keys(manifest).length,
+      files: files.size,
     };
   } catch (error) {
     pack.destroy();
@@ -436,7 +442,7 @@ export async function downloadKnowledge(token: string): Promise<Buffer> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token))
     throw new HiveNotFoundError("Archive not found or expired.");
   const rows =
-    await getSql()`SELECT s.object_key FROM knowledge_snapshots s JOIN members m ON m.id = s.member_id JOIN hive_memberships h ON h.member_id = s.member_id AND h.team_id = s.team_id WHERE s.token_hash = ${digest(token)} AND s.expires_at > now() AND m.disabled_at IS NULL AND h.removed_at IS NULL`;
+    await getSql()`SELECT s.object_key FROM knowledge_snapshots s JOIN members m ON m.id = s.member_id JOIN hive_memberships h ON h.member_id = s.member_id AND h.team_id = s.team_id WHERE s.token_hash = ${digest(token)} AND s.expires_at > now() AND m.disabled_at IS NULL AND h.removed_at IS NULL AND NOT EXISTS (SELECT 1 FROM unnest(s.audience_team_ids) audience(team_id) WHERE NOT EXISTS (SELECT 1 FROM hive_memberships permitted WHERE permitted.member_id = s.member_id AND permitted.team_id = audience.team_id AND permitted.removed_at IS NULL))`;
   if (!rows.length)
     throw new HiveNotFoundError("Archive not found or expired.");
   return readPrivateObject(rows[0].object_key);

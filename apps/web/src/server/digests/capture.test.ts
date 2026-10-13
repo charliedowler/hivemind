@@ -21,6 +21,7 @@ it.skipIf(!url)(
           await tx`CREATE SCHEMA ${tx(schema)}`;
           await tx`SELECT set_config('search_path',${schema + ",public"},true)`;
           for (const table of [
+            "teams",
             "members",
             "learnings",
             "learning_versions",
@@ -31,15 +32,19 @@ it.skipIf(!url)(
           ])
             await tx`CREATE TABLE ${tx(table)} (LIKE ${tx("public." + table)} INCLUDING ALL)`;
           await tx`ALTER TABLE learnings DROP COLUMN IF EXISTS owner_member_id, DROP COLUMN IF EXISTS capture_flagged`;
+          await tx`CREATE VIEW learning_audience_cells AS SELECT l.*, l.team_id AS storage_team_id, false AS is_share FROM learnings l`;
           const team = newId("team"),
             member = newId("mem");
+          await tx`INSERT INTO teams (id, name, invite_code) VALUES (${team}, 'Digest fixture', ${newId("invite")})`;
           await tx`INSERT INTO members(id,team_id,name)VALUES(${member},${team},'Fixture contributor')`;
           const visible = newId("lrn");
           await tx`INSERT INTO learnings(id,team_id,member_id,title,body,kind,source,confidence)VALUES(${visible},${team},${member},'Visible learning','Body','learning','codex',0.9)`;
           const since = new Date(Date.now() - 86400000);
           const before = await gatherDigest(team, since, tx);
           expect(before.learnings.map((r) => r.id)).toContain(visible);
+          await tx`DROP VIEW learning_audience_cells`;
           await tx`ALTER TABLE learnings ADD COLUMN capture_flagged boolean NOT NULL DEFAULT false`;
+          await tx`CREATE VIEW learning_audience_cells AS SELECT l.*, l.team_id AS storage_team_id, false AS is_share FROM learnings l`;
           const cell = async (
             title: string,
             kind: string,

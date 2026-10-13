@@ -15,7 +15,7 @@ export async function digestMemberContext(
   memberId: string,
 ): Promise<HiveContext> {
   const rows =
-    await getSql()`SELECT m.name,t.name AS team_name FROM members m JOIN teams t ON t.id=m.team_id WHERE m.team_id=${teamId} AND m.id=${memberId} AND m.removed_at IS NULL`;
+    await getSql()`SELECT m.name,t.name AS team_name FROM members m JOIN hive_memberships h ON h.member_id=m.id JOIN teams t ON t.id=h.team_id WHERE h.team_id=${teamId} AND m.id=${memberId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows[0])
     throw new HiveError("Join this hive before using schedules.", 403);
   return {

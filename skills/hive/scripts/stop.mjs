@@ -43,11 +43,15 @@ async function main() {
       if (server?.url?.replace(/\/$/, "") === hiveUrl + "/api/mcp") key = server.headers?.Authorization?.replace(/^Bearer /i, "");
     } catch {}
   }
+  if (!key) return;
   const context = captureContext(input);
   if (key) {
     const rules = await effectiveCaptureRules({ token: key, baseUrl: hiveUrl });
     const decision = await localCaptureDecision(rules, { ...context, title: "", body: facts.text });
-    if (decision.dropped || decision.action === "drop") return;
+    if (decision.dropped || decision.action === "drop") {
+      if (decision.reason === "no_selection") process.stderr.write("No projects selected yet; tell me which projects Hive may learn from\n");
+      return;
+    }
   }
   let serverRecorded = false;
   if (key) {
@@ -59,11 +63,12 @@ async function main() {
         signal: AbortSignal.timeout(2000),
       });
       serverRecorded = response.ok;
+      if (!response.ok) return;
       if (response.ok) {
         const result = await response.json();
         if (result.decision === "skip") return;
       }
-    } catch {}
+    } catch { return; }
   }
   const ending = !process.env.CLAUDE_CODE_ENTRYPOINT || process.env.CLAUDE_CODE_ENTRYPOINT === "cli"
     ? "If nothing qualifies, stop now without comment."

@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const teams =
     await getSql()`SELECT i.team_id,t.name AS team_name,m.id AS member_id,m.name AS member_name
     FROM slack_installations i JOIN teams t ON t.id=i.team_id
-    JOIN LATERAL (SELECT id,name FROM members WHERE team_id=i.team_id AND role='admin' AND actor_type='human' AND removed_at IS NULL ORDER BY id LIMIT 1) m ON true
+    JOIN LATERAL (SELECT person.id,person.name FROM hive_memberships h JOIN members person ON person.id=h.member_id WHERE h.team_id=i.team_id AND h.role='admin' AND person.actor_type='human' AND h.removed_at IS NULL AND person.disabled_at IS NULL AND NOT person.provisional ORDER BY person.id LIMIT 1) m ON true
     WHERE i.active ORDER BY i.team_id`;
   const results = [];
   for (const team of teams) {

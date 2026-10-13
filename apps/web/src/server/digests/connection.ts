@@ -26,7 +26,7 @@ export async function digestChannel(
 }
 export async function slackMemberTimezone(teamId: string, memberId: string) {
   const rows =
-    await getSql()`SELECT a.slack_user_id FROM slack_actor_links a JOIN members m ON m.id=a.member_id AND m.team_id=a.team_id WHERE a.team_id=${teamId} AND a.member_id=${memberId} AND m.removed_at IS NULL LIMIT 1`;
+    await getSql()`SELECT a.slack_user_id FROM slack_actor_links a JOIN members m ON m.id=a.member_id JOIN hive_memberships h ON h.member_id=a.member_id AND h.team_id=a.team_id WHERE a.team_id=${teamId} AND a.member_id=${memberId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional LIMIT 1`;
   if (!rows[0]) return "UTC";
   const inst = await installation(teamId);
   const data = await slackCall(inst.token, "users.info", {
@@ -48,7 +48,7 @@ export const digestTransport: DigestTransport = {
   },
   async authors(teamId) {
     const rows =
-      await getSql()`SELECT a.member_id,a.slack_user_id FROM slack_actor_links a JOIN members m ON m.id=a.member_id AND m.team_id=a.team_id WHERE a.team_id=${teamId} AND m.removed_at IS NULL AND m.email_verified=true`;
+      await getSql()`SELECT a.member_id,a.slack_user_id FROM slack_actor_links a JOIN members m ON m.id=a.member_id JOIN hive_memberships h ON h.member_id=a.member_id AND h.team_id=a.team_id WHERE a.team_id=${teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional AND m.email_verified=true`;
     return new Map(
       rows.map((r) => [String(r.member_id), String(r.slack_user_id)]),
     );

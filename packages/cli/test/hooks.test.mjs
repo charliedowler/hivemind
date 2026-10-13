@@ -10,6 +10,7 @@ import { repository, summary } from '../../../skills/hive/scripts/session-start.
 import { captureContext, effectiveCaptureRules, localCaptureDecision } from '../../../skills/hive/scripts/capture-rules.mjs';
 import { callTool } from '../../../skills/hive/scripts/mcp.mjs';
 
+const selectedPolicy = {include: ["github.com/team/widget"], exclude: [], revision: 1};
 const scripts = fileURLToPath(new URL('../../../skills/hive/scripts/', import.meta.url));
 function run(script, input, env) {
   return new Promise((resolve, reject) => {
@@ -28,7 +29,7 @@ async function mockHive(t, responseText = '- lrn_fixture: Restart the worker bef
   const calls = [];
   const reports = [];
   const server = createServer(async (request, response) => {
-    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [], policy: selectedPolicy })); return; }
     let body = '';
     for await (const chunk of request) body += chunk;
     assert.equal(request.headers.authorization, 'Bearer fixture');
@@ -104,7 +105,7 @@ test('the MCP client reads SSE responses', async t => {
   assert.equal(result.content[0].text, '- lrn_a: A fact');
 });
 
-test('Stop skips quiet sessions and asks at most once without losing headless output', async () => {
+test('Stop stays silent without credentials, including headless sessions', async () => {
   const home = scratchRepo();
   const transcript = join(home, 'session.jsonl');
   const env = { HOME: home, TMPDIR: home, CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' };
@@ -112,11 +113,7 @@ test('Stop skips quiet sessions and asks at most once without losing headless ou
   assert.equal(await run('stop.mjs', { session_id: 'quiet', transcript_path: transcript }, env), '');
   writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Discovered that the migration lock persists after worker cancellation.' }] } }));
   const input = { session_id: 'learning', transcript_path: transcript };
-  const first = JSON.parse(await run('stop.mjs', input, env));
-  assert.equal(first.decision, 'block');
-  assert.ok(first.reason.includes('repeating your previous final answer word for word'));
-  assert.ok(first.reason.includes('observation'));
-  assert.ok(first.reason.includes('hive_outcome'));
+  assert.equal(await run('stop.mjs', input, env), '');
   assert.equal(await run('stop.mjs', input, env), '');
   assert.equal(await run('stop.mjs', { ...input, session_id: 'active', stop_hook_active: true }, env), '');
 });
@@ -128,10 +125,10 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   let decision = 'skip';
   let captured;
   const server = createServer(async (request, response) => {
-    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [], policy: selectedPolicy })); return; }
     assert.equal(request.url, '/api/app/capture');
     assert.equal(request.headers.authorization, 'Bearer fixture');
-    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [], policy: selectedPolicy })); return; }
     let body = '';
     for await (const chunk of request) body += chunk;
     captured = JSON.parse(body);
@@ -140,20 +137,20 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
   const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
-  assert.equal(await run('stop.mjs', { session_id: 'jev-skip', transcript_path: transcript }, env), '');
+  assert.equal(await run('stop.mjs', { cwd: home, session_id: 'jev-skip', transcript_path: transcript }, env), '');
   assert.equal(captured.observations, 1);
   assert.ok(captured.text.length <= 6000);
   decision = 'capture';
-  assert.equal(JSON.parse(await run('stop.mjs', { session_id: 'jev-capture', transcript_path: transcript }, env)).decision, 'block');
+  assert.equal(JSON.parse(await run('stop.mjs', { cwd: home, session_id: 'jev-capture', transcript_path: transcript }, env)).decision, 'block');
 });
 
-test('Stop reports a local nudge when the capture gate fails without sending transcript data', async t => {
+test('Stop fails closed when the capture gate is unavailable', async t => {
   const home = scratchRepo();
   const transcript = join(home, 'failed-capture.jsonl');
   writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Discovered that a stopped migration worker can leave a lock open.' }] } }));
   const reports = [];
   const server = createServer(async (request, response) => {
-    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [] })); return; }
+    if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [], policy: selectedPolicy })); return; }
     let body = '';
     for await (const chunk of request) body += chunk;
     if (request.url === '/api/app/capture') { response.writeHead(503).end(); return; }
@@ -164,13 +161,10 @@ test('Stop reports a local nudge when the capture gate fails without sending tra
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
   const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
-  assert.equal(JSON.parse(await run('stop.mjs', { session_id: 'failed-gate', transcript_path: transcript }, env)).decision, 'block');
-  assert.equal(reports.length, 1);
-  assert.deepEqual(Object.keys(reports[0]).sort(), ['attemptId', 'gateDecision', 'hookKind', 'pushedCount']);
-  assert.equal(reports[0].hookKind, 'stop');
-  assert.equal(reports[0].pushedCount, null);
+  assert.equal(await run('stop.mjs', { cwd: home, session_id: 'failed-gate', transcript_path: transcript }, env), '');
+  assert.equal(reports.length, 0);
   assert.equal(await run('stop.mjs', { session_id: 'failed-gate', transcript_path: transcript }, env), '');
-  assert.equal(reports.length, 1);
+  assert.equal(reports.length, 0);
 });
 
 test('recent summaries preserve lifecycle and verification warnings without author data', () => {
@@ -182,42 +176,42 @@ test('recent summaries preserve lifecycle and verification warnings without auth
 });
 
 
-test('capture metadata keeps the exact remote and working directory', () => {
+test('capture metadata keeps the canonical project and working directory', () => {
   const cwd = scratchRepo();
   const value = captureContext({ cwd, session_id: 'session', agent: 'codex', session_type: 'headless' });
   assert.equal(value.repo, 'team/widget');
-  assert.equal(value.remote, execFileSync('git', ['remote', 'get-url', 'origin'], { cwd, encoding: 'utf8' }).trim());
+  assert.equal(value.remote, 'github.com/team/widget');
   assert.equal(value.cwd, cwd);
   assert.equal(value.agent, 'codex');
   assert.equal(value.sessionType, 'headless');
 });
 
-test('effective rule cache is short and bound to the credential and endpoint', async t => {
+test('policy is fetched afresh for every credential and capture', async t => {
   const home = scratchRepo();
   let requests = 0;
   const server = createServer((request, response) => {
     assert.equal(request.url, '/api/app/capture-rules/effective');
     requests++;
-    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [{ id: 'fixture', enabled: true }] }));
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [{ id: 'fixture', enabled: true }], policy: selectedPolicy }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   const options = { home, baseUrl, token: 'one', now: 1000 };
-  assert.equal((await effectiveCaptureRules(options)).length, 1);
+  assert.equal((await effectiveCaptureRules(options)).rules.length, 1);
   await effectiveCaptureRules({ ...options, now: 2000 });
-  assert.equal(requests, 1);
+  assert.equal(requests, 2);
   await effectiveCaptureRules({ ...options, token: 'two', now: 2000 });
   await effectiveCaptureRules({ ...options, now: 32000 });
-  assert.equal(requests, 3);
+  assert.equal(requests, 4);
 });
 
 test('local filtering excludes content rules and keeps non-drop actions server-side', async () => {
-  assert.deepEqual(await localCaptureDecision([
+  assert.equal((await localCaptureDecision({policy: selectedPolicy, rules: [
     { enabled: true, action: 'drop', kind: 'content_category' },
     { enabled: true, action: 'redact', kind: 'keyword' },
     { enabled: false, action: 'drop', kind: 'repo_match' },
-  ], { title: 'Private', body: 'Personal admin' }), { dropped: false });
+  ]}, { repo: 'team/widget', title: 'Private', body: 'Personal admin' })).action, 'allow');
 });
 
 test('a local repo drop never sends transcript text to the capture endpoint', async t => {
@@ -228,7 +222,7 @@ test('a local repo drop never sends transcript text to the capture endpoint', as
   const server = createServer(async (request, response) => {
     received.push(request.url);
     assert.equal(request.url, '/api/app/capture-rules/effective');
-    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [{ id: 'private', kind: 'repo_owner', owners: ['team'], mode: 'deny', action: 'drop', enabled: true }] }));
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [{ id: 'private', kind: 'repo_owner', owners: ['team'], mode: 'deny', action: 'drop', enabled: true }], policy: selectedPolicy }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
@@ -236,3 +230,30 @@ test('a local repo drop never sends transcript text to the capture endpoint', as
   assert.equal(await run('stop.mjs', { cwd: home, session_id: 'private-drop', transcript_path: transcript }, env), '');
   assert.deepEqual(received, ['/api/app/capture-rules/effective']);
 });
+
+for (const state of ['outage', 'empty', 'unknown', 'contradiction', 'unselected']) {
+  test(`Stop sends no transcript or model gate request for ${state}`, async t => {
+    const home = scratchRepo();
+    const transcript = join(home, 'blocked.jsonl');
+    writeFileSync(transcript, JSON.stringify({type: 'assistant', message: {content: [{type: 'text', text: 'Discovered a private marker that must never be uploaded.'}]}}));
+    if (state === 'unknown') execFileSync('git', ['-C', home, 'remote', 'remove', 'origin']);
+    const received = [];
+    const server = createServer(async (request, response) => {
+      let body = ''; for await (const part of request) body += part;
+      received.push({url: request.url, body});
+      if (state === 'outage') {response.writeHead(503).end(); return;}
+      response.writeHead(200, {'Content-Type': 'application/json'}).end(JSON.stringify({rules: [], policy: {include: state === 'empty' ? [] : state === 'unselected' ? ['github.com/other/repo'] : selectedPolicy.include, exclude: [], revision: 1}}));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => server.close());
+    if (state === 'contradiction') {
+      const decision = await localCaptureDecision({rules: [], policy: selectedPolicy}, {repo: 'other/repo', remote: 'git@github.com:team/widget.git', title: '', body: ''});
+      assert.equal(decision.action, 'drop');
+      return;
+    }
+    const env = {HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture'};
+    assert.equal(await run('stop.mjs', {cwd: home, session_id: state, transcript_path: transcript}, env), '');
+    assert.deepEqual(received.map(r => r.url), ['/api/app/capture-rules/effective']);
+    assert.equal(received[0].body, '');
+  });
+}

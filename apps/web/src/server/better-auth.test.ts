@@ -293,12 +293,12 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     expect(await contextFromClaims({ sub: memberA, hive_member_id: memberA, hive_team_id: teamB })).toBeNull();
     expect(await contextFromClaims({ sub: memberA })).toBeNull();
   });
-  it("accepts both OAuth and the unchanged legacy key in MCP and the Stop gate", async () => {
+  it("accepts scoped OAuth and keys in MCP while the Stop gate requires project selection", async () => {
     for (const token of [accessToken, legacyKey]) {
       expect(token).toBeTruthy();
       const response = await fetch(`${baseUrl}/api/app/capture`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ changes: 0, errors: 0, observations: 0, text: "Quiet fixture" }) });
-      expect(response.status, await response.clone().text()).toBe(200);
-      expect((await response.json()).decision).toBe("skip");
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect((await response.json()).error).toContain("No projects selected");
       const mcp = await fetch(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
       expect(mcp.status).toBe(200);
       expect(await mcp.text()).toContain("hive_recent");

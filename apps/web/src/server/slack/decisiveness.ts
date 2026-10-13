@@ -147,7 +147,7 @@ export function decideInstruction(
 }
 export async function decideDecisiveness(text: string, ctx: SlackToolContext) {
   const members =
-    await getSql()`SELECT role FROM members WHERE id=${ctx.memberId} AND team_id=${ctx.teamId} AND removed_at IS NULL`;
+    await getSql()`SELECT h.role FROM hive_memberships h JOIN members m ON m.id=h.member_id WHERE h.member_id=${ctx.memberId} AND h.team_id=${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   const allowed = members[0]?.role === "admin";
   const deterministic = decideInstruction(text, ctx.actionType, allowed);
   if (deterministic) return deterministic;

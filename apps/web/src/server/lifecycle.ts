@@ -21,10 +21,11 @@ import {
   type LearningKind,
 } from "@hivemind/core";
 import type { z } from "zod";
+import { captureOwner, lockCapturePolicy, refreshProjectPublications, requireSelectedProject } from "./project-sharing";
 import { getSql, hasEmbeddingColumn } from "./db/client";
 import { HiveError, HiveInputError, HiveNotFoundError } from "./errors";
 import { embedText } from "./llm/embeddings";
-import { learningVisibleSql } from "./capture-visibility";
+import { audienceCellsSql, learningVisibleSql } from "./capture-visibility";
 
 export type LearningTransaction = postgres.TransactionSql;
 
@@ -71,10 +72,11 @@ export async function acceptSupersession(
   const edge = edges[0];
   if (!edge) throw new HiveNotFoundError("Cell change not found in your hive.");
   const cells =
-    await tx`SELECT l.id, l.revision, l.lifecycle FROM learnings l WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${[edge.older_id, edge.newer_id]}::text[]) ORDER BY l.id FOR UPDATE`;
+    await tx`SELECT l.id, l.revision, l.lifecycle, l.owner_member_id FROM learnings l WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${[edge.older_id, edge.newer_id]}::text[]) ORDER BY l.id FOR UPDATE`;
   const older = cells.find((row) => row.id === edge.older_id),
     newer = cells.find((row) => row.id === edge.newer_id);
   if (!older || !newer) throw new HiveNotFoundError();
+  if (older.owner_member_id !== newer.owner_member_id) throw new HiveError("Cells from different owners cannot replace each other.", 403);
   if (edge.status === "accepted") return;
   if (edge.status !== "candidate")
     throw new HiveInputError("Hive has already settled which cell to keep.");
@@ -208,6 +210,15 @@ export async function learningVersions(
   ctx: HiveContext,
   id: string,
 ): Promise<LearningVersion[]> {
+  const visible = (await getSql()`SELECT l.* FROM ${audienceCellsSql(ctx)} l WHERE l.id = ${id}`)[0];
+  if (!visible) throw new HiveNotFoundError();
+  if (visible.is_share) {
+    const published = (await getSql()`SELECT s.public_content, s.revision, s.updated_at, m.name AS author FROM learning_shares s JOIN members m ON m.id = (s.public_content->>'member_id') WHERE s.learning_id = ${id} AND s.team_id = ${visible.team_id} AND s.withdrawn_at IS NULL`)[0];
+    if (!published) throw new HiveNotFoundError();
+    const {embedding, search, ...content} = published.public_content;
+    return [{revision: Number(published.revision), author: String(published.author), createdAt: published.updated_at.toISOString(), content, diff: {}}];
+  }
+  ctx = {...ctx, teamId: String(visible.team_id)};
   const rows =
     await getSql()`SELECT v.*, m.name AS author FROM learning_versions v JOIN learnings l ON l.id = v.learning_id AND l.team_id = v.team_id JOIN members m ON m.id = v.member_id WHERE v.learning_id = ${id} AND v.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (l.member_id = ${ctx.memberId} OR (coalesce((v.content->>'capture_flagged')::boolean, false) = false AND coalesce((v.diff->'capture_flagged'->>'before')::boolean, false) = false)) ORDER BY v.revision DESC LIMIT 100`;
   if (!rows.length) throw new HiveNotFoundError();
@@ -256,18 +267,24 @@ async function editLearningAction(
   input: z.infer<typeof learningEditInput>,
 ) {
   const data = learningEditInput.parse(input);
+  const ownership = await captureOwner(ctx);
+  const originals = await getSql()`SELECT owner_member_id, team_id FROM learnings WHERE id = ${id}`;
+  if (originals[0]?.owner_member_id === ownership.ownerId && originals[0]?.team_id === ownership.personal.teamId) ctx = ownership.personal;
   const candidates =
     await getSql()`SELECT l.*, EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
   const candidate = candidates[0];
   if (!candidate) throw new HiveNotFoundError();
-  if (candidate.member_id !== ctx.memberId && !candidate.admin)
+  if (candidate.member_id !== ctx.memberId && candidate.owner_member_id !== ownership.ownerId && !candidate.admin)
     throw new HiveError("Only the author or a team admin can edit this cell.", 403);
   if (candidate.revision !== data.revision)
     throw new HiveError("This cell changed. Reload it before editing.", 409);
   if (candidate.lifecycle === "superseded")
     throw new HiveError("Edit the current cell in the chain instead.", 409);
+  const contentChange = Boolean(data.title || data.body || data.observation || data.evidence);
+  const selection = candidate.team_id === ownership.personal.teamId && contentChange ? await requireSelectedProject(ctx, {repo: candidate.repo}) : null;
+  const retractOnly = data.lifecycle === "retracted" && !contentChange;
   const { enforceCaptureRules } = await import("./capture-rules");
-  const capture = await enforceCaptureRules(ctx, {
+  const capture = retractOnly ? {title: candidate.title, body: candidate.body, action: "allow", redacted: false, flagged: candidate.capture_flagged, categories: candidate.capture_categories, matches: []} : await enforceCaptureRules(ctx, {
     title: data.title ?? candidate.title,
     body: data.observation ?? data.body ?? candidate.body,
     remote: candidate.capture_context?.remote,
@@ -302,12 +319,17 @@ async function editLearningAction(
   }
   const result = await analyticsTransaction(() =>
     getSql().begin(async (tx) => {
+      await lockCapturePolicy(tx, ownership.ownerId);
+      if (selection) {
+        const live = await requireSelectedProject(ctx, {repo: candidate.repo}, tx);
+        if (live.policy.revision !== selection.policy.revision) throw new HiveError("The project selection changed while Hive checked this edit.", 409);
+      }
       await lockLearningWrites(tx, ctx);
       const rows =
         await tx`SELECT l.*, EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} FOR UPDATE`;
       const row = rows[0];
       if (!row) throw new HiveNotFoundError();
-      if (row.member_id !== ctx.memberId && !row.admin)
+      if (row.member_id !== ctx.memberId && row.owner_member_id !== ownership.ownerId && !row.admin)
         throw new HiveError(
           "Only the author or a team admin can edit this cell.",
           403,
@@ -333,6 +355,7 @@ async function editLearningAction(
         const embedding = await embedText(`${title}\n\n${body}`);
         await tx`UPDATE learnings SET embedding = ${embedding ? JSON.stringify(embedding) : null}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       }
+      await refreshProjectPublications(tx, ctx, id);
       const updated =
         await tx`SELECT revision FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       if (capture.redacted) {

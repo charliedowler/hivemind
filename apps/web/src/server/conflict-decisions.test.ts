@@ -1,3 +1,4 @@
+import {originFor, withOrigin} from "./analytics/events";
 import {
   beforeAll,
   beforeEach,
@@ -11,7 +12,7 @@ import { hivePushInput, type HiveContext } from "@hivemind/core";
 import { createTeam } from "./auth";
 import { getSql } from "./db/client";
 import { newId } from "./db/ids";
-import { pushLearning, getLearning } from "./hive";
+import { pushLearning as pushOrganisationFixture, getLearning } from "./hive";
 import { editLearning } from "./lifecycle";
 import {
   listDecisions,
@@ -166,7 +167,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         jev: null,
         latencyMs: 21,
       });
-      const next = await push(member, title, "The setting rejects writes.");
+      const next = await push(a, title, "The setting rejects writes.");
       const record = (await listDecisions(a, { search: title }))[0];
       return { old, next, record };
     }
@@ -196,7 +197,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           });
           expect(newCell?.lifecycle).toBe("retracted");
           const pushes =
-            await getSql()`SELECT learning_id, merged FROM learning_pushes WHERE team_id = ${a.teamId} AND member_id = ${member.memberId} AND learning_id = ${old.id}`;
+            await getSql()`SELECT learning_id, merged FROM learning_pushes WHERE team_id = ${a.teamId} AND member_id = ${a.memberId} AND learning_id = ${old.id} AND merged`;
           expect(pushes).toHaveLength(1);
           expect(pushes[0].merged).toBe(true);
         }
@@ -378,3 +379,7 @@ it("recognizes missing or mismatched legacy snapshots without throwing", () => {
   expect(hasDecisionSnapshots({ before_state: cells, after_state: cells })).toBe(true);
   expect(hasDecisionSnapshots({ before_state: cells, after_state: cells.toReversed() })).toBe(false);
 });
+
+async function pushLearning(ctx: HiveContext, input: Parameters<typeof pushOrganisationFixture>[1]) {
+  return withOrigin(originFor(ctx, "slack"), () => pushOrganisationFixture(ctx, input));
+}

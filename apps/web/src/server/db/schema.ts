@@ -206,7 +206,7 @@ export const feedback = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.learningId, table.memberId] })],
+  (table) => [primaryKey({ columns: [table.learningId, table.teamId, table.memberId] })],
 );
 
 export const askLog = pgTable("ask_log", {
@@ -300,6 +300,7 @@ export const knowledgeState = pgTable("knowledge_state", {
   nextVerifyAt: timestamp("next_verify_at", { withTimezone: true }),
 });
 export const knowledgeSnapshots = pgTable("knowledge_snapshots", {
+  audienceTeamIds: text("audience_team_ids").array().notNull().default([]),
   tokenHash: text("token_hash").primaryKey(),
   teamId: text("team_id").notNull(),
   memberId: text("member_id").notNull(),
@@ -471,3 +472,60 @@ export const slackToolActions = pgTable("slack_tool_actions", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   undoneAt: timestamp("undone_at", { withTimezone: true }),
 });
+
+export const ownerCapturePolicies = pgTable("owner_capture_policies", {
+  ownerMemberId: text("owner_member_id").primaryKey().references(() => members.id, {onDelete: "cascade"}),
+  includePatterns: text("include_patterns").array().notNull().default([]),
+  excludePatterns: text("exclude_patterns").array().notNull().default([]),
+  revision: integer("revision").notNull().default(0),
+  humanInstruction: text("human_instruction").notNull().default(""),
+  updatedBy: text("updated_by").references(() => members.id),
+  updatedAt: timestamp("updated_at", {withTimezone: true}).notNull().defaultNow(),
+});
+export const capturePolicyDelegations = pgTable("capture_policy_delegations", {
+  id: text("id").primaryKey(),
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id, {onDelete: "cascade"}),
+  agentMemberId: text("agent_member_id").notNull().references(() => members.id, {onDelete: "cascade"}),
+  policyRevision: integer("policy_revision").notNull(),
+  includePatterns: text("include_patterns").array().notNull(),
+  excludePatterns: text("exclude_patterns").array().notNull(),
+  expiresAt: timestamp("expires_at", {withTimezone: true}).notNull(),
+  revokedAt: timestamp("revoked_at", {withTimezone: true}),
+  consumedAt: timestamp("consumed_at", {withTimezone: true}),
+  createdAt: createdAt(),
+});
+export const ownerCapturePolicyHistory = pgTable("owner_capture_policy_history", {
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id, {onDelete: "cascade"}),
+  revision: integer("revision").notNull(),
+  includePatterns: text("include_patterns").array().notNull(),
+  excludePatterns: text("exclude_patterns").array().notNull(),
+  humanInstruction: text("human_instruction").notNull(),
+  actorMemberId: text("actor_member_id").notNull().references(() => members.id),
+  authority: text("authority").notNull(),
+  createdAt: createdAt(),
+}, table => [primaryKey({columns: [table.ownerMemberId, table.revision]})]);
+export const projectSharingGrants = pgTable("project_sharing_grants", {
+  id: text("id").primaryKey(),
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id, {onDelete: "cascade"}),
+  teamId: text("team_id").notNull().references(() => teams.id, {onDelete: "cascade"}),
+  repoPattern: text("repo_pattern").notNull(),
+  revision: integer("revision").notNull().default(1),
+  grantedBy: text("granted_by").notNull().references(() => members.id),
+  createdAt: createdAt(),
+  withdrawnAt: timestamp("withdrawn_at", {withTimezone: true}),
+  withdrawnBy: text("withdrawn_by").references(() => members.id),
+}, table => [uniqueIndex("project_sharing_grants_target_idx").on(table.ownerMemberId, table.teamId, table.repoPattern)]);
+export const learningShares = pgTable("learning_shares", {
+  learningId: text("learning_id").notNull().references(() => learnings.id, {onDelete: "cascade"}),
+  teamId: text("team_id").notNull().references(() => teams.id, {onDelete: "cascade"}),
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id, {onDelete: "cascade"}),
+  revision: integer("revision").notNull(),
+  publicContent: jsonb("public_content").notNull(),
+  projectGrantId: text("project_grant_id").references(() => projectSharingGrants.id),
+  grantedBy: text("granted_by").notNull().references(() => members.id),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", {withTimezone: true}).notNull().defaultNow(),
+  withdrawnAt: timestamp("withdrawn_at", {withTimezone: true}),
+  withdrawnBy: text("withdrawn_by").references(() => members.id),
+  adminOutdated: boolean("admin_outdated").notNull().default(false),
+}, table => [primaryKey({columns: [table.learningId, table.teamId]})]);

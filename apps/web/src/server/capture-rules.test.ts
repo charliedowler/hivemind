@@ -4,7 +4,7 @@ import {createTeam, joinTeam} from "./auth";
 import {getSql} from "./db/client";
 import {newId} from "./db/ids";
 import {createCaptureRule, updateCaptureRule, deleteCaptureRule, listCaptureRules, effectiveRules, enforceCaptureRules, confirmFlaggedCapture, proposeRuleFromText} from "./capture-rules";
-import {pushLearning, getLearning, searchLearnings, recentLearnings, askHive} from "./hive";
+import {pushLearning as pushOrganisationFixture, getLearning, searchLearnings, recentLearnings, askHive} from "./hive";
 import {learningVersions} from "./lifecycle";
 import {originFor, withOrigin, type EventRow} from "./analytics/events";
 import {classifyCaptureCategories} from "./capture-categories";
@@ -93,7 +93,7 @@ describe.skipIf(!enabled)("capture rule storage and ingress", {timeout: 60000}, 
     const dropped = events.find(event => event.event_name === "capture.rule_dropped")!;
     expect(dropped.properties).toMatchObject({ruleId: rule.id, ruleKind: "keyword"});
     const applied = events.find(event => event.event_name === "capture.rule_applied")!;
-    expect(applied.properties).toMatchObject({ruleKind: "keyword", ruleAction: "drop", ingress, agent: "codex"});
+    expect(applied.properties).toMatchObject({ruleKind: "keyword", ruleAction: "drop", ingress: "slack", agent: "codex"});
     expect(JSON.stringify(events)).not.toContain("private-marker");
   });
 
@@ -205,3 +205,7 @@ describe.skipIf(!enabled)("capture rule storage and ingress", {timeout: 60000}, 
     vi.unstubAllEnvs();
   });
 });
+
+async function pushLearning(ctx: HiveContext, input: Parameters<typeof pushOrganisationFixture>[1]) {
+  return withOrigin(originFor(ctx, "slack"), () => pushOrganisationFixture(ctx, input));
+}

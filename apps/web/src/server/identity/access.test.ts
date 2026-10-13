@@ -16,7 +16,7 @@ import {
 import { isPublicDomain } from "./email-domain";
 import { deliverCode } from "./email";
 import { hivePushInput, type HiveContext } from "@hivemind/core";
-import { pushLearning, getLearning } from "../hive";
+import { pushLearning as pushOrganisationFixture, getLearning } from "../hive";
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
 }));
@@ -264,3 +264,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     });
   },
 );
+
+async function pushLearning(ctx: HiveContext, input: Parameters<typeof pushOrganisationFixture>[1]) {
+  return withOrigin(originFor(ctx, "slack"), () => pushOrganisationFixture(ctx, input));
+}

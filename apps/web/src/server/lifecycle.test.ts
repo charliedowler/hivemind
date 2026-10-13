@@ -1,3 +1,4 @@
+import {originFor, withOrigin} from "./analytics/events";
 import {
   afterAll,
   beforeAll,
@@ -11,7 +12,7 @@ import { hivePushInput, type HiveContext } from "@hivemind/core";
 import { createTeam } from "./auth";
 import { getSql } from "./db/client";
 import { newId } from "./db/ids";
-import { askHive, getLearning, pushLearning, searchLearnings } from "./hive";
+import { askHive, getLearning, pushLearning as pushOrganisationFixture, searchLearnings } from "./hive";
 import {
   editLearning,
   learningVersions,
@@ -86,7 +87,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     };
     const privacyCell = async (ctx: HiveContext, title: string, flagged = false, repo = "privacy/lifecycle") => {
       const id = newId("lrn");
-      await getSql()`INSERT INTO learnings (id, team_id, member_id, title, body, kind, repo, source, confidence, capture_flagged) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${title}, ${title + " body"}, 'learning', ${repo}, 'codex', 1, ${flagged})`;
+      await getSql()`INSERT INTO learnings (id, team_id, member_id, owner_member_id, title, body, kind, repo, source, confidence, capture_flagged) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${a.memberId}, ${title}, ${title + " body"}, 'learning', ${repo}, 'codex', 1, ${flagged})`;
       return id;
     };
     const privacyEdge = async (olderId: string, newerId: string, status = "candidate") => {
@@ -387,7 +388,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           confidence: 0.85,
         })),
       }));
-      const newer = await push(c, "Team switch", "Disable the switch.");
+      const newer = await push(a, "Team switch", "Disable the switch.");
       const edge = (await listConflicts(a)).find(
         (item) => item.older.id === old.id,
       )!;
@@ -420,7 +421,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           confidence: 0.8,
         })),
       }));
-      await push(c, "Changed switch", "Disable the setting.");
+      await push(a, "Changed switch", "Disable the setting.");
       const edge = (await listConflicts(a)).find(
         (item) => item.older.id === old.id,
       )!;
@@ -479,7 +480,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const env = await push(a, "Environment port", "Use port 9100.", {
         area: "environment",
       });
-      const changed = await push(c, "Environment port", "Use port 9101.", {
+      const changed = await push(a, "Environment port", "Use port 9101.", {
         area: "environment",
         confidence: 0.99,
       });
@@ -487,3 +488,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     });
   },
 );
+
+async function pushLearning(ctx: HiveContext, input: Parameters<typeof pushOrganisationFixture>[1]) {
+  return withOrigin(originFor(ctx, "slack"), () => pushOrganisationFixture(ctx, input));
+}

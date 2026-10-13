@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type FormEvent } from "react";
-import type { CaptureRule } from "@hivemind/core";
+import type { OwnerCapturePolicy, CaptureRule } from "@hivemind/core";
 import { Button, Input, Switch } from "@hivemind/design-system";
 import type { CaptureRuleInstructionResult } from "@/server/capture-rule-instructions";
 import { captureDefaults, defaultCaptureRuleId } from "@/lib/capture-defaults";
@@ -9,7 +9,7 @@ import { errorMessage, requestJson } from "@/lib/client";
 import { ErrorPanel } from "./primitives";
 import "./capture-rules.css";
 
-type Data = { rules: CaptureRule[]; isAdmin: boolean };
+type Data = { rules: CaptureRule[]; isAdmin: boolean; policy?: OwnerCapturePolicy };
 type Undo =
   | { kind: "instruction"; rule: CaptureRule; until: string }
   | { kind: "toggle" | "delete"; rule: CaptureRule };
@@ -35,6 +35,7 @@ function description(rule: CaptureRule) {
 
 function useCaptureChoices(initial: Data, scope: "team" | "personal") {
   const [rules, setRules] = useState(initial.rules);
+  const [projectPolicy, setProjectPolicy] = useState(initial.policy);
   const [text, setText] = useState("");
   const [summary, setSummary] = useState("");
   const [undo, setUndo] = useState<Undo>();
@@ -84,6 +85,10 @@ function useCaptureChoices(initial: Data, scope: "team" | "personal") {
       question.current = result.status === "question" ? instruction : "";
       if (result.status === "question") {
         setSummary(result.question ?? "What should Hive leave out?");
+      } else if (result.status === "saved" && result.policy) {
+        setProjectPolicy(result.policy);
+        setSummary(result.restatement);
+        setUndo(undefined);
       } else if (result.status === "saved" && result.rule) {
         setRules(current => [...current, result.rule!]);
         setSummary(`${description(result.rule)}${result.counts?.applied ? ` ${result.counts.applied} existing cell${result.counts.applied === 1 ? "" : "s"} changed.` : ""}${result.counts?.pending ? " Hive is checking older cells." : ""}${result.counts?.stopped ? " Hive stopped checking older cells because access or the saved choice changed." : ""}`);
@@ -118,7 +123,7 @@ function useCaptureChoices(initial: Data, scope: "team" | "personal") {
     });
   }
 
-  return { defaults, custom, text, summary, undo, pending, error, editable, needsReply: Boolean(question.current), setText, submit, toggle, remove, restore };
+  return { projectPolicy, defaults, custom, text, summary, undo, pending, error, editable, needsReply: Boolean(question.current), setText, submit, toggle, remove, restore };
 }
 
 type Choices = ReturnType<typeof useCaptureChoices>;
@@ -177,6 +182,37 @@ function ExclusionList({ custom, pending, editable, toggle, remove, personal }: 
   );
 }
 
+function ProjectSelection({ initial }: {initial: OwnerCapturePolicy}) {
+  const policy = useRef(initial);
+  const [include, setInclude] = useState(() => initial.include.join(", "));
+  const [exclude, setExclude] = useState(() => initial.exclude.join(", "));
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const patterns = (value: string) => value.split(",").map(item => item.trim()).filter(Boolean);
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const saved = await requestJson<OwnerCapturePolicy>(`${endpoint}/projects`, {include: patterns(include), exclude: patterns(exclude), revision: policy.current.revision, humanInstruction: `Learn privately from ${include || "no projects"}; exclude ${exclude || "none"}.`});
+      policy.current = saved;
+      setInclude(saved.include.join(", "));
+      setExclude(saved.exclude.join(", "));
+      setMessage("Saved your projects for private capture.");
+    } catch (caught) { setError(errorMessage(caught)); } finally { setPending(false); }
+  }
+  return <form className="stack" onSubmit={event => void save(event)}>
+    <Input label="Projects Hive may learn from" value={include} onChange={event => setInclude(event.target.value)} placeholder="github.com/team/project" maxLength={25700} disabled={pending} />
+    <Input label="Projects to exclude" value={exclude} onChange={event => setExclude(event.target.value)} placeholder="github.com/team/private-*" maxLength={25700} disabled={pending} />
+    <p className="small muted">Use comma-separated projects. Captures stay in your personal hive. With no projects selected, Hive captures nothing.</p>
+    <Button type="submit" loading={pending}>Save projects</Button>
+    {message ? <p role="status">{message}</p> : null}
+    {error ? <ErrorPanel message={error} /> : null}
+  </form>;
+}
+
 export function CaptureRules({ initial, scope = "team" }: { initial: Data; scope?: "team" | "personal" }) {
   const choices = useCaptureChoices(initial, scope);
   const personal = scope === "personal";
@@ -185,9 +221,10 @@ export function CaptureRules({ initial, scope = "team" }: { initial: Data; scope
     <section className="stack capture-page" aria-label={title}>
       <div>
         <h2>{title}</h2>
-        <p className="muted">{personal ? "Choose what your agents leave out. Your team's exclusions still apply." : "Choose what every member's agents leave out."}</p>
+        <p className="muted">{personal ? "Choose the projects your agents may learn from privately. Organisation sharing is separate." : "Choose what every member's agents leave out."}</p>
       </div>
       {!choices.editable ? <p className="small">Only team admins can change these choices.</p> : null}
+      {personal && choices.projectPolicy ? <ProjectSelection key={choices.projectPolicy.revision} initial={choices.projectPolicy} /> : null}
       <DefaultContent {...choices} />
       <CaptureFeedback {...choices} />
       <CaptureDescription {...choices} />

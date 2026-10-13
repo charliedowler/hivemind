@@ -1,5 +1,5 @@
 import type { HiveContext, LearningView } from "@hivemind/core";
-import { learningVisibleSql } from "./capture-visibility";
+import { audienceCellsSql, learningVisibleSql } from "./capture-visibility";
 import {
   recordEvent,
   currentOrigin,
@@ -30,12 +30,12 @@ export async function conflictCell(
   id: string,
 ): Promise<ConflictCell | null> {
   const rows =
-    await getSql()`SELECT l.*, m.name AS author FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+    await getSql()`SELECT l.*, m.name AS author FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`;
   if (!rows.length) return null;
   const row = rows[0];
-  const evidence = row.capture_redacted
+  const evidence = row.capture_redacted || row.is_share
     ? []
-    : await getSql()`SELECT e.payload, e.object_key, e.digest, e.created_at, v.content FROM learning_evidence e JOIN learning_pushes p ON p.id = e.push_id AND p.team_id = e.team_id LEFT JOIN learning_versions v ON v.learning_id = e.learning_id AND v.team_id = e.team_id AND v.revision = 1 WHERE e.learning_id = ${id} AND e.team_id = ${ctx.teamId} ORDER BY e.created_at DESC LIMIT 3`;
+    : await getSql()`SELECT e.payload, e.object_key, e.digest, e.created_at, v.content FROM learning_evidence e JOIN learning_pushes p ON p.id = e.push_id AND p.team_id = e.team_id LEFT JOIN learning_versions v ON v.learning_id = e.learning_id AND v.team_id = e.team_id AND v.revision = 1 WHERE e.learning_id = ${id} AND e.team_id = ${row.team_id} ORDER BY e.created_at DESC LIMIT 3`;
   const supplied = await Promise.all(
     evidence.map(async (e) => {
       let payload = e.payload;
@@ -122,6 +122,7 @@ export async function applyConflictDecision(
   const older = rows.find((row) => row.id === edge.older_id),
     newer = rows.find((row) => row.id === edge.newer_id);
   if (!older || !newer) throw new HiveNotFoundError();
+  if (older.owner_member_id !== newer.owner_member_id) throw new HiveError("Cells from different owners cannot merge or replace each other.", 403);
   if (edge.status !== "candidate") return null;
   if (
     older.revision !== edge.older_revision ||

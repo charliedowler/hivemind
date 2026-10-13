@@ -46,7 +46,7 @@ export function learningView(
     canConfirmCapture: Boolean(
       row.capture_flagged &&
       ctx &&
-      row.member_id === ctx.memberId &&
+      (row.member_id === ctx.memberId || row.owner_member_id === ctx.memberId) &&
       ["fresh", "confirmed"].includes(String(row.lifecycle)),
     ),
     captureCategories:

@@ -4,6 +4,7 @@ import {
   recordMutation,
   withActor,
 } from "../analytics/events";
+import { withdrawPublication } from "../project-sharing";
 import { scheduleKnowledge } from "../knowledge-tree";
 import type { HiveContext } from "@hivemind/core";
 import { lockLearningWrites } from "../lifecycle";
@@ -115,6 +116,13 @@ export async function moderateLearning(
   action: "delete" | "outdated",
 ): Promise<void> {
   await requireAdmin(ctx);
+  const publications = await getSql()`SELECT learning_id FROM learning_shares WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND withdrawn_at IS NULL`;
+  if (publications.length) {
+    if (action === "delete") await withdrawPublication(ctx, id, ctx.teamId);
+    else await getSql()`UPDATE learning_shares SET admin_outdated = true WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND withdrawn_at IS NULL`;
+    scheduleKnowledge(ctx);
+    return;
+  }
   await withActor(ctx, () =>
     analyticsTransaction(() =>
       getSql().begin(async (tx) => {
