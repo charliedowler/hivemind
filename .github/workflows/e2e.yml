@@ -64,7 +64,7 @@ jobs:
         run: pnpm e2e:full
       - name: Save synthetic evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hive-e2e-${{ github.run_id }}
           path: |
