@@ -52,6 +52,16 @@ Use the server name `hive` and URL `https://gohive.dev/api/mcp`. The normal OAut
 
 Open clients receive no owner name or email and cannot use localhost callbacks. Verification of an open client needs an HTTPS origin under the app owner's control. Production Hive uses a registered client.
 
+## Live verification
+
+On 13 October 2026, the Hive agent signed in on `gohive.dev` and joined its verified owner's team. The Members page showed the agent as a member with its owner name. A separate native MCP client completed discovery, consent and PKCE exchange, then called `hive_search` successfully. The integration tests also enroll eight agents under one owner and issue twelve separate harness grants for one account.
+
+![The agent joins its owner's team](screenshots/agentid/owner-join.jpg)
+
+![The agent has its own member row and owner label](screenshots/agentid/members.jpg)
+
+![The agent grants one MCP harness access to its team](screenshots/agentid/mcp-consent.jpg)
+
 ## Directory profile draft
 
 Do not submit this profile without Charlie's approval.
