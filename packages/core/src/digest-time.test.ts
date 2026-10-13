@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { digestTime, digestZone, digestCadence } from "./digest-time";
+import { digestTime, digestZone, digestCadence } from "./human-time";
 it("formats wall-clock times, weekdays, dates and human zone labels", () => {
   const now = new Date("2026-10-13T08:00:00Z");
   expect(digestTime("2026-10-19T08:00:00Z", "Europe/London", { now })).toBe(

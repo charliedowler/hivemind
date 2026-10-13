@@ -16,7 +16,7 @@ import {
   type DigestTransport,
 } from "./runner";
 import { proposeScheduleFromText } from "./proposal";
-import { digestInstruction } from "./instructions";
+import { digestInstruction, undoDigestFromWeb } from "./instructions";
 import type { HiveContext } from "@hivemind/core";
 const model = vi.hoisted(() => vi.fn());
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -390,6 +390,62 @@ describe.skipIf(!enabled)(
           input.timezone,
         ),
       ).rejects.toMatchObject({ status: 410 });
+    });
+    it("refuses stale undo and another admin's web undo", async () => {
+      vi.stubEnv("TYPESAFE_API_KEY", "");
+      model.mockResolvedValue({
+        stop_reason: "tool_use",
+        content: [
+          {
+            type: "tool_use",
+            name: "propose_digest",
+            input: {
+              action: "set",
+              schedule: input,
+              targetScheduleId: null,
+              clearInstruction: true,
+              enoughDetail: true,
+              timeSpecified: true,
+              missing: null,
+            },
+          },
+        ],
+      });
+      const ctx = {
+        teamId: a.teamId,
+        memberId: a.memberId,
+        isAdmin: true,
+        channelId: input.channelId,
+        threadTs: "1800000090.1",
+        messageTs: "1800000090.2",
+        requestText: "post every Monday at 9",
+      };
+      await digestInstruction(ctx, ctx.requestText, input.timezone);
+      const audit = (
+        await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`
+      )[0];
+      expect(
+        (await listSchedules(a.teamId, a.memberId)).find(
+          (s) => s.id === audit.schedule_id,
+        )?.undoId,
+      ).toBe(audit.id);
+      await expect(
+        undoDigestFromWeb(b, String(audit.id)),
+      ).rejects.toMatchObject({ status: 404 });
+      await saveSchedule(
+        a,
+        { ...input, time: "10:00" },
+        { id: input.channelId, name: "fixture" },
+        String(audit.schedule_id),
+      );
+      await expect(
+        undoDigestFromWeb(a, String(audit.id)),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(
+        (await listSchedules(a.teamId, a.memberId)).find(
+          (s) => s.id === audit.schedule_id,
+        )?.undoId,
+      ).toBeUndefined();
     });
   },
 );

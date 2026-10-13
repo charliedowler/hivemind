@@ -6,4 +6,12 @@ export * from "./normalize";
 export * from "./capture-rules";
 export * from "./digest";
 export * from "./digest-schedule";
-export { digestTime, digestZone, digestCadence } from "./digest-time";
+export { digestTime, digestZone, digestCadence } from "./human-time";
+export {
+  formatHumanDate,
+  formatHumanClock,
+  formatHumanDateTime,
+  formatRecency,
+  timeZoneLabel,
+  humanizeTimeText,
+} from "./human-time";

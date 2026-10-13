@@ -1,4 +1,4 @@
-import { digestTime } from "./digest-time";
+import { digestTime } from "./human-time";
 export type DigestAuthor = { name: string; slackId?: string | null };
 export type DigestItem = {
   id: string;

@@ -44,15 +44,66 @@ export function decisivenessDecision(
     reason: "Clear, specific instruction from an authorized admin.",
   };
 }
+export function decideInstruction(
+  text: string,
+  actionType: string | undefined,
+  allowed: boolean,
+) {
+  if (!allowed) return decisivenessDecision(false, null);
+  const request = text.trim().replace(/\s+/g, " ");
+  if (/^(?:maybe|perhaps|what if|I wonder|we could|we should)\b/i.test(request))
+    return {
+      act: false,
+      reason: "Tell Hive what to change when you want it to act.",
+    };
+  if (/^(?:how|why|what|when|where|does|is|are)\b/i.test(request))
+    return {
+      act: false,
+      reason: "Tell Hive what to change when you want it to act.",
+    };
+  if (
+    actionType === "undo" &&
+    /^(?:please )?undo(?: (?:that|it|the last action|please))?[.!]?$/i.test(
+      request,
+    )
+  )
+    return { act: true, reason: "Explicit undo in this thread." };
+  const imperative =
+    /^(?:please )?(?:set up|schedule|create|post|send|ignore|drop|redact|flag|pause|disable)\b/i.test(
+      request,
+    );
+  if (!imperative) return null;
+  if (
+    actionType === "digest" &&
+    /\b(?:every|each|daily|weekly|weekdays|fortnightly|monthly)\b/i.test(
+      request,
+    ) &&
+    /\b(?:at \d{1,2}\b|\d{1,2}:\d{2}|\d{1,2} ?(?:am|pm))\b/i.test(request)
+  )
+    return { act: true, reason: "Explicit schedule with cadence and time." };
+  if (actionType === "digest_pause" && /\bdgs_[a-z2-7]{12}\b/.test(request))
+    return { act: true, reason: "Explicit pause of an identified schedule." };
+  if (
+    actionType === "capture" &&
+    (/\bkeyword\s+[a-z0-9_-]+/i.test(request) ||
+      /\b(?:credentials|personal info|customer data|non-work)\b/i.test(request))
+  )
+    return {
+      act: true,
+      reason: "Explicit capture instruction with a named target.",
+    };
+  return null;
+}
 export async function decideDecisiveness(text: string, ctx: SlackToolContext) {
   const members =
     await getSql()`SELECT role FROM members WHERE id=${ctx.memberId} AND team_id=${ctx.teamId} AND removed_at IS NULL`;
   const allowed = members[0]?.role === "admin";
-  if (!allowed || !process.env.TYPESAFE_API_KEY)
-    return decisivenessDecision(allowed, null);
+  const deterministic = decideInstruction(text, ctx.actionType, allowed);
+  if (deterministic) return deterministic;
+  if (!process.env.TYPESAFE_API_KEY) return decisivenessDecision(allowed, null);
   try {
     const result = await new TypeSafeClient({
-      timeout: 1000,
+      timeout: 500,
       retry: { maxRetries: 0 },
       logLevel: "off",
     }).systemOne({

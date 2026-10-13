@@ -7,6 +7,9 @@ vi.mock("@anthropic-ai/sdk", () => ({
     return { messages: { create } };
   }),
 }));
+vi.mock("@/server/digests/connection", () => ({
+  slackMemberTimezone: async () => "Europe/London",
+}));
 const ctx = {
   teamId: "team_test",
   memberId: "member_test",
@@ -41,6 +44,7 @@ describe("Slack tool routing", () => {
       {
         ...ctx,
         messageTs: ctx.threadTs,
+        timeZone: "Europe/London",
         instructionText: "Show recent cells",
         requestText: "Show recent cells",
         history: [],

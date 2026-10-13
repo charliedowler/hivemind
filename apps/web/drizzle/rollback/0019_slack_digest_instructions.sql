@@ -1,5 +1,5 @@
-SET lock_timeout = '5s';
-SET statement_timeout = '30s';
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '30s';
 DO $$ BEGIN
  IF EXISTS (SELECT 1 FROM slack_digest_instructions) THEN
   RAISE EXCEPTION 'Digest instruction history exists; rollback refused';
