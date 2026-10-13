@@ -41,6 +41,10 @@ async function hookSetup(ctx, machine, selected = true) {
   await ctx.artifact('hook-transcript.jsonl', transcript);
   await ctx.request('/api/app/capture-rules/effective', { token: owner.credential });
   await ctx.request('/api/app/capture', { method: 'GET', token: owner.credential });
+  const version = await ctx.request('/api/cli/version');
+  assert.equal(version.status, 200, 'Version metadata must be compiled before timed hooks');
+  const telemetry = await ctx.request('/api/analytics/hook', { method: 'GET' });
+  assert.equal(telemetry.status, 405, 'Hook telemetry must be compiled before timed hooks');
   return { owner, selection, input: { session_id: randomUUID(), transcript_path: path, agent_transcript_path: path } };
 }
 
