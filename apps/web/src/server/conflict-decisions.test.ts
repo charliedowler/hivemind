@@ -17,6 +17,8 @@ import {
   listDecisions,
   reverseDecision,
   retryRelatedConflicts,
+  hasDecisionSnapshots,
+  updateDecisionReason,
 } from "./conflict-decisions";
 import {
   judgeConflict,
@@ -25,6 +27,7 @@ import {
   type ConflictJev,
 } from "./conflict-judgments";
 import { judgeMemory } from "./memory-judgments";
+import { runReversibleAction, undoLastAction } from "./slack/actions";
 import { GET, POST } from "../app/api/app/conflicts/route";
 const auth = vi.hoisted(() => ({ ctx: null as HiveContext | null }));
 vi.mock("./auth", async (original) => ({
@@ -123,6 +126,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     });
     afterAll(async () => {
       for (const table of [
+        "slack_tool_actions",
         "feedback",
         "learning_pushes",
         "ask_log",
@@ -208,7 +212,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await expect(
           reverseDecision(b, record.id, "Other team."),
         ).rejects.toThrow("not found");
-        await reverseDecision(a, record.id, "The evidence needs a correction.");
+        const reversed = await reverseDecision(a, record.id, "The evidence needs a correction.");
         expect((await getLearning(a, old.id))?.lifecycle).toBe("fresh");
         expect((await getLearning(a, record.newer.id))?.lifecycle).toBe(
           "fresh",
@@ -229,6 +233,21 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await expect(reverseDecision(a, record.id, "Again.")).rejects.toThrow(
           "already reversed",
         );
+        await expect(reverseDecision(b, reversed.id)).rejects.toThrow("not found");
+        await expect(reverseDecision(member, reversed.id)).rejects.toThrow("admin");
+        const undone = await reverseDecision(a, reversed.id);
+        expect(undone.decision).toBe(decision);
+        expect((await getLearning(a, old.id))?.lifecycle).toBe(oldCell?.lifecycle);
+        expect((await getLearning(a, old.id))?.pushCount).toBe(oldCell?.pushCount);
+        expect((await getLearning(a, record.newer.id))?.lifecycle).toBe(newCell?.lifecycle);
+        const edges = await getSql()`SELECT status FROM learning_supersessions WHERE id = (SELECT edge_id FROM conflict_decisions WHERE id = ${record.id}) AND team_id = ${a.teamId}`;
+        expect(edges[0].status).toBe(decision === "supersede" ? "accepted" : "rejected");
+        if (decision === "keep_old") {
+          const moved = await getSql()`SELECT learning_id, merged FROM learning_pushes WHERE id = ANY((SELECT moved_push_ids FROM conflict_decisions WHERE id = ${record.id})::text[]) AND team_id = ${a.teamId}`;
+          expect(moved).toHaveLength(1);
+          expect(moved[0]).toMatchObject({ learning_id: old.id, merged: true });
+        }
+        await expect(reverseDecision(a, reversed.id)).rejects.toThrow("already reversed");
       });
     it("retries an undecided candidate on a related push without a member vote", async () => {
       const { old, record } = await pair("undecided", "Retry setting");
@@ -258,6 +277,43 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await expect(
         reverseDecision(a, record.id, "Unsafe reversal."),
       ).rejects.toThrow("changes");
+    });
+    it("records Slack reversal and its inverse atomically without replaying the mutation", async () => {
+      const { old, record } = await pair("supersede", "Slack reverse receipt");
+      const context = { ...a, isAdmin: true, channelId: "CDECISIONS", threadTs: "1800000000.10", messageTs: "1800000000.11" };
+      const result = await runReversibleAction(context, "hive_reverse_decision", async (tx) => {
+        const reversed = await reverseDecision(a, record.id, undefined, tx, "from Slack");
+        return { inverse: { kind: "decision_reversed", id: reversed.id }, text: "Decision reversed.", undo: "restore the decision" };
+      });
+      expect(result.text).toBe("Decision reversed.");
+      expect((await getLearning(a, old.id))?.lifecycle).toBe("fresh");
+      expect(await runReversibleAction(context, "hive_reverse_decision", async () => { throw new Error("A replay must not mutate"); })).toEqual(result);
+      expect(await undoLastAction(context)).toEqual({ text: "Decision reapplied." });
+      expect((await getLearning(a, old.id))?.lifecycle).toBe("superseded");
+      expect((await undoLastAction(context)).text).toContain("already undone");
+    });
+    it("reverses without a reason and allows an optional audit correction", async () => {
+      const { record } = await pair("keep_both", "Default audit reason");
+      const response = await POST(new Request("https://hive.test/api/app/conflicts", { method: "POST", body: JSON.stringify({ id: record.id, action: "reverse" }) }));
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.record).toMatchObject({ decision: "reversed", reason: "Reversed by A on the dashboard", canReverse: true, canEditReason: true });
+      await updateDecisionReason(a, result.id, "Corrected audit note.");
+      expect((await listDecisions(a, { id: result.id }))[0].reason).toBe("Corrected audit note.");
+      await expect(updateDecisionReason(b, result.id, "Other team.")).rejects.toThrow("not found");
+      await expect(updateDecisionReason(member, result.id, "Member note.")).rejects.toThrow("not found");
+    });
+    it("rejects undo after the reversed cell changes", async () => {
+      const { old, record } = await pair("keep_both", "Stale undo");
+      const reversed = await reverseDecision(a, record.id);
+      await editLearning(a, old.id, { revision: 1, body: "Changed after reversal." });
+      await expect(reverseDecision(a, reversed.id)).rejects.toMatchObject({ status: 409 });
+    });
+    it("lists legacy decisions without snapshots as not reversible", async () => {
+      const { record } = await pair("keep_both", "Legacy snapshots");
+      await getSql()`UPDATE conflict_decisions SET model = 'legacy', before_state = '[]'::jsonb, after_state = '[]'::jsonb WHERE id = ${record.id} AND team_id = ${a.teamId}`;
+      expect((await listDecisions(a, { id: record.id }))[0].canReverse).toBe(false);
+      await expect(reverseDecision(a, record.id)).rejects.toMatchObject({ status: 404 });
     });
     it("serves the log with scoped filters and rejects the old vote API", async () => {
       const { record } = await pair("keep_both", "API filter");
@@ -297,3 +353,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
     });
   },
 );
+
+it("recognizes missing or mismatched legacy snapshots without throwing", () => {
+  expect(hasDecisionSnapshots({})).toBe(false);
+  expect(hasDecisionSnapshots({ before_state: [], after_state: [] })).toBe(false);
+  expect(hasDecisionSnapshots({ before_state: null, after_state: {} })).toBe(false);
+  const cells = [{ id: "a", revision: 1, lifecycle: "fresh" }, { id: "b", revision: 1, lifecycle: "fresh" }];
+  expect(hasDecisionSnapshots({ before_state: cells, after_state: cells })).toBe(true);
+  expect(hasDecisionSnapshots({ before_state: cells, after_state: cells.toReversed() })).toBe(false);
+});

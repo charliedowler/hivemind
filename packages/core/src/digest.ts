@@ -1,4 +1,4 @@
-import { formatHumanDate } from "./human-time";
+import { digestTime } from "./human-time";
 export type DigestAuthor = { name: string; slackId?: string | null };
 export type DigestItem = {
   id: string;
@@ -79,7 +79,8 @@ export function composeDigest(
   timezone: string,
   base = "https://gohive.dev",
 ): ComposedDigest {
-  const date = (s: string) => formatHumanDate(s, { timeZone: timezone });
+  const date = (s: string) =>
+    digestTime(s, timezone, { mode: "date", now: new Date(data.until) });
   const counts = {
     learnings: include.learnings ? data.learnings.length : 0,
     insights: include.insights ? data.insights.length : 0,

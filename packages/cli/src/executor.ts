@@ -73,27 +73,33 @@ function findHive(options: ExecutorOptions): { checked: boolean; integration?: R
   return { checked: true };
 }
 
+function executorHealth(options: ExecutorOptions, integration: RemoteIntegration): boolean {
+  const response = call(options, ['coreTools', 'connections', 'list'], { integration: integration.slug || 'hive' });
+  const connections = response?.ok && Array.isArray(response.data?.connections) ? response.data.connections as { integration?: string; owner?: 'org' | 'user'; name?: string; expiresAt?: number; lastHealth?: { status?: string } }[] : [];
+  for (const connection of connections.filter(connection => connection.integration === (integration.slug || 'hive'))) {
+    if (!connection.owner || !connection.name) continue;
+    const refreshed = call(options, ['coreTools', 'connections', 'refresh'], { owner: connection.owner, name: connection.name, integration: integration.slug || 'hive' });
+    const health = refreshed?.data?.lastHealth as { status?: string } | undefined;
+    const tools = refreshed?.data?.tools as { name?: string }[] | undefined;
+    if (refreshed?.ok && health?.status === 'healthy' && Array.isArray(tools) && tools.some(tool => tool.name === 'hive_search') && tools.some(tool => tool.name === 'hive_push')) return true;
+  }
+  return false;
+}
+
 export function doctorExecutor(options: ExecutorOptions): boolean {
   const log = options.log || console.log;
   const found = detectExecutor(options);
-  if (!found.detected) { log('Executor: Not detected. Use --executor-url with your organisation MCP endpoint'); return false; }
-  log(`Executor: ${found.cli ? found.version : 'Found in the agent MCP configuration'}`);
-  if (found.endpoint) log(`Executor endpoint: ${found.endpoint}`);
+  if (!found.detected) { log('Executor: Not detected. Run npx gohive install --client executor --executor-url <organisation MCP URL>'); return false; }
   if (!found.cli || !/^executor v1\./.test(found.version || '')) {
-    log('Executor Hive connection: Check the Hive account in the web dashboard');
+    log(`Executor: Connection check needed. Open ${executorSetupLink(found.endpoint)}`);
     return false;
   }
   const { checked, integration } = findHive(options);
-  if (!checked) { log('Executor Hive integration: Could not check the current CLI profile'); return false; }
-  if (!integration) { log('Executor Hive integration: Missing. Run npx gohive install --client executor'); return false; }
-  if ((integration.config?.endpoint || integration.endpoint)?.replace(/\/$/, '') !== url) { log('Executor Hive integration: The server URL differs. Check the existing integration before changing it'); return false; }
-  const slug = integration.slug || 'hive';
-  log(`Executor Hive integration: ${slug}`);
-  const response = call(options, ['coreTools', 'connections', 'list'], {});
-  const connections = response?.ok && Array.isArray(response.data?.connections) ? response.data.connections as { integration?: string; lastHealth?: { status?: string }; template?: string }[] : [];
-  const hive = connections.filter(connection => connection.integration === slug);
-  const healthy = hive.some(connection => connection.lastHealth?.status === 'healthy');
-  log(`Executor Hive connection: ${healthy ? 'Healthy in the current CLI profile' : hive.length ? 'Needs sign-in or a health check' : 'Not connected. Finish OAuth in the dashboard'}`);
+  if (!checked) { log('Executor: Profile check failed. Run executor login'); return false; }
+  if (!integration) { log('Executor: Hive is missing. Run npx gohive install --client executor'); return false; }
+  if ((integration.config?.endpoint || integration.endpoint)?.replace(/\/$/, '') !== url) { log('Executor: The Hive URL differs. Open the existing integration and check its server URL'); return false; }
+  const healthy = executorHealth(options, integration);
+  log(`Executor: ${healthy ? 'Connected' : 'Sign-in or connection check needed. Open the Hive account in Executor'}`);
   return healthy;
 }
 
@@ -101,34 +107,70 @@ export function installExecutor(options: ExecutorOptions) {
   const log = options.log || console.log;
   const found = detectExecutor(options);
   let link = executorSetupLink(found.endpoint);
-  log('Bring your organisation to the hive');
-  if (found.cli) log(`Executor CLI: ${found.version}`);
-  if (found.endpoint) log(`Executor endpoint: ${found.endpoint}`);
-  else log('Choose your organisation after opening Executor. Use --executor-url to open its add screen directly');
   if (found.cli && /^executor v1\./.test(found.version || '')) {
+    const { checked, integration } = findHive(options);
+    if (integration && (integration.config?.endpoint || integration.endpoint)?.replace(/\/$/, '') !== url) {
+      log('Executor: The existing Hive URL differs. Open the existing integration and check its server URL');
+      return { link, detection: found };
+    }
+    if (integration && new URL(link).pathname.endsWith('/integrations/add/mcp')) {
+      const existing = new URL(link);
+      existing.pathname = existing.pathname.replace('/integrations/add/mcp', `/integrations/${encodeURIComponent(integration.slug || 'hive')}`);
+      existing.search = '';
+      link = existing.href;
+    }
+    if (integration && executorHealth(options, integration)) {
+      log('Executor: Connected');
+      return { link, detection: found };
+    }
     const probe = call(options, ['mcp', 'probeEndpoint'], { endpoint: url });
-    if (probe?.ok && probe.data?.requiresOAuth === false) log('Hive browser sign-in is not live yet. Wait for the OAuth release; do not paste a key');
-    const current = findHive(options).integration;
-    if (current) {
-      log('A Hive integration already exists. Open it and check its URL; keep its existing accounts and policies');
-      if (new URL(link).pathname.endsWith('/integrations/add/mcp')) { const existing = new URL(link); existing.pathname = existing.pathname.replace('/integrations/add/mcp', `/integrations/${encodeURIComponent(current.slug || 'hive')}`); existing.search = ''; link = existing.href; }
+    if (probe?.ok && probe.data?.requiresOAuth === false) {
+      log('Executor: Hive OAuth is unavailable. Retry npx gohive install --client executor when OAuth is available');
+      return { link, detection: found };
+    }
+    let slug = integration?.slug || 'hive';
+    let registered = !!integration;
+    if (options.open && checked && !integration && probe?.ok && probe.data?.requiresOAuth === true) {
+      const added = call(options, ['mcp', 'addServer'], { name: 'Hive', slug: 'hive', endpoint: url, transport: 'remote', remoteTransport: 'streamable-http', auth: { kind: 'oauth2' } });
+      if (added?.ok && typeof added.data?.slug === 'string') { slug = added.data.slug; registered = true; }
+    }
+    if (registered) {
+      const parsed = new URL(link);
+      if (parsed.pathname.endsWith('/integrations/add/mcp')) {
+        parsed.pathname = parsed.pathname.replace('/integrations/add/mcp', `/integrations/${encodeURIComponent(slug)}`);
+        parsed.search = '';
+        link = parsed.href;
+      }
+    }
+    const metadata = call(options, ['coreTools', 'oauth', 'probe'], { url });
+    if (metadata?.ok && options.open && registered) {
+      const clients = call(options, ['coreTools', 'oauth', 'clients', 'list'], {});
+      const entries = clients?.ok && Array.isArray(clients.data?.clients) ? clients.data.clients as { owner: string; slug: string; resource?: string }[] : [];
+      let client = entries.find(client => client.owner === 'user' && client.resource === url);
+      if (!client && clients?.ok && typeof metadata.data?.registrationEndpoint === 'string') {
+        const created = call(options, ['coreTools', 'oauth', 'clients', 'registerDynamic'], {
+          owner: 'user', slug: 'hive-installer', originIntegration: slug, clientName: 'Hive for Executor',
+          issuer: metadata.data.issuer, registrationEndpoint: metadata.data.registrationEndpoint,
+          authorizationUrl: metadata.data.authorizationUrl, tokenUrl: metadata.data.tokenUrl,
+          resource: metadata.data.resource, scopes: metadata.data.scopesSupported || ['hive'],
+          tokenEndpointAuthMethodsSupported: metadata.data.tokenEndpointAuthMethodsSupported,
+        });
+        if (created?.ok && typeof created.data?.client === 'string') client = { owner: 'user', slug: created.data.client };
+      }
+      if (client) {
+        const started = call(options, ['coreTools', 'oauth', 'start'], {
+          client: client.slug, clientOwner: client.owner, owner: 'user', name: 'hive', integration: slug, template: 'oauth2',
+        });
+        if (started?.ok && typeof started.data?.authorizationUrl === 'string') link = started.data.authorizationUrl;
+      }
     }
   }
-  log(`Open Executor: ${link}`);
-  log('1. Sign in and choose the organisation that your agent uses');
-  log('2. Open Add MCP integration. The organisation link fills Server URL for you');
-  log(`3. Set Display Name to Hive, Namespace to hive, and Server URL to ${url}`);
-  log('4. Use OAuth browser sign-in under How does this server authenticate?. Leave request headers empty');
-  log('5. Click Add integration. On Hive, add a connection and complete the browser sign-in and Hive consent');
-  log('6. Confirm that Hive tools are listed. Run npx gohive doctor --client executor');
-  log('For the newer Executor dashboard, use Apps, add an MCP server by URL, then connect its account on the Accounts tab');
-  log('The Executor API supports mcp.addServer, followed by oauth.probe and oauth.start. Its v1 CLI exposes those tools through executor call');
-  log('Choose the Hive account and permissions in the browser. Your saved Executor credentials stay private');
+  log(`Executor: Sign-in needed. Open ${link}`);
   if (options.open) {
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
     const args = process.platform === 'win32' ? ['/c', 'start', '', link] : [link];
     const browser = spawn(command, args, { stdio: 'ignore', detached: true });
-    browser.on('error', () => log('Open the printed link in your browser'));
+    browser.on('error', () => {});
     browser.unref();
   }
   return { link, detection: found };

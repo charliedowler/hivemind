@@ -46,6 +46,8 @@ describe("Slack tool routing", () => {
         messageTs: ctx.threadTs,
         timeZone: "Europe/London",
         instructionText: "Show recent cells",
+        requestText: "Show recent cells",
+        history: [],
       },
       {},
     );

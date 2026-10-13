@@ -8,8 +8,8 @@ describe.skipIf(!enabled)("capture instruction migration", () => {
   it("replays safely, replaces an empty local proposal table and preserves populated audits on rollback", async () => {
     const sql = postgres(process.env.DATABASE_URL!, {prepare: false, max: 1, onnotice: () => {}});
     const schema = newId("instruction_migration");
-    const migration = await readFile(new URL("../../drizzle/0019_capture_rule_instructions.sql", import.meta.url), "utf8");
-    const rollback = await readFile(new URL("../../drizzle/rollback/0019_capture_rule_instructions.sql", import.meta.url), "utf8");
+    const migration = await readFile(new URL("../../drizzle/0020_capture_rule_instructions.sql", import.meta.url), "utf8");
+    const rollback = await readFile(new URL("../../drizzle/rollback/0020_capture_rule_instructions.sql", import.meta.url), "utf8");
     try {
       await sql`CREATE SCHEMA ${sql(schema)}`;
       await sql`SET search_path TO ${sql(schema)}`;

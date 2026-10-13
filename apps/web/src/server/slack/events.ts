@@ -265,7 +265,13 @@ export async function handleMessage(
         ) &&
         !!message.thread_ts &&
         (await hasThreadAction(teamId, channel, thread));
-      const prompted = mentioned || direct || undoRequest;
+      const digestFollowup =
+        actor && thread !== message.ts
+          ? await (
+              await import("../digests/instructions")
+            ).isDigestFollowup(teamId, actor.memberId, channel, thread)
+          : false;
+      const prompted = mentioned || direct || undoRequest || digestFollowup;
       const cells =
         actor && !prompted
           ? (
@@ -382,9 +388,8 @@ export async function handleMessage(
             });
       if (reply.silent && mentioned)
         reply = {
-          text: /^(?:thanks|thank you|cheers)\b/i.test(stripped)
-            ? "You’re welcome."
-            : "No change made.",
+          text: "",
+          react: "+1",
         };
       await sql`UPDATE slack_jobs SET payload=${sql.json({ decision, reply } as never)} WHERE team_id=${teamId} AND id=${receipt[0].id}`;
       if (reply.react) {

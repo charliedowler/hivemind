@@ -68,6 +68,8 @@ export function decideInstruction(
     )
   )
     return { act: true, reason: "Explicit undo in this thread." };
+  if (actionType === "decision_reverse" && /^(?:please )?reverse\b.*\bdec_[a-z2-7]{12}\b/i.test(request))
+    return { act: true, reason: "Explicit reversal of an identified decision." };
   const imperative =
     /^(?:please )?(?:set up|schedule|create|post|send|ignore|drop|redact|flag|pause|disable)\b/i.test(
       request,
@@ -131,7 +133,9 @@ export async function decideDecisiveness(text: string, ctx: SlackToolContext) {
               ? "Does request identify the existing schedule to pause using its exact schedule ID?"
               : ctx.actionType === "capture"
                 ? "Does request specify what content to ignore, redact or flag? An exact keyword or recognizable content category is specific enough. Ignore means drop future captures."
-                : ctx.actionType === "undo"
+                : ctx.actionType === "decision_reverse"
+                  ? "Does request identify the conflict decision to reverse by its exact decision ID or an unambiguous decision in this thread?"
+                  : ctx.actionType === "undo"
                   ? "Does request clearly ask to undo the previous action in this same thread? Undo on its own is specific because the thread identifies the last action."
                   : "Does request name a concrete change Hive can make without guessing, or explicitly ask to undo the previous action in this thread?",
         ),

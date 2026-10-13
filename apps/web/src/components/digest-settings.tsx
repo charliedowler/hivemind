@@ -2,12 +2,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button, Card, Sprite } from "@hivemind/design-system";
-import {
-  formatHumanDateTime,
-  formatHumanClock,
-  timeZoneLabel,
-  type ComposedDigest,
-} from "@hivemind/core";
+import { digestTime, digestZone, digestCadence } from "@hivemind/core";
+import type { ComposedDigest } from "@hivemind/core";
 import type {
   DigestChannel,
   DigestSchedule,
@@ -18,9 +14,7 @@ import { DigestForm } from "./digest-form";
 import { DigestBlocks } from "./digest-blocks";
 import { ErrorPanel } from "./primitives";
 function nextDate(schedule: DigestSchedule) {
-  return formatHumanDateTime(schedule.nextDueAt, {
-    timeZone: schedule.timezone,
-  });
+  return `${digestTime(schedule.nextDueAt, schedule.timezone, { relative: true })} (${digestZone(schedule.timezone)})`;
 }
 export type DigestSettingsData = {
   schedules: DigestSchedule[];
@@ -39,7 +33,7 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
     setData(await requestJson<DigestSettingsData>("/api/app/digests"));
     setEditing(null);
   }
-  async function action(id: string, kind: "preview" | "post") {
+  async function action(id: string, kind: "preview" | "post" | "undo") {
     setPending(true);
     setError("");
     setNotice("");
@@ -51,7 +45,14 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
             id,
           }),
         );
-      else {
+      else if (kind === "undo") {
+        const result = await requestJson<{ text: string }>("/api/app/digests", {
+          action: kind,
+          id,
+        });
+        setNotice(result.text);
+        await refresh();
+      } else {
         const result = await requestJson<{ status: string; error?: string }>(
           "/api/app/digests",
           { action: kind, id },
@@ -137,16 +138,7 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
                 </span>
               </div>
               <p>
-                {schedule.cadence === "weekly" ||
-                schedule.cadence === "fortnightly"
-                  ? `${schedule.cadence === "weekly" ? "Weekly" : "Fortnightly"} on ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][schedule.weekday]}`
-                  : schedule.cadence === "monthly"
-                    ? `Monthly on day ${schedule.monthDay}`
-                    : schedule.cadence === "weekdays"
-                      ? "Weekdays"
-                      : "Daily"}{" "}
-                at {formatHumanClock(schedule.time)} (
-                {timeZoneLabel(schedule.timezone)})
+                {digestCadence(schedule)} ({digestZone(schedule.timezone)})
               </p>
               <p className="muted">
                 {schedule.enabled
@@ -178,6 +170,17 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
                 </Button>
                 {data.isAdmin ? (
                   <>
+                    {schedule.undoId ? (
+                      <Button
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => {
+                          void action(schedule.undoId!, "undo");
+                        }}
+                      >
+                        Undo
+                      </Button>
+                    ) : null}
                     <Button
                       variant="ghost"
                       onClick={() => setEditing(schedule.id)}
@@ -226,7 +229,10 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
                             : "Failed"}
                   </span>
                 </div>
-                <p className="muted">{formatHumanDateTime(post.at)}</p>
+                <p className="muted">
+                  {digestTime(post.at, post.timezone, { relative: true })} (
+                  {digestZone(post.timezone)})
+                </p>
                 {post.permalink ? (
                   <a href={post.permalink}>Open Slack post</a>
                 ) : null}

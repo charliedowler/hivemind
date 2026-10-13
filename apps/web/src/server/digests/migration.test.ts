@@ -55,3 +55,41 @@ it.skipIf(!url)(
 it.skipIf(!url)("refuses to remove populated digest history", async () => {
   await expect(dryRun(true)).rejects.toThrow("Digest records exist.");
 });
+it.skipIf(!url)(
+  "applies instruction migration twice and rolls back its empty audit",
+  async () => {
+    const sql = postgres(url!, { max: 1, onnotice: () => {} });
+    try {
+      await expect(
+        sql.begin(async (tx) => {
+          const schema = newId("digest_audit");
+          await tx`CREATE SCHEMA ${tx(schema)}`;
+          await tx`SELECT set_config('search_path',${schema + ",public"},true)`;
+          await tx.unsafe(await forward());
+          await tx`CREATE TABLE slack_decisions (LIKE public.slack_decisions INCLUDING ALL)`;
+          const body = await readFile(
+            new URL(
+              "../../../drizzle/0019_slack_digest_instructions.sql",
+              import.meta.url,
+            ),
+            "utf8",
+          );
+          await tx.unsafe(body);
+          await tx.unsafe(body);
+          await tx.unsafe(
+            await readFile(
+              new URL(
+                "../../../drizzle/rollback/0019_slack_digest_instructions.sql",
+                import.meta.url,
+              ),
+              "utf8",
+            ),
+          );
+          throw new Error("Instruction rollback passed.");
+        }),
+      ).rejects.toThrow("Instruction rollback passed.");
+    } finally {
+      await sql.end();
+    }
+  },
+);

@@ -13,6 +13,7 @@ import { recordEvent } from "../analytics/events";
 export type DigestChannel = { id: string; name: string };
 export type DigestSchedule = DigestScheduleInput & {
   id: string;
+  undoId?: string;
   teamId: string;
   channelName: string;
   createdBy: string;
@@ -25,6 +26,7 @@ export type DigestSchedule = DigestScheduleInput & {
 export function scheduleView(r: Record<string, unknown>): DigestSchedule {
   return {
     id: String(r.id),
+    ...(r.undo_id ? { undoId: String(r.undo_id) } : {}),
     teamId: String(r.team_id),
     channelId: String(r.channel_id),
     channelName: String(r.channel_name),
@@ -49,9 +51,9 @@ export function scheduleView(r: Record<string, unknown>): DigestSchedule {
       : null,
   };
 }
-export async function listSchedules(teamId: string) {
+export async function listSchedules(teamId: string, memberId?: string) {
   return (
-    await getSql()`SELECT * FROM slack_digest_schedules WHERE team_id=${teamId} ORDER BY created_at,id`
+    await getSql()`SELECT s.*,(SELECT i.id FROM slack_digest_instructions i WHERE i.team_id=s.team_id AND i.schedule_id=s.id AND i.member_id=${memberId ?? ""} AND i.action IN ('set','disable') AND i.reversed_at IS NULL AND i.created_at>now()-interval '1 hour' AND i.after_revision=s.instruction_revision ORDER BY i.created_at DESC LIMIT 1) AS undo_id FROM slack_digest_schedules s WHERE s.team_id=${teamId} AND s.removed_at IS NULL ORDER BY s.created_at,s.id`
   ).map(scheduleView);
 }
 export async function getSchedule(teamId: string, id: string) {
@@ -117,6 +119,9 @@ export async function saveSchedule(
       skip_empty: data.skipEmpty,
       next_due_at: next,
       updated_at: new Date(),
+      instruction_revision: existing
+        ? Number(existing.instruction_revision) + 1
+        : 1,
     };
     const rows = existing
       ? await tx`UPDATE slack_digest_schedules SET ${tx(values)} WHERE id=${scheduleId} AND team_id=${ctx.teamId} RETURNING *`
@@ -159,17 +164,18 @@ export async function disableSchedule(ctx: HiveContext, id: string) {
         "An update is being posted. Wait before disabling this schedule.",
         409,
       );
-    await tx`UPDATE slack_digest_schedules SET enabled=false,updated_at=now() WHERE team_id=${ctx.teamId} AND id=${id}`;
+    await tx`UPDATE slack_digest_schedules SET enabled=false,updated_at=now(),instruction_revision=instruction_revision+1 WHERE team_id=${ctx.teamId} AND id=${id}`;
   });
   return result;
 }
 export async function digestHistory(teamId: string) {
   const rows =
-    await getSql()`SELECT p.id,p.schedule_id,p.status,p.started_at,p.posted_at,p.permalink,p.counts,p.error,s.channel_name FROM slack_digest_posts p JOIN slack_digest_schedules s ON s.id=p.schedule_id AND s.team_id=p.team_id WHERE p.team_id=${teamId} ORDER BY p.started_at DESC LIMIT 10`;
+    await getSql()`SELECT p.id,p.schedule_id,p.status,p.started_at,p.posted_at,p.permalink,p.counts,p.error,s.channel_name,s.timezone FROM slack_digest_posts p JOIN slack_digest_schedules s ON s.id=p.schedule_id AND s.team_id=p.team_id WHERE p.team_id=${teamId} ORDER BY p.started_at DESC LIMIT 10`;
   return rows.map((r) => ({
     id: String(r.id),
     scheduleId: String(r.schedule_id),
     channelName: String(r.channel_name),
+    timezone: String(r.timezone),
     status: String(r.status),
     at: (r.posted_at ?? r.started_at).toISOString() as string,
     permalink: r.permalink as string | null,

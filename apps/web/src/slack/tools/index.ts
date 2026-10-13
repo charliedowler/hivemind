@@ -1,3 +1,4 @@
+import { decisionTools } from "./decisions";
 export { reactToSlack } from "./react";
 export type { SlackReactResult } from "./react";
 export { slackToolReply } from "./reply";
@@ -53,6 +54,7 @@ const save = z.strictObject({
   wholeThread: z.boolean(),
 });
 export const slackTools: SlackTool[] = [
+  ...decisionTools,
   ...digestTools,
   ...captureRuleTools,
   {
@@ -66,6 +68,31 @@ export const slackTools: SlackTool[] = [
         try {
           const capture = await dispatchCaptureUndo(ctx);
           if (capture) return capture;
+        } catch (error) {
+          if (error instanceof HiveError) return { text: error.message };
+          throw error;
+        }
+      }
+      if (
+        await (
+          await import("@/server/digests/instructions")
+        ).isDigestFollowup(
+          ctx.teamId,
+          ctx.memberId,
+          ctx.channelId,
+          ctx.threadTs,
+        )
+      ) {
+        try {
+          return await (
+            await import("@/server/digests/instructions")
+          ).digestInstruction(
+            ctx,
+            ctx.instructionText ?? "undo",
+            await (
+              await import("@/server/digests/connection")
+            ).slackMemberTimezone(ctx.teamId, ctx.memberId),
+          );
         } catch (error) {
           if (error instanceof HiveError) return { text: error.message };
           throw error;

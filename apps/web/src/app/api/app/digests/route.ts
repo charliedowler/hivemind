@@ -1,3 +1,4 @@
+import { undoDigestFromWeb } from "@/server/digests/instructions";
 import { z } from "zod";
 import { authenticated, readJson } from "@/lib/http";
 import { requireAdmin, account } from "@/server/identity/access";
@@ -20,7 +21,7 @@ import { digestScheduleInput } from "@hivemind/core";
 export async function GET() {
   return authenticated(async (ctx) => {
     const [schedules, history, channels, member] = await Promise.all([
-      listSchedules(ctx.teamId),
+      listSchedules(ctx.teamId, ctx.memberId),
       digestHistory(ctx.teamId),
       digestChannels(ctx),
       account(ctx),
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     sameOrigin(request);
     const data = z
       .object({
-        action: z.enum(["save", "preview", "post"]),
+        action: z.enum(["save", "preview", "post", "undo"]),
         id: z.string().optional(),
         schedule: z.unknown().optional(),
       })
@@ -67,6 +68,10 @@ export async function POST(request: Request) {
       );
     }
     await requireAdmin(ctx);
+    if (data.action === "undo")
+      return Response.json(
+        await undoDigestFromWeb(ctx, z.string().parse(data.id)),
+      );
     if (data.action === "post")
       return Response.json(
         await postNow(ctx, z.string().parse(data.id), digestTransport),

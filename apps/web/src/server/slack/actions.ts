@@ -1,13 +1,17 @@
 import { slackToolReply } from "@/slack/tools/reply";
 import type postgres from "postgres";
+import type { HiveContext } from "@hivemind/core";
+import { scheduleKnowledge } from "../knowledge-tree";
 import { z } from "zod";
 import type { SlackToolContext } from "@/slack/tools";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { HiveError } from "../errors";
+import { reverseDecision } from "../conflict-decisions";
 import { lockLearningWrites } from "../lifecycle";
 
 const inverseSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("decision_reversed"), id: z.string() }),
   z.object({
     kind: z.literal("digest"),
     id: z.string(),
@@ -74,8 +78,10 @@ export async function hasThreadAction(
     ).length > 0
   );
 }
-export function undoLastAction(ctx: SlackToolContext) {
-  return getSql().begin(async (tx) => {
+export async function undoLastAction(ctx: SlackToolContext) {
+  let decisionActor: HiveContext | undefined;
+  let decisionReply: string | undefined;
+  const result = await getSql().begin(async (tx) => {
     await lockThread(tx, ctx);
     await authorize(tx, ctx);
     const rows =
@@ -116,6 +122,27 @@ export function undoLastAction(ctx: SlackToolContext) {
           409,
         );
       await tx`UPDATE slack_digest_schedules SET enabled=${inverse.enabled},updated_at=now() WHERE team_id=${ctx.teamId} AND id=${inverse.id}`;
+    } else if (inverse.kind === "decision_reversed") {
+      const member = (
+        await tx`SELECT m.name, t.name AS team_name FROM members m JOIN teams t ON t.id = m.team_id WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.removed_at IS NULL`
+      )[0];
+      decisionActor = {
+        teamId: ctx.teamId,
+        memberId: ctx.memberId,
+        memberName: String(member.name),
+        teamName: String(member.team_name),
+      };
+      const changed = await reverseDecision(
+        decisionActor,
+        inverse.id,
+        undefined,
+        tx,
+        "from Slack",
+      );
+      decisionReply =
+        changed.decision === "reversed"
+          ? "Decision reversed."
+          : "Decision reapplied.";
     } else {
       await lockLearningWrites(tx, {
         teamId: ctx.teamId,
@@ -139,11 +166,15 @@ export function undoLastAction(ctx: SlackToolContext) {
     await tx`UPDATE slack_tool_actions SET undone_at=now() WHERE team_id=${ctx.teamId} AND id=${action.id}`;
     return {
       text:
-        inverse.kind === "digest"
-          ? inverse.enabled
-            ? "Undone. The schedule is enabled again."
-            : "Undone. The schedule is paused; any updates already sent remain in Slack."
-          : "Undone. The capture rule is removed; captures already processed keep their current state.",
+        inverse.kind === "decision_reversed"
+          ? decisionReply!
+          : inverse.kind === "digest"
+            ? inverse.enabled
+              ? "Undone. The schedule is enabled again."
+              : "Undone. The schedule is paused; any updates already sent remain in Slack."
+            : "Undone. The capture rule is removed; captures already processed keep their current state.",
     };
   });
+  if (decisionActor) scheduleKnowledge(decisionActor);
+  return result;
 }
