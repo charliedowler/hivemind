@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { AskResult } from "@hivemind/core";
-import { slackAnswer, shortCitationTitle, slackCaptureReply } from "./format";
+import { slackAnswer, shortCitationTitle, slackCaptureReply, slackDecisionSignals } from "./format";
 const result: AskResult = {
   answer:
     "No. Hive never indexes direct messages [lrn_abc]. Channel indexing needs an admin selection [lrn_abc] and the bot being invited [slk_def].\n\nAs of 2026-10-12.",
@@ -96,4 +96,12 @@ it("never quotes a dropped or owner-private capture", () => {
   expect(reply).toContain("Kept privately");
   expect(reply).not.toContain("private-marker");
   expect(reply).not.toContain("private-body");
+});
+
+it("projects nested gate signals without sending metadata to the numeric renderer", () => {
+  expect(slackDecisionSignals({memberId: "member_fixture", source: "jev", signals: {instruction: 0.95, enough: 0.9, allowed: 1}, modelClear: true})).toEqual({instruction: 0.95, enough: 0.9, allowed: 1});
+  expect(slackDecisionSignals({addressed: 0.95, humans: 0.05, label: "model", invalid: NaN, high: 3, nested: {noul: 1}})).toEqual({addressed: 0.95, humans: 0.05});
+});
+it.each([null, [], "model", {signals: null, modelClear: false}, {signals: {instruction: "0.9"}}])("omits gate details when no finite probabilities exist", value => {
+  expect(slackDecisionSignals(value)).toBeNull();
 });
