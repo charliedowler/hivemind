@@ -76,6 +76,24 @@ it.skipIf(!url)(
           );
           await tx.unsafe(body);
           await tx.unsafe(body);
+          const undoMigration = await readFile(
+            new URL(
+              "../../../drizzle/0021_slack_digest_undo_reactions.sql",
+              import.meta.url,
+            ),
+            "utf8",
+          );
+          await tx.unsafe(undoMigration);
+          await tx.unsafe(undoMigration);
+          await tx.unsafe(
+            await readFile(
+              new URL(
+                "../../../drizzle/rollback/0021_slack_digest_undo_reactions.sql",
+                import.meta.url,
+              ),
+              "utf8",
+            ),
+          );
           await tx.unsafe(
             await readFile(
               new URL(

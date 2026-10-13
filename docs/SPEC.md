@@ -425,3 +425,5 @@ Tools act without confirmation buttons. `runReversibleAction(ctx, toolName, chan
 The shared decisiveness context may include a server-selected `actionType` (`digest`, `digest_pause`, `capture`, `undo`). Jev asks the specificity question for that action only. The intent, specificity and allowed probability floors are 0.80, 0.70 and 0.85 respectively; database membership always overrides model claims. Six live judgments cover a complete schedule, an exact capture keyword, thread undo, a musing, an incomplete schedule and an informational question. They are regression fixtures, not a broad intent benchmark.
 
 A digest schedule set from a complete request gets a thumbs-up reaction when its next run is within two days and no details were defaulted. Otherwise Hive states the schedule and first run. Missing details get one question.
+
+Successful digest undo removes a newly created schedule and reacts with a white check mark on the request, without a text reply. Migration 0021 widens the durable reaction receipt constraint. Missing required schedule details remain a hard stop; plain undo uses the owning thread’s latest instruction.

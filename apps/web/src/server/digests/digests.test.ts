@@ -1,3 +1,4 @@
+import { respondToSlack } from "@/slack/respond";
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
@@ -25,6 +26,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 vi.mock("./connection", () => ({
+  slackMemberTimezone: async () => "Europe/London",
   digestChannel: async (_ctx: HiveContext, id: string) => ({
     id,
     name: "digest-fixture",
@@ -79,6 +81,7 @@ describe.skipIf(!enabled)(
     });
     afterAll(async () => {
       const ids = [a.teamId, b.teamId];
+      await getSql()`DELETE FROM slack_tool_actions WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM slack_digest_instructions WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM slack_decisions WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM slack_digest_proposals WHERE team_id=ANY(${ids}::text[])`;
@@ -341,15 +344,22 @@ describe.skipIf(!enabled)(
           input.timezone,
         ),
       ).rejects.toMatchObject({ status: 410 });
+      const pointer = (
+        await getSql()`SELECT inverse FROM slack_tool_actions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`
+      )[0];
+      expect(pointer.inverse).toMatchObject({
+        kind: "digest_instruction",
+        payload: { instructionId: audit.id },
+      });
+      model.mockResolvedValueOnce({
+        stop_reason: "tool_use",
+        content: [{ type: "tool_use", name: "undo_last_action", input: {} }],
+      });
       expect(
-        (
-          await digestInstruction(
-            { ...ctx, messageTs: "1800000000.8", requestText: "undo" },
-            "undo",
-            input.timezone,
-          )
-        ).text,
-      ).toContain("Removed.");
+        await respondToSlack(ctx, "undo", "1800000000.8", [
+          { question: ctx.requestText, answer: first.text },
+        ]),
+      ).toEqual({ text: "", react: "white_check_mark" });
       expect((await getSchedule(a.teamId, saved.id)).enabled).toBe(false);
       const saved2 = await schedule();
       expect(

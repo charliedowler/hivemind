@@ -6,8 +6,12 @@ import { decideDecisiveness } from "@/server/slack/decisiveness";
 import { undoLastAction } from "@/server/slack/actions";
 export { decideDecisiveness } from "@/server/slack/decisiveness";
 export { runReversibleAction } from "@/server/slack/actions";
-import { digestTools } from "./digests";
-import { captureRuleTools, isCaptureUndoInstruction, dispatchCaptureUndo } from "./capture-rules";
+import { digestTools, dispatchDigestUndo } from "./digests";
+import {
+  captureRuleTools,
+  isCaptureUndoInstruction,
+  dispatchCaptureUndo,
+} from "./capture-rules";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { HiveError } from "@/server/errors";
@@ -72,6 +76,13 @@ export const slackTools: SlackTool[] = [
           if (error instanceof HiveError) return { text: error.message };
           throw error;
         }
+      }
+      try {
+        const digest = await dispatchDigestUndo(ctx);
+        if (digest) return digest;
+      } catch (error) {
+        if (error instanceof HiveError) return { text: error.message };
+        throw error;
       }
       if (
         await (

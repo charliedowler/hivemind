@@ -36,6 +36,7 @@ export async function digestInstruction(
   ctx: SlackToolContext,
   text: string,
   timezone: string,
+  expectedInstructionId?: string,
 ) {
   const member = await proposalContext(ctx.teamId, ctx.memberId);
   if (!ctx.messageTs)
@@ -109,7 +110,7 @@ export async function digestInstruction(
     return { text: "Only hive admins can change digest schedules." };
   if (decision === "clarify")
     return { text: questions[proposal.missing ?? "intent"] };
-  return applyDigestInstruction(ctx, proposal);
+  return applyDigestInstruction(ctx, proposal, expectedInstructionId);
 }
 export async function applyDigestInstruction(
   ctx: SlackToolContext,
@@ -204,13 +205,20 @@ export async function applyDigestInstruction(
           ? `Stopped. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}).`
           : `Set. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}). ${saved.enabled ? `${old ? "Next update" : "First update"} ${next}.` : "The schedule is paused."}`;
     const reaction =
-      action === "set" &&
-      !proposal.defaultedDetails &&
-      saved.enabled &&
-      new Date(saved.nextDueAt).getTime() - Date.now() <= 48 * 3600000
-        ? "+1"
-        : null;
-    await tx`INSERT INTO slack_digest_instructions(id,team_id,member_id,channel_id,thread_ts,message_ts,action,schedule_id,before_schedule,after_revision,reply,reaction) VALUES(${newId("dgi")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},${action},${saved.id},${old ? tx.json(digestScheduleInput.parse(scheduleView(old))) : null},${revision},${reply},${reaction})`;
+      action === "undo"
+        ? "white_check_mark"
+        : action === "set" &&
+            !proposal.defaultedDetails &&
+            saved.enabled &&
+            new Date(saved.nextDueAt).getTime() - Date.now() <= 48 * 3600000
+          ? "+1"
+          : null;
+    const instructionId = newId("dgi");
+    await tx`INSERT INTO slack_digest_instructions(id,team_id,member_id,channel_id,thread_ts,message_ts,action,schedule_id,before_schedule,after_revision,reply,reaction) VALUES(${instructionId},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},${action},${saved.id},${old ? tx.json(digestScheduleInput.parse(scheduleView(old))) : null},${revision},${reply},${reaction})`;
+    if (action === "set" || action === "disable")
+      await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},${action === "set" ? "hive_schedule_digest" : "hive_list_digest_schedules"},${tx.json({ kind: "digest_instruction", reversible: true, payload: { instructionId } })},${reply}) ON CONFLICT DO NOTHING`;
+    if (reversed)
+      await tx`UPDATE slack_tool_actions SET undone_at=now() WHERE team_id=${ctx.teamId} AND inverse->>'kind'='digest_instruction' AND inverse->'payload'->>'instructionId'=${String(reversed.id)}`;
     if (reversed)
       await tx`UPDATE slack_digest_instructions SET reversed_at=now() WHERE id=${String(reversed.id)} AND team_id=${ctx.teamId}`;
     return { reply, reaction, schedule: saved };
