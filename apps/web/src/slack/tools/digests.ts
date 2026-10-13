@@ -43,7 +43,7 @@ const listInput = z.strictObject({
     .regex(/^dgs_[a-z2-7]{12}$/)
     .optional(),
 });
-export const digestTools: SlackTool[] = [
+const tools: SlackTool[] = [
   {
     name: "hive_schedule_digest",
     description:
@@ -136,3 +136,37 @@ export const digestTools: SlackTool[] = [
     },
   },
 ];
+
+function readableError(error: unknown) {
+  if (error instanceof HiveError) return { text: error.message };
+  if (error instanceof z.ZodError)
+    return {
+      text: "The schedule could not be read. Include a frequency and time, or use Hive settings.",
+    };
+  throw error;
+}
+export const digestTools: SlackTool[] = tools.map((tool) => ({
+  ...tool,
+  async handler(ctx, args) {
+    try {
+      return await tool.handler(ctx, args);
+    } catch (error) {
+      return readableError(error);
+    }
+  },
+  ...(tool.handleAction
+    ? {
+        async handleAction(
+          ctx: SlackToolContext,
+          action: string,
+          value: string,
+        ) {
+          try {
+            return await tool.handleAction!(ctx, action, value);
+          } catch (error) {
+            return readableError(error);
+          }
+        },
+      }
+    : {}),
+}));
