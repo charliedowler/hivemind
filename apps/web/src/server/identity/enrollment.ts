@@ -48,10 +48,6 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
     await claimProvisionalHuman(tx, memberId);
     const personal = (await tx`SELECT hive_ensure_personal_hive(${memberId}) AS id`)[0].id;
     const registration = input ? JSON.parse(registrationForStorage(input)!) : member.hive_registration ? JSON.parse(member.hive_registration) : null;
-    if (!registration && !input) {
-      await followOwnerMemberships(tx, memberId);
-      return { teamId: String(personal), intent: null, email: String(member.email), promoted: false };
-    }
     let teamId: string = personal;
     let intent: "create" | "invite" | "domain" | null = null;
     if (registration?.intent === "create") {
@@ -64,20 +60,21 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
     } else {
       const domain = emailDomain(member.email);
       if (domain && !isPublicDomain(domain)) {
-        const teams = await tx`SELECT t.id FROM teams t JOIN team_domains d ON d.team_id = t.id WHERE d.domain = ${domain} AND t.personal_owner_member_id IS NULL FOR UPDATE OF t`;
+        const teams = await tx`SELECT t.id FROM teams t JOIN team_domains d ON d.team_id = t.id WHERE d.domain = ${domain} AND t.personal_owner_member_id IS NULL ${!registration && !input ? tx`AND NOT EXISTS (SELECT 1 FROM hive_memberships h WHERE h.member_id = ${memberId} AND h.team_id = t.id AND h.removed_at IS NOT NULL)` : tx``} FOR UPDATE OF t`;
         if (teams[0]) { teamId = teams[0].id; intent = "domain"; }
       }
       if (!intent && input) throw new HiveInputError("Your work domain has no hive yet. Ask your team admin for an invite.");
     }
     const role = intent === "create" || teamId === personal ? "admin" : intent === "invite" ? await ownerInviteRole(tx, memberId, member.email, teamId, registration.inviteCode) : "member";
-    await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId}, ${role}) ON CONFLICT DO NOTHING`;
+    const added = await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId}, ${role}) ON CONFLICT DO NOTHING RETURNING member_id`;
     const active = await tx`SELECT role FROM hive_memberships WHERE member_id = ${memberId} AND team_id = ${teamId} AND removed_at IS NULL`;
     if (!active.length) throw new HiveError("This membership was removed. Ask your team admin.", 403);
     await tx`UPDATE members SET hive_registration = NULL, updated_at = now() WHERE id = ${memberId}`;
+    if ((intent === "create" || intent === "invite") || (intent === "domain" && added.length)) await tx`INSERT INTO auth_verification (id, identifier, value, expires_at) VALUES (${`hive-enrollment-context:${memberId}`}, ${`hive-enrollment-context:${memberId}`}, ${JSON.stringify({teamId, via: intent === "create" ? "owner" : intent, joined: added.length > 0})}, now() + interval '15 minutes') ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at`;
     if (intent === "create") await tx`SELECT hive_create_default_capture_rules(${teamId}, ${memberId})`;
     await tx`UPDATE web_sessions SET team_id = ${teamId} WHERE member_id = ${memberId} AND team_id IS NULL`;
     await followOwnerMemberships(tx, memberId);
-    return { intent, email: member.email as string, teamId, promoted: intent === "create" };
+    return { intent: intent === "domain" && !added.length && !registration && !input ? null : intent, email: member.email as string, teamId, promoted: intent === "create" };
   });
   const ctx = await memberContext(memberId, enrollment?.teamId);
   if (ctx && enrollment?.intent) {

@@ -17,7 +17,7 @@ import { hashToken, newId, newToken, randomBase32 } from "./db/ids";
 import { HiveInputError, HiveNotFoundError } from "./errors";
 import { memberContext } from "./identity/enrollment";
 import { requireHuman } from "./identity/agent-enrollment";
-import { sessionMemberContext } from "./identity/session-context";
+import { loadMemberContext, type MemberContext } from "./identity/session-context";
 
 export async function createTeam(
   input: CreateTeamInput,
@@ -134,19 +134,21 @@ export async function startWebSession(ctx: HiveContext): Promise<void> {
   await accessEvent(ctx, "login");
 }
 
-export async function getWebContext(): Promise<HiveContext | null> {
+export async function getWebContext(): Promise<(HiveContext & { justJoined?: MemberContext["justJoined"] }) | null> {
   const jar = await cookies();
   if (jar.get("better-auth.session_token") || jar.get("__Secure-better-auth.session_token")) {
     const { getAuth } = await import("./better-auth");
     const session = await (await getAuth()).api.getSession({ headers: await headers() });
     if (!session?.user.emailVerified) return null;
-    return sessionMemberContext(session.user.id, session.session.id);
+    const loaded = await loadMemberContext(session.user.id, session.session.id);
+    return loaded?.context ? Object.assign(loaded.context, loaded.justJoined ? { justJoined: loaded.justJoined } : {}) : null;
   }
   const token = jar.get("hm_session")?.value;
   if (!token) return null;
   const rows =
-    await getSql()`SELECT s.team_id, t.name AS team_name, s.member_id, m.name AS member_name, h.role FROM web_sessions s JOIN teams t ON t.id = s.team_id JOIN members m ON m.id = s.member_id JOIN hive_memberships h ON h.member_id = s.member_id AND h.team_id = s.team_id WHERE s.token_hash = ${hashToken(token)} AND s.expires_at > now() AND m.disabled_at IS NULL AND NOT m.provisional AND h.removed_at IS NULL`;
-  return rows[0] ? memberContext(rows[0].member_id, rows[0].team_id) : null;
+    await getSql()`SELECT s.id, s.member_id FROM web_sessions s JOIN members m ON m.id = s.member_id WHERE s.token_hash = ${hashToken(token)} AND s.expires_at > now() AND m.disabled_at IS NULL AND NOT m.provisional`;
+  const loaded = rows[0] ? await loadMemberContext(rows[0].member_id, rows[0].id) : null;
+  return loaded?.context ? Object.assign(loaded.context, loaded.justJoined ? { justJoined: loaded.justJoined } : {}) : null;
 }
 
 export async function endWebSession(): Promise<void> {

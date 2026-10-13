@@ -21,7 +21,7 @@ import { agentClaims, isAgentMember, storeAgentOwner } from "./identity/agent-en
 import { agentidProvider } from "./identity/agentid-provider";
 import { welcomeClaimPlugin } from "./identity/claim-plugin";
 import { credentialVersion, credentialEpoch, personScope } from "./identity/credential-scope";
-import { sessionMemberContext } from "./identity/session-context";
+import { enrollSessionContext, signInMemberContext } from "./identity/session-context";
 
 export function createHiveAuth(baseUrl: string, delivery = deliverCode, resourceUrl = baseUrl) {
   const secret = process.env.BETTER_AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "hive-local-development-secret-change-before-deploy" : undefined);
@@ -152,8 +152,8 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
       session: { create: { before: async (session) => {
         const rows = await getSql()`SELECT disabled_at, provisional FROM members WHERE id = ${session.userId}`;
         if (!rows[0] || rows[0].disabled_at || rows[0].provisional) throw new APIError("FORBIDDEN", { message: "This membership is no longer active." });
-        return { data: { ...session, tokenHash: hashToken(session.token), teamId: (await memberContext(session.userId))?.teamId ?? null } };
-      }, after: async (session) => { await authAccess({ memberId: session.userId }, "login", session.id); } },
+        return { data: { ...session, tokenHash: hashToken(session.token), teamId: (await signInMemberContext(session.userId, session.id))?.teamId ?? null } };
+      }, after: async (session) => { await signInMemberContext(session.userId, session.id); await authAccess({ memberId: session.userId }, "login", session.id); } },
         delete: { after: async (session, ctx) => {
           if (ctx?.path === "/sign-out") await authAccess({ memberId: session.userId }, "logout", session.id);
         } },
@@ -185,8 +185,11 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
         grantTypes: ["authorization_code", "refresh_token"],
         postLogin: {
           page: "/app/join",
-          shouldRedirect: async ({ user }) => !await memberContext(user.id),
-          consentReferenceId: async ({ user, session, scopes }) => (scopes.includes(personScope) ? await personalMemberContext(user.id) : await sessionMemberContext(user.id, session.id))?.teamId,
+          shouldRedirect: async ({ user, session }) => !await enrollSessionContext(user.id, session.id),
+          consentReferenceId: async ({ user, session, scopes }) => {
+            const selected = await enrollSessionContext(user.id, session.id);
+            return (scopes.includes(personScope) ? await personalMemberContext(user.id) : selected)?.teamId;
+          },
         },
         customAccessTokenClaims: async ({ user, referenceId, scopes }) => {
           if (!user) throw new APIError("FORBIDDEN", { message: "A hive member must sign in." });

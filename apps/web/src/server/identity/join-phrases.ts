@@ -78,6 +78,12 @@ export async function adminJoinPhrase(ctx: HiveContext): Promise<HiveJoinPhrase 
   });
 }
 
+export async function memberJoinPhrase(ctx: HiveContext): Promise<HiveJoinPhrase | null> {
+  if (!await memberContext(ctx.memberId, ctx.teamId)) throw failure();
+  const rows = await getSql()`SELECT p.phrase, p.generation, t.join_paused FROM hive_join_phrases p JOIN teams t ON t.id = p.team_id JOIN hive_memberships h ON h.team_id = t.id AND h.member_id = ${ctx.memberId} WHERE t.id = ${ctx.teamId} AND t.personal_owner_member_id IS NULL AND h.removed_at IS NULL AND p.retired_at IS NULL AND p.generation = t.join_generation`;
+  return rows[0] ? { phrase: String(rows[0].phrase), generation: Number(rows[0].generation), paused: Boolean(rows[0].join_paused) } : null;
+}
+
 type JoinOptions = { trustedProxyIp: string | null; capability?: string; capabilityHash?: string };
 async function authenticatedActor(ctx: HiveContext) {
   const rows = await getSql()`SELECT m.*, b.owner_member_id FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' AND a.owner_email_verified LEFT JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE m.id = ${ctx.memberId} AND m.disabled_at IS NULL AND NOT m.provisional`;
