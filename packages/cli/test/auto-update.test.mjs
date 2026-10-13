@@ -148,3 +148,19 @@ test('the detached updater runs the pinned npx command with an isolated HOME and
   assert.equal(json(join(home, '.hive/install.json')).installedVersion, '0.2.1');
   assert.deepEqual(json(join(home, 'update-command.json')), { args: ['--yes', 'gohive@0.2.1', 'install', '--update'], home, hiveHome: home });
 });
+
+test('unversioned bootstrap installs stay above minimum while OAuth-era assets request the minimum notice', async () => {
+  for (const bootstrap of [false, true]) {
+    const home = fixture();
+    const path = join(home, '.hive/install.json');
+    const manifest = json(path);
+    delete manifest.installedVersion;
+    if (!bootstrap) for (const key of Object.keys(manifest.files)) if (key.endsWith('/scripts/agent-headers.mjs')) delete manifest.files[key];
+    writeFileSync(path, JSON.stringify(manifest));
+    let installed;
+    const notice = await checkForUpdate({ home, env, fetcher: response, launch: args => installed = args.installed });
+    assert.equal(installed, bootstrap ? '0.2.0' : '0.1.0');
+    if (bootstrap) assert.equal(notice, '');
+    else assert.match(notice, /Hive is updating in the background/);
+  }
+});

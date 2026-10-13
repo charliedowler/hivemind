@@ -65,7 +65,7 @@ export async function checkForUpdate({ home = homeDirectory(), baseUrl = endpoin
       if (!response.ok) return notice;
       const { latest, minimum } = await response.json();
       if (!validVersion(latest) || !validVersion(minimum) || compareVersions(minimum, latest) > 0) return notice;
-      const installed = validVersion(manifest.installedVersion) ? manifest.installedVersion : '0.1.0';
+      const installed = validVersion(manifest.installedVersion) ? manifest.installedVersion : Object.keys(manifest.files || {}).some(path => path.endsWith('/scripts/agent-headers.mjs')) ? '0.2.0' : '0.1.0';
       if (compareVersions(installed, latest) >= 0) { write(path, { ...state, checkedAt: now, latest, minimum }); return notice; }
       write(path, { ...state, checkedAt: now, latest, minimum, status: 'pending' });
       launch({ home, latest, minimum, installed });
