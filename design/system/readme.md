@@ -74,3 +74,7 @@ All styling is class based with an `hm-` prefix in `components/core.css` and `co
 No brand fonts were supplied. Lilita One, Nunito, Space Mono and Silkscreen are loaded from Google Fonts via `tokens/fonts.css`. In the Next.js app, prefer `next/font/google` for the same four families and set `--font-display`, `--font-body`, `--font-mono`, `--font-pixel` from it.
 
 `AnswerCard` remains for static product examples on the landing and waitlist pages. It is not a dashboard feature.
+
+## License
+
+[MIT](../../LICENSE) © 2026 Charlie Dowler.

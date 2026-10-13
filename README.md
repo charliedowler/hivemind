@@ -289,3 +289,7 @@ Reviewed screenshots are `docs/screenshots/digests-1280.png` and `docs/screensho
 Digest dates use each schedule’s timezone and readable weekday, date and clock text. Clear Slack schedule instructions act immediately; members can list schedules. Admins can undo their latest change in its thread within one hour. New schedule undo removes it from the schedule list while keeping post history.
 
 A digest schedule set from a complete request gets a thumbs-up reaction when its next run is within two days and no details were defaulted. Otherwise Hive states the schedule and first run. Missing details get one question.
+
+## License
+
+[MIT](LICENSE) © 2026 Charlie Dowler.

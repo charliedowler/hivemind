@@ -53,3 +53,7 @@ Cells tile with a 16px column step, an 8px offset on odd rows and a 14px row ste
 1. Add the grid to the right file in `art/` using only palette keys. Keep the grid as small as the idea allows.
 2. For animation, add more frames and a `timeline` of `[frameIndex, milliseconds]` pairs.
 3. Run `node sprites/build.mjs`, then `node preview/build.mjs && node preview/shoot.mjs` and look at it in `preview.png`.
+
+## License
+
+[MIT](../../../LICENSE) © 2026 Charlie Dowler.

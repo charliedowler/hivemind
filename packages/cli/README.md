@@ -48,3 +48,7 @@ Executor v1 exposes `mcp.addServer`, `mcp.probeEndpoint`, `coreTools.oauth.probe
 The Hive skill works through Executor's discovered tool addresses too. Remote connections and organisation policies stay in Executor when local Hive files are uninstalled.
 
 Setup references: [Executor account connections](https://executor.sh/docs/connect-an-account), [Executor CLI](https://executor.sh/docs/run/cli), [remote add route](https://github.com/UsefulSoftwareCo/executor/blob/main/packages/react/src/routes/integrations.add.%24pluginKey.tsx).
+
+## License
+
+[MIT](../../LICENSE) © 2026 Charlie Dowler.
