@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  experimental: { authInterrupts: true },
   transpilePackages: ["@hivemind/core", "@hivemind/design-system"],
 };
 

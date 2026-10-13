@@ -272,7 +272,7 @@ describe.skipIf(!enabled)(
         digestInstruction(ctx, ctx.requestText, input.timezone),
       ]);
       expect(first.text).toBe(second.text);
-      expect(first.text).toContain("Set. Every Monday");
+      expect(first).toEqual({ text: "", react: "+1" });
       expect(first).not.toHaveProperty("blocks");
       const audit = (
         await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`
@@ -289,7 +289,7 @@ describe.skipIf(!enabled)(
             input.timezone,
           )
         ).text,
-      ).toBe("Should I set that digest schedule?");
+      ).toBeUndefined();
       respond({
         ...set,
         schedule: null,

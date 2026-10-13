@@ -38,7 +38,7 @@ function ProviderButtons({ providers }: { providers: SignInProvider[] }) {
     setError("");
     try {
       const callbackURL = `${window.location.origin}/app/join${window.location.search}`;
-      const result = await authClient.signIn.social({ provider, callbackURL, errorCallbackURL: `${window.location.origin}/app/login${window.location.search}` });
+      const result = await authClient.signIn.social({ provider, callbackURL, errorCallbackURL: `${window.location.origin}/app/auth-error` });
       if (result.error) throw new Error(result.error.message);
     } catch (error) { setError(errorMessage(error)); setPending(undefined); }
   }

@@ -5,7 +5,7 @@ import {
   digestZone,
   digestScheduleInput,
 } from "@hivemind/core";
-import type { SlackToolContext } from "@/slack/tools";
+import type { SlackToolContext, SlackToolResult } from "@/slack/tools";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { HiveError } from "../errors";
@@ -36,8 +36,7 @@ export async function digestInstruction(
   ctx: SlackToolContext,
   text: string,
   timezone: string,
-  expectedInstructionId?: string,
-) {
+): Promise<SlackToolResult> {
   const member = await proposalContext(ctx.teamId, ctx.memberId);
   if (!ctx.messageTs)
     throw new HiveError("Ask Hive in a new message to change a schedule.", 400);
@@ -109,8 +108,10 @@ export async function digestInstruction(
   if (decision === "refuse")
     return { text: "Only hive admins can change digest schedules." };
   if (decision === "clarify")
-    return { text: questions[proposal.missing ?? "intent"] };
-  return applyDigestInstruction(ctx, proposal, expectedInstructionId);
+    return proposal.missing === "intent"
+      ? { react: "eyes" }
+      : { text: questions[proposal.missing ?? "intent"] };
+  return applyDigestInstruction(ctx, proposal);
 }
 export async function applyDigestInstruction(
   ctx: SlackToolContext,

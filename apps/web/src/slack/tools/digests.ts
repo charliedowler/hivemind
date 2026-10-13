@@ -1,10 +1,9 @@
-import { getSql } from "@/server/db/client";
 import type Anthropic from "@anthropic-ai/sdk";
 import { digestTime, digestZone } from "@hivemind/core";
 import { z } from "zod";
 import type { SlackTool, SlackToolContext, SlackToolResult } from "./index";
 import { HiveError } from "@/server/errors";
-import { digestInstruction } from "@/server/digests/instructions";
+import { applyDigestInstruction, digestInstruction } from "@/server/digests/instructions";
 import { listSchedules } from "@/server/digests/store";
 import { slackMemberTimezone } from "@/server/digests/connection";
 import { restateSchedule } from "@/server/digests/proposal";
@@ -83,10 +82,19 @@ async function undoPointer(
       payload: z.object({ instructionId: z.string() }),
     })
     .parse(pointer.inverse);
-  return digestInstruction(
+  return applyDigestInstruction(
     ctx,
-    ctx.instructionText ?? "undo",
-    await slackMemberTimezone(ctx.teamId, ctx.memberId),
+    {
+      action: "undo",
+      schedule: null,
+      targetScheduleId: null,
+      clearInstruction: true,
+      actionableSuggestion: false,
+      defaultedDetails: false,
+      enoughDetail: true,
+      timeSpecified: false,
+      missing: null,
+    },
     inverse.payload.instructionId,
   );
 }
@@ -94,18 +102,3 @@ export const digestUndoHandlers: Record<string, typeof undoPointer> = {
   hive_schedule_digest: undoPointer,
   hive_list_digest_schedules: undoPointer,
 };
-export async function dispatchDigestUndo(ctx: SlackToolContext) {
-  const row = (
-    await getSql()`SELECT tool_name,member_id,inverse FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND thread_ts=${ctx.threadTs} ORDER BY created_at DESC,id DESC LIMIT 1`
-  )[0];
-  if (
-    !row ||
-    !Object.hasOwn(digestUndoHandlers, String(row.tool_name)) ||
-    (row.inverse as { kind?: string })?.kind !== "digest_instruction"
-  )
-    return null;
-  return digestUndoHandlers[String(row.tool_name)]!(ctx, {
-    member_id: String(row.member_id),
-    inverse: row.inverse,
-  });
-}
