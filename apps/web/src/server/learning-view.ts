@@ -1,6 +1,6 @@
-import type { LearningView } from "@hivemind/core";
+import type { HiveContext, LearningView } from "@hivemind/core";
 
-export function learningView(row: Record<string, unknown>): LearningView {
+export function learningView(row: Record<string, unknown>, ctx?: HiveContext): LearningView {
   const date = (value: unknown) =>
     new Date(value as string | Date).toISOString();
   return {
@@ -37,6 +37,11 @@ export function learningView(row: Record<string, unknown>): LearningView {
         : null,
     classification: row.classification as LearningView["classification"],
     adminOutdated: Boolean(row.admin_outdated),
+    captureFlagged: Boolean(row.capture_flagged),
+    canConfirmCapture: Boolean(row.capture_flagged && ctx && row.member_id === ctx.memberId && ["fresh", "confirmed"].includes(String(row.lifecycle))),
+    captureCategories: (row.capture_categories as Record<string, boolean> | undefined) ?? {},
+    captureRedacted: Boolean(row.capture_redacted),
+    captureRuleIds: (row.capture_rule_ids as string[] | undefined) ?? [],
     area: row.area as LearningView["area"],
     cost: row.cost == null ? null : Number(row.cost),
     blocked: Boolean(row.blocked),

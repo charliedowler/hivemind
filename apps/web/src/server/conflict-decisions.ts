@@ -1,4 +1,5 @@
 import type { HiveContext } from "@hivemind/core";
+import { learningVisibleSql } from "./capture-visibility";
 import {
   recordEvent,
   currentOrigin,
@@ -29,11 +30,12 @@ export async function conflictCell(
   id: string,
 ): Promise<ConflictCell | null> {
   const rows =
-    await getSql()`SELECT l.*, m.name AS author FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId}`;
+    await getSql()`SELECT l.*, m.name AS author FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
   if (!rows.length) return null;
   const row = rows[0];
-  const evidence =
-    await getSql()`SELECT e.payload, e.object_key, e.digest, e.created_at, v.content FROM learning_evidence e JOIN learning_pushes p ON p.id = e.push_id AND p.team_id = e.team_id LEFT JOIN learning_versions v ON v.learning_id = e.learning_id AND v.team_id = e.team_id AND v.revision = 1 WHERE e.learning_id = ${id} AND e.team_id = ${ctx.teamId} ORDER BY e.created_at DESC LIMIT 3`;
+  const evidence = row.capture_redacted
+    ? []
+    : await getSql()`SELECT e.payload, e.object_key, e.digest, e.created_at, v.content FROM learning_evidence e JOIN learning_pushes p ON p.id = e.push_id AND p.team_id = e.team_id LEFT JOIN learning_versions v ON v.learning_id = e.learning_id AND v.team_id = e.team_id AND v.revision = 1 WHERE e.learning_id = ${id} AND e.team_id = ${ctx.teamId} ORDER BY e.created_at DESC LIMIT 3`;
   const supplied = await Promise.all(
     evidence.map(async (e) => {
       let payload = e.payload;
@@ -115,12 +117,12 @@ export async function applyConflictDecision(
     await tx`SELECT * FROM learning_supersessions WHERE id = ${edgeId} AND team_id = ${ctx.teamId} FOR UPDATE`;
   const edge = edges[0];
   if (!edge) throw new HiveNotFoundError();
-  if (edge.status !== "candidate") return null;
   const rows =
-    await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND id = ANY(${[edge.older_id, edge.newer_id]}::text[]) ORDER BY id FOR UPDATE`;
+    await tx`SELECT l.* FROM learnings l WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${[edge.older_id, edge.newer_id]}::text[]) ORDER BY l.id FOR UPDATE`;
   const older = rows.find((row) => row.id === edge.older_id),
     newer = rows.find((row) => row.id === edge.newer_id);
   if (!older || !newer) throw new HiveNotFoundError();
+  if (edge.status !== "candidate") return null;
   if (
     older.revision !== edge.older_revision ||
     newer.revision !== edge.newer_revision ||
@@ -132,6 +134,14 @@ export async function applyConflictDecision(
       decision: "undecided",
       reason:
         "A cell changes before Hive applies the decision. Hive retries with current evidence on a related push.",
+    };
+  }
+  if (judgment.decision === "keep_old" && newer.capture_flagged &&
+      (!older.capture_flagged || older.member_id !== newer.member_id)) {
+    judgment = {
+      ...judgment,
+      decision: "undecided",
+      reason: "Owner-only evidence cannot be merged into a cell with different visibility.",
     };
   }
   const before = rows.map(snapshot);
@@ -216,7 +226,7 @@ export async function retryRelatedConflicts(
   skipEdges: string[] = [],
 ) {
   const edges =
-    await getSql()`SELECT s.* FROM learning_supersessions s JOIN learnings incoming ON incoming.id = ${cellId} AND incoming.team_id = s.team_id JOIN learnings older ON older.id = s.older_id AND older.team_id = s.team_id JOIN learnings newer ON newer.id = s.newer_id AND newer.team_id = s.team_id WHERE s.team_id = ${ctx.teamId} AND s.status = 'candidate' AND older.lifecycle IN ('fresh','confirmed','outdated') AND newer.lifecycle IN ('fresh','confirmed') AND (s.older_id = ${cellId} OR s.newer_id = ${cellId} OR (older.repo IS NOT DISTINCT FROM incoming.repo AND lower(older.title) = lower(incoming.title))) AND NOT (s.id = ANY(${skipEdges}::text[])) ORDER BY s.created_at LIMIT 3`;
+    await getSql()`SELECT s.* FROM learning_supersessions s JOIN learnings incoming ON incoming.id = ${cellId} AND incoming.team_id = s.team_id JOIN learnings older ON older.id = s.older_id AND older.team_id = s.team_id JOIN learnings newer ON newer.id = s.newer_id AND newer.team_id = s.team_id WHERE s.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx, 'incoming')} AND ${learningVisibleSql(ctx, 'older')} AND ${learningVisibleSql(ctx, 'newer')} AND s.status = 'candidate' AND older.lifecycle IN ('fresh','confirmed','outdated') AND newer.lifecycle IN ('fresh','confirmed') AND (s.older_id = ${cellId} OR s.newer_id = ${cellId} OR (older.repo IS NOT DISTINCT FROM incoming.repo AND lower(older.title) = lower(incoming.title))) AND NOT (s.id = ANY(${skipEdges}::text[])) ORDER BY s.created_at LIMIT 3`;
   const results = await Promise.all(
     edges.map(async (edge) => {
       const [older, newer] = await Promise.all([
@@ -253,13 +263,13 @@ export async function listDecisions(
   filters: { decision?: string; repo?: string; search?: string } = {},
 ) {
   const rows =
-    await getSql()`SELECT d.*, a.title AS older_title, b.title AS newer_title, a.repo, m.name AS author, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AND d.model <> 'legacy' AND d.decision NOT IN ('undecided','reversed') AND NOT EXISTS (SELECT 1 FROM conflict_decisions undo WHERE undo.reverses_id = d.id AND undo.team_id = d.team_id) AS can_reverse, s.older_id, s.newer_id FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings a ON a.id = s.older_id AND a.team_id = d.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = d.team_id JOIN members m ON m.id = d.pushed_by AND m.team_id = d.team_id WHERE d.team_id = ${ctx.teamId} AND (${filters.decision ?? null}::text IS NULL OR d.decision = ${filters.decision ?? null}) AND (${filters.repo ?? null}::text IS NULL OR a.repo = ${filters.repo ?? null}) AND (${filters.search ?? ""} = '' OR concat_ws(' ', a.title, b.title, d.reason, m.name) ILIKE ${"%" + (filters.search ?? "").replace(/[\\%_]/g, "\\$&") + "%"}) ORDER BY d.created_at DESC, d.id DESC LIMIT 100`;
+    await getSql()`SELECT d.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, b.title AS newer_title, a.repo, m.name AS author, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AND d.model <> 'legacy' AND d.decision NOT IN ('undecided','reversed') AND NOT EXISTS (SELECT 1 FROM conflict_decisions undo WHERE undo.reverses_id = d.id AND undo.team_id = d.team_id) AS can_reverse, s.older_id, s.newer_id FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings a ON a.id = s.older_id AND a.team_id = d.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = d.team_id JOIN members m ON m.id = d.pushed_by AND m.team_id = d.team_id WHERE d.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${filters.decision ?? null}::text IS NULL OR d.decision = ${filters.decision ?? null}) AND (${filters.repo ?? null}::text IS NULL OR a.repo = ${filters.repo ?? null}) AND (${filters.search ?? ""} = '' OR concat_ws(' ', a.title, b.title, CASE WHEN a.capture_redacted OR b.capture_redacted THEN '' ELSE d.reason END, m.name) ILIKE ${"%" + (filters.search ?? "").replace(/[\\%_]/g, "\\$&") + "%"}) ORDER BY d.created_at DESC, d.id DESC LIMIT 100`;
   return rows.map((row) => ({
     id: String(row.id),
     older: { id: String(row.older_id), title: String(row.older_title) },
     newer: { id: String(row.newer_id), title: String(row.newer_title) },
     decision: row.decision as ConflictJudgment["decision"] | "reversed",
-    reason: String(row.reason),
+    reason: row.capture_redacted ? "A cell was redacted by a capture rule." : String(row.reason),
     confidence: Number(row.confidence),
     model: String(row.model),
     jev: row.jev as ConflictJudgment["jev"],
@@ -286,14 +296,14 @@ export async function reverseDecision(
           403,
         );
       const decisions =
-        await tx`SELECT d.* FROM conflict_decisions d WHERE d.id = ${id} AND d.team_id = ${ctx.teamId} AND d.model <> 'legacy' AND d.decision NOT IN ('undecided','reversed') AND NOT EXISTS (SELECT 1 FROM conflict_decisions r WHERE r.reverses_id = d.id AND r.team_id = d.team_id) FOR UPDATE`;
+        await tx`SELECT d.* FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings a ON a.id = s.older_id AND a.team_id = d.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = d.team_id WHERE ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND d.id = ${id} AND d.team_id = ${ctx.teamId} AND d.model <> 'legacy' AND d.decision NOT IN ('undecided','reversed') AND NOT EXISTS (SELECT 1 FROM conflict_decisions r WHERE r.reverses_id = d.id AND r.team_id = d.team_id) FOR UPDATE OF d, a, b`;
       const decision = decisions[0];
       if (!decision)
         throw new HiveNotFoundError("Decision not found or already reversed.");
       const before = decision.before_state as ReturnType<typeof snapshot>[],
         after = decision.after_state as ReturnType<typeof snapshot>[];
       const rows =
-        await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND id = ANY(${after.map((cell) => String(cell.id))}::text[]) ORDER BY id FOR UPDATE`;
+        await tx`SELECT l.* FROM learnings l WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${after.map((cell) => String(cell.id))}::text[]) ORDER BY l.id FOR UPDATE`;
       if (
         rows.length !== after.length ||
         rows
@@ -343,6 +353,6 @@ export async function reverseDecision(
 
 export async function decisionRepos(ctx: HiveContext): Promise<string[]> {
   const rows =
-    await getSql()`SELECT DISTINCT l.repo FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings l ON l.id = s.older_id AND l.team_id = s.team_id WHERE d.team_id = ${ctx.teamId} AND l.repo IS NOT NULL ORDER BY l.repo`;
+    await getSql()`SELECT DISTINCT l.repo FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings l ON l.id = s.older_id AND l.team_id = s.team_id JOIN learnings n ON n.id = s.newer_id AND n.team_id = s.team_id WHERE d.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND ${learningVisibleSql(ctx, "n")} AND l.repo IS NOT NULL ORDER BY l.repo`;
   return rows.map((row) => String(row.repo));
 }

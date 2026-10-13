@@ -16,13 +16,14 @@ import {
   messagePage,
   permalink,
   postMessage,
+  startSlackCommandThread,
   slackCall,
   slackMessage,
   SlackRateLimit,
 } from "./client";
 import { channelPermission, storeMessage } from "./store";
 import { decideSlack, judgeSlack, hourlyCap, type GateDecision } from "./gate";
-import { slackAnswer, slackEscape } from "./format";
+import { slackAnswer, slackEscape, slackCaptureReply } from "./format";
 import { respondToSlack } from "@/slack/respond";
 import { slackToolContext, dispatchSlackAction } from "@/slack/tools";
 import { enqueueSlack, jobReference, runBackfill } from "./queue";
@@ -195,7 +196,7 @@ export async function saveSlackMessage(
       blocked: false,
       paths: [],
     });
-    await sql`UPDATE slack_jobs SET status='done',error=${result.id} WHERE team_id=${ctx.teamId} AND id=${claim[0].id}`;
+    await sql`UPDATE slack_jobs SET status='done',error=${result.dropped ? "capture_rule" : result.id} WHERE team_id=${ctx.teamId} AND id=${claim[0].id}`;
     return result;
   } catch (error) {
     await sql`DELETE FROM slack_jobs WHERE team_id=${ctx.teamId} AND id=${claim[0].id}`;
@@ -402,7 +403,7 @@ async function handleEvent(teamId: string, event: Record<string, unknown>) {
         item.channel,
         item.ts,
       );
-      if (result)
+      if (result && !result.dropped && !result.learning.captureFlagged)
         await slackCall(inst.token, "reactions.add", {
           channel: item.channel,
           timestamp: item.ts,
@@ -414,25 +415,32 @@ async function handleEvent(teamId: string, event: Record<string, unknown>) {
 export async function handleCommand(
   teamId: string,
   payload: Record<string, unknown>,
+  jobId?: string,
 ) {
   const channel = z.string().parse(payload.channel_id),
     user = z.string().parse(payload.user_id),
     text = z.string().parse(payload.text ?? "");
   const inst = await installation(teamId);
-  const actor = await actorOrJoin(
-    teamId,
-    user,
-    inst.token,
-    channel,
-    String(payload.thread_ts ?? ""),
-  );
+  const thread =
+    typeof payload.thread_ts === "string" && payload.thread_ts
+      ? payload.thread_ts
+      : await startSlackCommandThread(
+          inst.token,
+          channel,
+          slackEscape(redactSecrets(`/hive ${text}`).text),
+        );
+  if (jobId && !payload.thread_ts)
+    await getSql()`UPDATE slack_jobs SET payload=coalesce(payload,'{}'::jsonb)||jsonb_build_object('thread_ts',${thread}::text) WHERE team_id=${teamId} AND id=${jobId}`;
+  const actor = await actorOrJoin(teamId, user, inst.token, channel, thread);
   if (!actor) return;
   return withOrigin(originFor(actor, "slack", "system"), async () => {
     const [command, ...parts] = text.trim().split(/\s+/);
     const argument = parts.join(" ");
     if (command === "recent") {
       const recent = await recentLearnings(actor, { since: "24h", limit: 10 });
-      const info = await channelInfo(inst.token, channel);
+      const info = channel.startsWith("D")
+        ? { is_private: true, is_im: true }
+        : await channelInfo(inst.token, channel);
       const visible =
         !info.is_private && !info.is_im
           ? recent.filter((cell) => cell.source !== "slack")
@@ -446,6 +454,7 @@ export async function handleCommand(
               `<${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${c.id}|${slackEscape(c.title)}>`,
           )
           .join("\n") || "No fresh nectar in the last day.",
+        thread,
       );
     }
     if (command === "save") {
@@ -457,6 +466,7 @@ export async function handleCommand(
           inst.token,
           channel,
           "Use the “Save to hive” message shortcut, add the bee reaction, or run /hive save with the message permalink. Slack commands do not identify a selected thread.",
+          thread,
         );
       const result = await saveSlackMessage(
         actor,
@@ -468,9 +478,8 @@ export async function handleCommand(
       return postMessage(
         inst.token,
         channel,
-        result
-          ? `Saved <${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${result.id}|${slackEscape(result.learning.title)}>. The hive knows.`
-          : "That message is already saved.",
+        slackCaptureReply(result),
+        thread,
       );
     }
     if (command === "ask" && argument) {
@@ -482,18 +491,15 @@ export async function handleCommand(
         { question: argument },
         { publicOnly: !info.is_private && !info.is_im },
       );
-      const posted = await postMessage(
-        inst.token,
-        channel,
-        slackAnswer(result),
-      );
-      await getSql()`INSERT INTO slack_ask_history(id,team_id,channel_id,thread_ts,actor_id,question,answer) VALUES(${newId("sth")},${teamId},${channel},${posted},${user},${redactSecrets(argument).text},${result.answer})`;
+      await postMessage(inst.token, channel, slackAnswer(result), thread);
+      await getSql()`INSERT INTO slack_ask_history(id,team_id,channel_id,thread_ts,actor_id,question,answer) VALUES(${newId("sth")},${teamId},${channel},${thread},${user},${redactSecrets(argument).text},${result.answer})`;
       return;
     }
     return postMessage(
       inst.token,
       channel,
       "Try /hive ask <question>, /hive recent, or /hive save <message permalink>.",
+      thread,
     );
   });
 }
@@ -542,7 +548,8 @@ export async function runSlackJob(reference: z.infer<typeof jobReference>) {
         );
       else if (job.kind === "event")
         await handleEvent(teamId, job.payload.event);
-      else if (job.kind === "command") await handleCommand(teamId, job.payload);
+      else if (job.kind === "command")
+        await handleCommand(teamId, job.payload, String(job.id));
       else if (job.kind === "action") {
         const actor = await resolveActor(
           teamId,
@@ -581,7 +588,7 @@ export async function runSlackJob(reference: z.infer<typeof jobReference>) {
               await postMessage(
                 inst.token,
                 channel,
-                `Saved <${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${result.id}|${slackEscape(result.learning.title)}>. The hive knows.`,
+                slackCaptureReply(result),
                 thread,
               );
           }

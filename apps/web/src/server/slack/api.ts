@@ -21,6 +21,7 @@ export async function postSlackMessage(
     text: message.text.slice(0, 12000),
     ...(message.blocks ? { blocks: JSON.stringify(message.blocks) } : {}),
     ...(message.threadTs ? { thread_ts: message.threadTs } : {}),
+    reply_broadcast: false,
     unfurl_links: false,
     unfurl_media: false,
     parse: "none",

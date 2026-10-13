@@ -238,16 +238,16 @@ describe.skipIf(!process.env.DATABASE_URL)(
       ).toBeNull();
     });
     it("isolates moderation and revocation and removes all access", async () => {
-      const learning = await pushLearning(
+      const pushed = await pushLearning(
         a,
         hivePushInput.parse({
           title: "Access fixture",
           body: "Moderation fixture",
         }),
       );
-      await expect(moderateLearning(b, learning.id, "delete")).rejects.toThrow(
-        "not found",
-      );
+      if (pushed.dropped) throw new Error("Unexpected fixture drop.");
+      const learning = pushed;
+      await expect(moderateLearning(b, learning.id, "delete")).rejects.toThrow("not found");
       await expect(
         moderateLearning(member, learning.id, "delete"),
       ).rejects.toThrow("team admin");

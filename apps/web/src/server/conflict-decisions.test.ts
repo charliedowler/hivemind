@@ -89,8 +89,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
   () => {
     let a: HiveContext, b: HiveContext, member: HiveContext;
     const teams: string[] = [];
-    const push = (ctx: HiveContext, title: string, body: string) =>
-      pushLearning(
+    const push = async (ctx: HiveContext, title: string, body: string) => {
+      const result = await pushLearning(
         ctx,
         hivePushInput.parse({
           title,
@@ -99,6 +99,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           evidence: { session_excerpt: body },
         }),
       );
+      if ("dropped" in result) throw new Error("Unexpected dropped fixture.");
+      return result;
+    };
     beforeAll(async () => {
       a = (await createTeam({ teamName: "Decisions A", memberName: "A" })).ctx;
       b = (await createTeam({ teamName: "Decisions B", memberName: "B" })).ctx;

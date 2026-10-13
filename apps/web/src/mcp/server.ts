@@ -190,7 +190,9 @@ export function registerHiveTools(server: McpServer) {
         const result = await pushLearning(getContext(ctx), {
           ...input,
           source,
+          agent: input.agent ?? (userAgent.includes("executor") ? "executor" : source),
         });
+        if (result.dropped) return JSON.stringify(result);
         const decisions = result.decisions?.map(record => `Decision ${record.id}: ${record.decision}, ${Math.round(record.confidence * 100)}% confidence, ${record.model}. ${record.reason}`).join("\n");
         return `${result.merged ? `Merged into ${result.id} (seen ${result.pushCount} times)` : `Saved ${result.id}`}${result.redactions ? `\nRedacted ${result.redactions} secret${result.redactions === 1 ? "" : "s"}.` : ""}${decisions ? `\n${decisions}\nSee the Decisions log at /app/conflicts.` : ""}`;
       }, ctx),

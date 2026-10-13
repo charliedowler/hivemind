@@ -18,6 +18,8 @@ Use `--yes` for a non-interactive install. It prints the sign-in steps. Use `--c
 
 SessionStart calls `hive_recent` for the current Git remote once per session and injects at most two lines. Empty, unauthenticated and unreachable hives stay silent. Stop keeps the existing Jev capture gate and asks for scrubbed learnings at most once per session. It never saves the transcript as a cell. Agent skills still work if a hook cannot connect.
 
+Stop fetches the member's effective capture rules with its bearer token and caches them for 30 seconds per endpoint and credential. Repo, remote, path, agent, session and keyword drop rules run locally before the summary is sent. Content categories remain server-side. The hook sends bounded repo and session metadata for server enforcement. See [What Hive keeps](../../docs/capture-rules.md).
+
 Doctor reports a fixed client, platform and outcome to Hive's authenticated analytics endpoint. SessionStart reports whether it adds context. Stop uses the capture server's existing event, with a local report only if that gate cannot complete. Reports contain no paths, commands, transcripts, queries or terminal output. Unknown push counts stay null. Reporting has a short deadline and no retry queue; failure stays silent. Set `HIVE_TELEMETRY=0` to disable these client reports. The [analytics contract](../../docs/analytics.md) describes delivery and retention.
 
 ## Releasing

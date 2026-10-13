@@ -12,6 +12,8 @@ import {
 } from "vitest";
 import { hivePushInput, type HiveContext } from "@hivemind/core";
 import { createTeam } from "./auth";
+import { newId } from "./db/ids";
+import { learningView } from "./learning-view";
 import { getSql } from "./db/client";
 import { pushLearning } from "./hive";
 import {
@@ -21,6 +23,7 @@ import {
   knowledgePath,
   readKnowledge,
   snapshotKnowledge,
+  renderKnowledgeTree,
 } from "./knowledge-tree";
 import { putPrivateObject, readPrivateObject } from "./blob-store";
 const state = vi.hoisted(() => ({
@@ -46,6 +49,30 @@ it.each(["../other", "/other", "repos/../other", "a\\b", "a//b", "a\u0000b"])(
   "rejects unsafe path %s",
   (path) => expect(() => knowledgePath(path)).toThrow(),
 );
+
+it("renders shared and owner trees without hidden cells or replacement pointers", () => {
+  const owner: HiveContext = {
+    teamId: "team", teamName: "Team", memberId: "owner", memberName: "Owner",
+  };
+  const cell = (id: string, flagged: boolean, memberId = "owner") => learningView({
+    id, title: id, body: `${id} body`, member_id: memberId, author_name: memberId,
+    tags: [id], repo: "owner/service", paths: [], confidence: 1, source: "codex",
+    kind: "friction", area: "tool", lifecycle: "fresh", revision: 1,
+    capture_flagged: flagged, capture_redacted: flagged, capture_rule_ids: ["rule"],
+    superseded_by: id === "public" ? "private" : null,
+    created_at: new Date(), updated_at: new Date(), last_pushed_at: new Date(),
+  });
+  const cells = [cell("public", false), cell("private", true), cell("other-private", true, "other")];
+  const dump = (files: Map<string, string>) => JSON.stringify([...files]);
+  const shared = dump(renderKnowledgeTree(cells));
+  expect(shared).toContain("public");
+  expect(shared).not.toContain("private");
+  const personal = dump(renderKnowledgeTree(cells, owner));
+  expect(personal).toContain("private body");
+  expect(personal).not.toContain("other-private");
+  expect(dump(renderKnowledgeTree(cells, { ...owner, memberId: "admin" }))).not.toContain("private");
+  expect(cells[1]).toMatchObject({ captureFlagged: true, captureRedacted: true, captureRuleIds: ["rule"] });
+});
 
 async function unpack(archive: Buffer) {
   const files = new Map<string, string>(),
@@ -77,8 +104,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
   () => {
     let a: HiveContext, b: HiveContext;
     const teams: string[] = [];
-    const push = (title: string, extra = {}) =>
-      pushLearning(
+    const push = async (title: string, extra = {}) => {
+      const result = await pushLearning(
         a,
         hivePushInput.parse({
           title,
@@ -88,6 +115,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           ...extra,
         }),
       );
+      if ("dropped" in result) throw new Error("Unexpected dropped fixture.");
+      return result;
+    };
     beforeAll(async () => {
       a = (await createTeam({ teamName: "Tree A", memberName: "Alice" })).ctx;
       b = (await createTeam({ teamName: "Tree B", memberName: "Bob" })).ctx;
@@ -224,5 +254,46 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await getSql()`UPDATE members SET removed_at = now() WHERE id = ${b.memberId} AND team_id = ${b.teamId}`;
       await expect(downloadKnowledge(bToken)).rejects.toThrow("expired");
     });
+    it("keeps flagged owner trees in memory and excludes all flagged cells from shared files and snapshots", async () => {
+      const owner = { ...a, memberId: newId("mem"), memberName: "Owner" };
+      await getSql()`INSERT INTO members (id, team_id, name) VALUES (${owner.memberId}, ${a.teamId}, ${owner.memberName})`;
+      const privateId = newId("lrn"), adminId = newId("lrn"), publicId = newId("lrn");
+      for (const [id, memberId, title, flagged] of [
+        [privateId, owner.memberId, "Owner private tree", true],
+        [adminId, a.memberId, "Admin private tree", true],
+        [publicId, a.memberId, "Visible predecessor", false],
+      ] as const)
+        await getSql()`INSERT INTO learnings (id, team_id, member_id, title, body, kind, tags, repo, source, confidence, capture_flagged) VALUES (${id}, ${a.teamId}, ${memberId}, ${title}, ${title + " body"}, 'friction', ${[flagged ? "private-topic" : "public-topic"]}, 'privacy/tree', 'codex', 1, ${flagged})`;
+      await getSql()`UPDATE learnings SET superseded_by = ${privateId}, lifecycle = 'superseded' WHERE id = ${publicId} AND team_id = ${a.teamId}`;
+      const shared = await ensureKnowledge(a, true);
+      const sharedContent = JSON.stringify(await Promise.all(Object.entries(shared.manifest).map(async ([path, file]) => [path, (await readPrivateObject(file.key)).toString()])));
+      for (const id of [privateId, adminId]) expect(sharedContent).not.toContain(id);
+      expect(sharedContent).not.toContain("private-topic");
+      const listing = await browseKnowledge(owner, "repos/privacy/tree/general");
+      const privatePath = listing.entries.find((entry) => entry.path.includes(privateId))!.path;
+      expect((await readKnowledge(owner, privatePath)).content).toContain("Owner private tree body");
+      await expect(readKnowledge(a, privatePath)).rejects.toThrow("not found");
+      await expect(readKnowledge(b, privatePath)).rejects.toThrow("not found");
+      for (const ctx of [a, owner]) {
+        const tree = await readKnowledge(ctx, "INDEX.md");
+        const allowed = ctx.memberId === owner.memberId ? privateId : adminId;
+        const hidden = ctx.memberId === owner.memberId ? adminId : privateId;
+        expect(tree.content).toContain(allowed);
+        expect(tree.content).not.toContain(hidden);
+        expect(JSON.stringify(await browseKnowledge(ctx, "repos/privacy/tree/general"))).not.toContain(hidden);
+        const snapshot = await snapshotKnowledge(ctx);
+        const token = new URL(snapshot.url).searchParams.get("token")!;
+        const archived = JSON.stringify([...(await unpack(await downloadKnowledge(token)))]);
+        expect(archived).toContain(publicId);
+        expect(archived).not.toContain(privateId);
+        expect(archived).not.toContain(adminId);
+        expect(archived).not.toContain("private-topic");
+      }
+      const sharedAfter = await ensureKnowledge(owner);
+      expect(JSON.stringify(sharedAfter.manifest)).not.toContain(privateId);
+      expect(JSON.stringify(sharedAfter.manifest)).not.toContain(adminId);
+      const privateTreeUploads = vi.mocked(putPrivateObject).mock.calls.filter(([key, content]) => key.includes("/tree/") && [privateId, adminId].some((id) => content.toString().includes(id)));
+      expect(privateTreeUploads).toEqual([]);
+    }, 15000);
   },
 );

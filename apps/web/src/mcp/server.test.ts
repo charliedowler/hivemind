@@ -5,11 +5,12 @@ import {
   type ToolCallback,
 } from "@modelcontextprotocol/server";
 import {
+  hivePushInput,
   hiveRecentInput,
   hiveSearchInput,
   type LearningView,
 } from "@hivemind/core";
-import { recentLearnings, searchLearnings } from "@/server/hive";
+import { pushLearning, recentLearnings, searchLearnings } from "@/server/hive";
 import { registerHiveTools } from "./server";
 
 vi.mock("@/server/hive", () => ({
@@ -48,6 +49,16 @@ afterEach(() => {
 });
 
 describe("MCP learning text", () => {
+  it("returns a structured, silently accepted capture drop", async () => {
+    vi.mocked(pushLearning).mockResolvedValue({dropped: true, rule: "repo_owner"});
+    const server = new McpServer({name: "test", version: "1.0.0"});
+    const registerTool = vi.spyOn(server, "registerTool");
+    registerHiveTools(server);
+    const push = registerTool.mock.calls.find(([name]) => name === "hive_push")![2] as ToolCallback<typeof hivePushInput>;
+    const result = await push(hivePushInput.parse({title: "Excluded fixture", body: "Private fixture"}), toolContext);
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toEqual([{type: "text", text: JSON.stringify({dropped: true, rule: "repo_owner"})}]);
+  });
   it.each(["codex", "claude-code", "manual"] as const)(
     "shows the author and %s source in recent and search results",
     async (source) => {
@@ -61,6 +72,11 @@ describe("MCP learning text", () => {
         repo: source === "manual" ? null : "team/service",
         paths: [],
         confidence: 1,
+        captureFlagged: false,
+        captureRedacted: false,
+        captureRuleIds: [],
+        captureCategories: {},
+        canConfirmCapture: false,
         source,
         author: { id: context.memberId, name: context.memberName },
         pushCount: 1,

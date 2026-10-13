@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         response_type: "ephemeral",
         text: "Connect Slack from hive settings first.",
       });
-    await enqueueSlack(
+    const job = await enqueueSlack(
       String(rows[0].team_id),
       "command",
       `command:${hashToken(body)}`,
@@ -31,10 +31,12 @@ export async function POST(request: Request) {
       },
       payload.channel_id,
     );
-    return Response.json({
-      response_type: "ephemeral",
-      text: "The hive is looking.",
-    });
+    return job.fresh
+      ? Response.json({
+          response_type: "ephemeral",
+          text: "The hive is looking.",
+        })
+      : new Response(null, { status: 200 });
   } catch (error) {
     return httpError(error);
   }

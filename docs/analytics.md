@@ -143,6 +143,12 @@ The fixture suite checks replay identity, null fields, privacy, independent conc
 
 For a local demo, `HIVE_ANALYTICS_TEST_DATABASE_URL=... pnpm --filter web exec tsx scripts/analytics-fixture.ts` creates a fresh isolated schema, applies migrations there, seeds events and synthetic sessions, and writes a new ignored `.env.local`. It refuses to overwrite an existing env file and accepts only the local endpoint. Never deploy the fixture sessions. The [verification report](analytics-report.md) contains the seeded SQL outputs and the reviewed 1280-pixel Playwright screenshot.
 
+
+## Capture rule events
+
+`capture.rule_dropped` records an excluded capture before storage. Its properties contain the rule ID and kind only. No title, body, path, remote, keyword, rule description or classifier input is recorded.
+
+`capture.rule_applied` records a matched rule's kind, action, ingress and agent. It covers drop, redact and flag. These events answer which rule kinds exclude captures, which entrypoints encounter rules and which actions members use. They measure observed captures; locally filtered hooks may never reach the server. Counts do not measure all agent sessions or the amount of private content on a machine.
 ## Digest events
 
 The append-only ledger accepts `digest_scheduled`, `digest_posted`, `digest_skipped_empty` and `digest_failed`. They answer whether admins set up updates, which schedules deliver or skip, and whether failures leave a gap. Schedule and post IDs join to operational delivery history. Properties include cadence, manual/scheduled trigger and per-section counts; posted events also carry measured friction minutes. Event text contains no channel name, learning body, schedule request, token or error payload.

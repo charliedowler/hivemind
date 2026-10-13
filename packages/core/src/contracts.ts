@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CaptureRuleInput } from "./capture-rules";
 import type {
   LearningKind,
   LearningSource,
@@ -55,6 +56,11 @@ export type LearningView = {
   verifyBeforeUse?: boolean;
   supersededBy?: string | null;
   sessionRef?: string | null;
+  captureFlagged?: boolean;
+  captureRedacted?: boolean;
+  captureRuleIds?: string[];
+  captureCategories?: Record<string, boolean>;
+  canConfirmCapture?: boolean;
   permalink?: string | null;
   slackChannel?: string;
   classification?: JevClassification | null;
@@ -84,7 +90,8 @@ export type SearchHit = LearningView & {
   signals: SearchSignals;
 };
 
-export type PushResult = {
+export type PushResult = { dropped: true; rule: CaptureRuleInput["kind"] } | {
+  dropped?: false;
   id: string;
   merged: boolean;
   pushCount: number;
@@ -105,6 +112,7 @@ export type AskCitation = {
   why: string;
   source?: "slack";
   permalink?: string;
+  date?: string;
 };
 
 export type AskResult = {

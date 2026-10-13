@@ -7,7 +7,7 @@ import { HiveError } from "@/server/errors";
 import { askHive, recentLearnings } from "@/server/hive";
 import { channelInfo } from "@/server/slack/client";
 import { installation } from "@/server/slack/install";
-import { slackAnswer, slackEscape } from "@/server/slack/format";
+import { slackAnswer, slackEscape, slackCaptureReply } from "@/server/slack/format";
 
 export type SlackToolContext = {
   teamId: string;
@@ -136,9 +136,7 @@ export const slackTools: SlackTool[] = [
         input.wholeThread,
       );
       return {
-        text: result
-          ? `Saved <${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${result.id}|${slackEscape(result.learning.title)}>. The hive knows.`
-          : "That message is already saved.",
+        text: slackCaptureReply(result),
       };
     },
   },

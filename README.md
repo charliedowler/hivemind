@@ -148,6 +148,10 @@ Connect a private Vercel Blob store and set `BLOB_READ_WRITE_TOKEN` on the serve
 
 Snapshots are limited to 10,000 cells and 50 MB of source Markdown. The download URL is a bearer capability; keep it private. It expires after 15 minutes and stops working if its member is removed. There is no automatic Blob garbage collection or scheduled worker yet; the rebuild command is the recovery path. Evidence collection starts with migration 0010; older raw pushes cannot be reconstructed.
 
+## Capture rules
+
+Open [What Hive keeps](https://gohive.dev/settings/capture) to exclude repos, paths, agents, keywords or content categories from your captures. Describe a rule and confirm the proposal, or use the structured form. Admins can set team rules. Rules can drop, redact or hold cells for their owner's review. Applying a rule to existing cells shows a count before confirmation. The [capture rules guide](docs/capture-rules.md) explains enforcement and hook filtering.
+
 ## Security notes
 
 - **API keys are hashed at rest.** A key is `hm_` plus 32 random bytes. The database stores only its SHA-256 hash and a 10 character display prefix. The raw key is shown once. Legacy web sessions keep their hashes. Better Auth stores its new session tokens in the mapped session table.

@@ -9,6 +9,8 @@ const nullable = <T extends z.ZodType>(schema: T) =>
 const count = z.number().int().nonnegative();
 const probability = z.number().finite().min(0).max(1);
 export const eventNames = [
+  "capture.rule_dropped",
+  "capture.rule_applied",
   "access.changed",
   "digest_scheduled",
   "digest_posted",
@@ -70,6 +72,7 @@ export const outcomes = [
   "silent",
 ] as const;
 export const reasonCodes = [
+  "capture_rule",
   "sensitive_refused",
   "provider_failed",
   "invalid_response",
@@ -130,6 +133,10 @@ const conflictProbabilities = z.object({
   decision: z.record(conflictChoices, probability),
 });
 export const propertiesSchema = z.object({
+  ruleId: nullable(z.string().regex(/^crule_[a-z2-7]{12}$/)),
+  ruleKind: nullable(z.enum(["repo_owner", "repo_match", "path_match", "content_category", "agent_or_client", "keyword"])),
+  ruleAction: nullable(z.enum(["drop", "redact", "flag"])),
+  ingress: nullable(z.enum(["mcp", "web", "hook", "slack", "unknown"])),
   digestScheduleId: nullable(z.string().regex(/^dgs_[a-z2-7]{12}$/)),
   digestPostId: nullable(z.string().regex(/^dgp_[a-z2-7]{12}$/)),
   cadence: nullable(z.enum(["daily", "weekdays", "weekly", "fortnightly", "monthly"])),

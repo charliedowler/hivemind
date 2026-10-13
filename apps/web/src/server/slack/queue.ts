@@ -17,8 +17,11 @@ export async function enqueueSlack(
   delaySeconds = 0,
 ) {
   const sql = getSql();
-  const rows =
-    await sql`INSERT INTO slack_jobs(id,team_id,dedupe_key,kind,payload,channel_id,generation) VALUES(${newId("sjb")},${teamId},${key},${kind},${sql.json(payload as never)},${channelId ?? null},${generation ?? null}) ON CONFLICT(team_id,dedupe_key) DO UPDATE SET dedupe_key=excluded.dedupe_key RETURNING id,status`;
+  const inserted =
+    await sql`INSERT INTO slack_jobs(id,team_id,dedupe_key,kind,payload,channel_id,generation) VALUES(${newId("sjb")},${teamId},${key},${kind},${sql.json(payload as never)},${channelId ?? null},${generation ?? null}) ON CONFLICT(team_id,dedupe_key) DO NOTHING RETURNING id,status`;
+  const rows = inserted.length
+    ? inserted
+    : await sql`SELECT id,status FROM slack_jobs WHERE team_id=${teamId} AND dedupe_key=${key}`;
   if (!["pending", "running"].includes(rows[0].status))
     return { fresh: false, id: String(rows[0].id) };
   await send(
@@ -30,7 +33,7 @@ export async function enqueueSlack(
       retentionSeconds: 604800,
     },
   );
-  return { fresh: true, id: String(rows[0].id) };
+  return { fresh: inserted.length > 0, id: String(rows[0].id) };
 }
 type ThreadProgress = { ts: string; cursor?: string };
 export async function runBackfill(
@@ -97,18 +100,16 @@ export async function retryPendingSlack(
     await getSql()`SELECT id,dedupe_key FROM slack_jobs WHERE team_id=${ctx.teamId} AND status='pending' AND kind IN ('event','command','action','backfill') ORDER BY created_at LIMIT 100`;
   for (let offset = 0; offset < rows.length; offset += 5) {
     const attempts = await Promise.allSettled(
-      rows
-        .slice(offset, offset + 5)
-        .map((row) =>
-          send(
-            "hive-slack",
-            { teamId: ctx.teamId, jobId: String(row.id) },
-            {
-              idempotencyKey: `${ctx.teamId}:${row.dedupe_key}`,
-              retentionSeconds: 604800,
-            },
-          ),
+      rows.slice(offset, offset + 5).map((row) =>
+        send(
+          "hive-slack",
+          { teamId: ctx.teamId, jobId: String(row.id) },
+          {
+            idempotencyKey: `${ctx.teamId}:${row.dedupe_key}`,
+            retentionSeconds: 604800,
+          },
         ),
+      ),
     );
     const failed = attempts.find((attempt) => attempt.status === "rejected");
     if (failed?.status === "rejected") throw failed.reason;

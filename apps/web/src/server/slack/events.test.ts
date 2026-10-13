@@ -93,7 +93,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
         channel,
         "1800000000.000001",
       );
-      expect(result?.learning.author.id).toBe(ctx.memberId);
+      if (!result || result.dropped) throw new Error("Expected an accepted fixture capture");
+      expect(result.learning.author.id).toBe(ctx.memberId);
       expect(result?.learning.source).toBe("slack");
       expect(result?.learning.permalink).toContain("/archives/");
       expect(result?.learning.body).toContain(
