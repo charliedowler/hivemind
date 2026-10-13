@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repository, summary } from '../../../skills/hive/scripts/session-start.mjs';
 import { captureContext, effectiveCaptureRules, localCaptureDecision } from '../../../skills/hive/scripts/capture-rules.mjs';
+import { sessionFacts } from '../../../skills/hive/scripts/capture-session.mjs';
 import { callTool } from '../../../skills/hive/scripts/mcp.mjs';
 
 const selectedPolicy = {include: ["github.com/team/widget"], exclude: [], revision: 1};
@@ -415,4 +416,12 @@ test('local privacy redaction uses only the sanitized body for the model summary
   assert.equal(hive.pushes.length, 1);
   const state = readFileSync(join(home, '.hive/capture-sessions', readdirSync(join(home, '.hive/capture-sessions'))[0]), 'utf8');
   assert.ok(!state.includes('mango-canyon-private'));
+});
+
+test('a filename or quoted code does not turn a progress update into a missed learning', () => {
+  const text = "Hive is installed and the project selection is saved. A leftover `fixed.txt` made the test pass, so I removed it to reproduce the failure; rerunning now.";
+  const transcript = value => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: value }] } });
+  assert.deepEqual(sessionFacts(transcript(text)).candidates, []);
+  assert.deepEqual(sessionFacts(transcript('Reading fixed.txt before rerunning the test.')).candidates, []);
+  assert.equal(sessionFacts(transcript('Fixed the database parser by escaping config values; the test now passes.')).candidates.length, 1);
 });

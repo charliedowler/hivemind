@@ -6,7 +6,7 @@ import { captureContext, effectiveCaptureRules, localCaptureDecision, gateCaptur
 
 const normalise = value => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const hash = value => crypto.createHash("sha256").update(value).digest("hex");
-const durable = /\b(learned|discovered|workaround|root cause|gotcha|blocked|slowed|friction|insight|decision|fixed|resolved|chose)\b/i;
+const durable = /\b(learned|discovered|workaround|root cause|gotcha|blocked|slowed|friction|insight|decision|fixed|resolved|chose)\b(?![./-])/i;
 const contentText = content => typeof content === "string" ? content : Array.isArray(content) ? content.filter(block => block.type === "text").map(block => block.text || "").join("\n") : "";
 const pushTool = name => /(?:^|__)hive_push$/.test(name || "");
 export function savedReceipt(result) {
@@ -41,7 +41,7 @@ export function sessionFacts(transcript) {
       if (entry.type === "assistant" && block.type === "text" && typeof block.text === "string") {
         for (const paragraph of block.text.split(/\n\s*\n/)) {
           const text = paragraph.trim().slice(0, 4000);
-          if (text.length >= 20 && durable.test(text)) candidates.push(text);
+          if (text.length >= 20 && durable.test(text.replace(/`[^`]*`/g, ""))) candidates.push(text);
         }
       }
     }
