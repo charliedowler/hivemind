@@ -83,12 +83,12 @@ it.each(["social-only", "agent"])(
   "hides password controls for a %s account",
   async () => {
     const { container, close } = await render(
-      <Account initial={account} hasPassword={false} />,
+      <Account rules={[]} initial={account} hasPassword={false} />,
     );
     try {
       expect(container.querySelector('input[name="password"]')).toBeNull();
       expect(container.textContent).not.toContain("Change password");
-      expect(container.querySelectorAll("form")).toHaveLength(1);
+      expect(container.querySelectorAll("form")).toHaveLength(2);
       expect(container.textContent).toContain(account.member.email);
       expect(container.textContent).not.toContain("Create a key");
       expect(container.querySelector('input[name="label"]')).toBeNull();
@@ -100,7 +100,7 @@ it.each(["social-only", "agent"])(
 
 it("offers a collapsed password form only for a credential account", async () => {
   const { container, close } = await render(
-    <Account initial={account} hasPassword />,
+    <Account rules={[]} initial={account} hasPassword />,
   );
   try {
     const details = container.querySelector("details")!;
@@ -114,7 +114,7 @@ it("offers a collapsed password form only for a credential account", async () =>
 it("reveals email change on request and closes it after verification", async () => {
   mocks.request.mockResolvedValue(account);
   const { container, dom, close } = await render(
-    <Account initial={account} hasPassword={false} />,
+    <Account rules={[]} initial={account} hasPassword={false} />,
   );
   try {
     expect(container.querySelector('input[name="email"]')).toBeNull();

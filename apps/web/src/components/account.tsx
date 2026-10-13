@@ -1,4 +1,6 @@
 "use client";
+import type { CaptureRule } from "@hivemind/core";
+import { CaptureRules } from "./capture-rules";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input } from "@hivemind/design-system";
@@ -17,9 +19,11 @@ type AccountData = {
 export function Account({
   initial,
   hasPassword,
+  rules,
 }: {
   initial: AccountData;
   hasPassword: boolean;
+  rules: CaptureRule[];
 }) {
   const [data, setData] = useState(initial);
   const [token, setToken] = useState("");
@@ -144,6 +148,10 @@ export function Account({
           </Card>
         </details>
       ) : null}
+      <CaptureRules
+        initial={{ rules, isAdmin: data.member.role === "admin" }}
+        scope="personal"
+      />
       <Button
         variant="ghost"
         loading={pending}
