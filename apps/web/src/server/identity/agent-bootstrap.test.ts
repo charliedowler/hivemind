@@ -149,6 +149,28 @@ describe.skipIf(!process.env.DATABASE_URL)("Hive-issued agent bootstrap", () => 
     await shareWith(f.ctx,{teamId:org.teamId,projects:[],humanInstruction:"Keep personal."});
     expect(await shareOnJoinOffer(f.ctx,org.teamId)).toBeNull();expect(await shareOnJoinOffer(f.ctx,org.teamId,true)).not.toBeNull();expect(await sql`SELECT id FROM project_sharing_grants WHERE owner_member_id=${f.owner}`).toHaveLength(0);
   });
+  it("records one all-selected grant and covers future selections without publishing unselected cells", async () => {
+    const org=await organisation(),f=await fresh(org.domain);
+    await shareProjects(f.ctx,{include:["github.com/example/widget"],revision:0,humanInstruction:"Keep widget privately."});
+    await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);await signInMemberContext(f.owner);
+    const result=await shareWith(f.ctx,{teamId:org.teamId,mode:"all_selected",humanInstruction:"Share all my selected projects, now and in future."});
+    expect(result.shared).toBe("all_selected");
+    const grants=await sql`SELECT grant_kind,repo_pattern,human_instruction FROM project_sharing_grants WHERE owner_member_id=${f.owner} AND team_id=${org.teamId}`;
+    expect(grants).toHaveLength(1);expect(grants[0]).toEqual({grant_kind:"all_selected",repo_pattern:"*",human_instruction:"Share all my selected projects, now and in future."});
+    const human=(await memberContext(f.owner,f.ctx.teamId))!;
+    const futureId=newId("lrn"),privateId=newId("lrn");
+    await sql`INSERT INTO learnings (id,team_id,member_id,title,body,kind,source,confidence,repo) VALUES (${futureId},${f.ctx.teamId},${f.ctx.memberId},'Future fixture','Evidence','learning','claude-code',1,'github.com/example/future'),(${privateId},${f.ctx.teamId},${f.ctx.memberId},'Private fixture','Evidence','learning','claude-code',1,'github.com/example/private')`;
+    await shareProjects(human,{include:["github.com/example/widget","github.com/example/future"],revision:1,humanInstruction:"Also keep future privately."});
+    expect(await sql`SELECT learning_id FROM learning_shares WHERE learning_id=${futureId} AND team_id=${org.teamId} AND withdrawn_at IS NULL`).toHaveLength(1);
+    expect(await sql`SELECT learning_id FROM learning_shares WHERE learning_id=${privateId} AND team_id=${org.teamId}`).toHaveLength(0);
+  });
+  it("makes an outside-domain claim a human approval request without joining agents", async () => {
+    const org=await organisation(),f=await fresh("gmail.com",org.phrase);
+    await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);await signInMemberContext(f.owner);
+    const state=await agentStatus(f.ctx);
+    expect(state.claimPending).toBe(false);expect(state.organisations).toEqual([]);expect(state.joinRequests).toContainEqual(expect.objectContaining({teamId:org.teamId,status:"requested"}));
+    expect(await memberContext(f.ctx.memberId,org.teamId)).toBeNull();
+  });
   it("revokes just one machine and invalidates the real bearer boundary immediately", async () => {
     const f=await fresh(),other=await fresh();
     const request=new Request("http://localhost/api/mcp",{headers:{Authorization:`Bearer ${f.result.credential}`}});

@@ -5,7 +5,7 @@ import { hiveChoices } from "./identity/onboarding-web";
 export async function projectShareState(ctx: HiveContext) {
   const [hives, grants] = await Promise.all([
     hiveChoices(ctx),
-    getSql()`SELECT g.id, g.team_id, g.repo_pattern FROM project_sharing_grants g JOIN hive_memberships h ON h.team_id = g.team_id AND h.member_id = ${ctx.memberId} AND h.removed_at IS NULL WHERE g.owner_member_id = ${ctx.memberId} AND g.withdrawn_at IS NULL ORDER BY g.team_id, g.repo_pattern`,
+    getSql()`SELECT g.id, g.team_id, g.repo_pattern, g.grant_kind FROM project_sharing_grants g JOIN hive_memberships h ON h.team_id = g.team_id AND h.member_id = ${ctx.memberId} AND h.removed_at IS NULL WHERE g.owner_member_id = ${ctx.memberId} AND g.withdrawn_at IS NULL ORDER BY g.team_id, g.repo_pattern, g.grant_kind`,
   ]);
   return hives
     .filter((hive) => !hive.personal)
@@ -16,6 +16,7 @@ export async function projectShareState(ctx: HiveContext) {
         .map((grant) => ({
           id: String(grant.id),
           pattern: String(grant.repo_pattern),
+          kind: String(grant.grant_kind),
         })),
     }));
 }

@@ -99,9 +99,9 @@ export async function agentStatus(ctx: HiveContext) {
   const row = rows[0];
   const hives = await listHiveContexts(ctx.memberId);
   const organisations = hives.filter(hive => !hive.personal);
-  const requests = await getSql()`SELECT r.status, r.team_id, t.name AS team_name FROM hive_join_requests r JOIN teams t ON t.id = r.team_id WHERE r.member_id = ${row.owner_member_id} AND r.status = 'pending' AND r.expires_at > now()`;
+  const requests = await getSql()`SELECT r.status, r.team_id, t.name AS team_name, p.phrase FROM hive_join_requests r JOIN teams t ON t.id = r.team_id LEFT JOIN hive_join_phrases p ON p.team_id = r.team_id AND p.generation = r.phrase_generation AND p.retired_at IS NULL WHERE r.member_id = ${row.owner_member_id} AND r.status = 'pending' AND r.expires_at > now()`;
   const offers = await Promise.all(organisations.map(hive => shareOnJoinOffer(ctx, hive.teamId)));
-  return { agentId: ctx.memberId, claimPending: Boolean(row.provisional || !row.email_verified), expiresAt: row.provisional ? row.provisional_expires_at?.toISOString() : null, joinPending: row.join_phrase, joinError: row.join_error, joinRequests: requests.map(request => ({ teamId: String(request.team_id), teamName: String(request.team_name), status: "requested" })), organisations: organisations.map(hive => ({ teamId: hive.teamId, teamName: hive.teamName })), shareOffers: offers.filter(Boolean) };
+  return { agentId: ctx.memberId, claimPending: Boolean(row.provisional || !row.email_verified), expiresAt: row.provisional ? row.provisional_expires_at?.toISOString() : null, joinPending: row.join_phrase, joinError: row.join_error, joinRequests: requests.map(request => ({ teamId: String(request.team_id), teamName: String(request.team_name), status: "requested", joinUrl: request.phrase ? `${process.env.PUBLIC_URL || "https://gohive.dev"}/j/${request.phrase}` : null })), organisations: organisations.map(hive => ({ teamId: hive.teamId, teamName: hive.teamName })), shareOffers: offers.filter(Boolean) };
 }
 
 export async function revokeAgentCredential(ctx: HiveContext, agentId = ctx.memberId) {

@@ -149,6 +149,9 @@ export async function shareProjects(
           .allowed
       )
         await tx`UPDATE learning_shares SET withdrawn_at = now(), withdrawn_by = ${ctx.memberId} WHERE learning_id = ${share.learning_id} AND team_id = ${share.team_id}`;
+    const selectionGrants = await tx`SELECT id, team_id FROM project_sharing_grants WHERE owner_member_id = ${actor.ownerId} AND grant_kind = 'all_selected' AND withdrawn_at IS NULL ORDER BY team_id`;
+    const personalCells = selectionGrants.length ? await tx`SELECT id FROM learnings WHERE team_id = ${actor.personal.teamId} AND owner_member_id = ${actor.ownerId} ORDER BY id` : [];
+    for (const grant of selectionGrants) for (const cell of personalCells) await publishRevision(tx, ctx, cell.id, grant.team_id, grant.id, false);
     return after;
   });
 }
@@ -206,7 +209,7 @@ export async function requireSelectedProject(
   return { ...actor, policy, project: decision.project! };
 }
 
-async function publicationAuthority(
+export async function publicationAuthority(
   tx: postgres.TransactionSql,
   ctx: HiveContext,
   teamId: string,
@@ -387,6 +390,18 @@ export async function publishProject(
   };
   return transaction ? publish(transaction) : getSql().begin(publish);
 }
+
+export async function publishSelectedProjects(ctx: HiveContext, teamId: string, instruction: string, tx: postgres.TransactionSql) {
+  const actor = await captureOwner(ctx, tx);
+  await lockCapturePolicy(tx, actor.ownerId);
+  await publicationAuthority(tx, ctx, teamId, actor.ownerId, false, instruction);
+  const grants = await tx`INSERT INTO project_sharing_grants (id, owner_member_id, team_id, repo_pattern, grant_kind, granted_by, human_instruction, instructed_by) VALUES (${newId("pgrant")}, ${actor.ownerId}, ${teamId}, '*', 'all_selected', ${ctx.memberId}, ${redactSecrets(instruction).text}, ${ctx.memberId}) ON CONFLICT (owner_member_id, team_id, repo_pattern) DO UPDATE SET withdrawn_at = NULL, withdrawn_by = NULL, granted_by = EXCLUDED.granted_by, human_instruction = EXCLUDED.human_instruction, instructed_by = EXCLUDED.instructed_by, revision = project_sharing_grants.revision + 1 RETURNING id`;
+  const cells = await tx`SELECT id FROM learnings WHERE owner_member_id = ${actor.ownerId} AND team_id = ${actor.personal.teamId} ORDER BY id`;
+  let published = 0;
+  for (const cell of cells) if (await publishRevision(tx, ctx, cell.id, teamId, grants[0].id)) published++;
+  return { id: String(grants[0].id), published };
+}
+
 export async function refreshProjectPublications(
   tx: postgres.TransactionSql,
   ctx: HiveContext,
@@ -398,7 +413,7 @@ export async function refreshProjectPublications(
   const grants =
     await tx`SELECT * FROM project_sharing_grants WHERE owner_member_id = ${rows[0].owner_member_id} AND withdrawn_at IS NULL ORDER BY team_id, id`;
   for (const grant of grants)
-    if (projectPatternMatches(grant.repo_pattern, rows[0].repo))
+    if (grant.grant_kind === "all_selected" || projectPatternMatches(grant.repo_pattern, rows[0].repo))
       await publishRevision(tx, ctx, id, grant.team_id, grant.id, false);
 }
 export async function withdrawPublication(

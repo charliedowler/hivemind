@@ -2,7 +2,7 @@ import { canonicalProject, redactSecrets, evaluateProjectPolicy, projectPatternM
 import { z } from "zod";
 import { getSql } from "./db/client";
 import { HiveError } from "./errors";
-import { captureOwner, ownerCapturePolicy, publishProject } from "./project-sharing";
+import { captureOwner, ownerCapturePolicy, publishProject, publishSelectedProjects } from "./project-sharing";
 import { memberContext } from "./identity/enrollment";
 
 export async function shareOnJoinOffer(ctx: HiveContext, teamId: string, includeAnswered = false) {
@@ -13,11 +13,10 @@ export async function shareOnJoinOffer(ctx: HiveContext, teamId: string, include
   const policy = await ownerCapturePolicy(ctx);
   const cells = await getSql()`SELECT repo, count(*)::int AS cells FROM learnings WHERE owner_member_id = ${actor.ownerId} AND team_id = ${actor.personal.teamId} AND repo IS NOT NULL AND lifecycle IN ('fresh','confirmed','outdated') AND NOT capture_flagged GROUP BY repo ORDER BY repo`;
   const projects = policy.include.map(pattern => ({ pattern, cells: cells.reduce((count, row) => count + (evaluateProjectPolicy(policy, { repo: row.repo }).allowed && projectPatternMatches(pattern, row.repo) ? row.cells : 0), 0) }));
-  if (!projects.length) return null;
   return { teamId, teamName: String(row.name), projects };
 }
 
-export const shareWithInput = z.strictObject({ teamId: z.string().min(1), projects: z.array(z.string().min(1).max(256)).max(100), humanInstruction: z.string().trim().min(1).max(4000) });
+export const shareWithInput = z.strictObject({ teamId: z.string().min(1), mode: z.enum(["all_selected", "projects", "not_now"]).default("projects"), projects: z.array(z.string().min(1).max(256)).max(100).default([]), humanInstruction: z.string().trim().min(1).max(4000) });
 export async function shareWith(ctx: HiveContext, input: unknown) {
   const data = shareWithInput.parse(input);
   data.humanInstruction = redactSecrets(data.humanInstruction).text;
@@ -29,11 +28,12 @@ export async function shareWith(ctx: HiveContext, input: unknown) {
   if (projects.some(project => !project || !available.has(project))) throw new HiveError("Choose from your selected projects.", 400);
   return getSql().begin(async tx => {
     let published = 0;
-    for (const project of projects) {
+    if (data.mode === "all_selected") published = (await publishSelectedProjects(ctx, data.teamId, data.humanInstruction, tx)).published;
+    for (const project of data.mode === "projects" ? projects : []) {
       const grant = await publishProject(ctx, data.teamId, project!, tx, data.humanInstruction);
       published += grant.published;
     }
     await tx`INSERT INTO join_share_offers (owner_member_id, team_id, answered_at, projects, human_instruction) VALUES (${actor.ownerId}, ${data.teamId}, now(), ${projects as string[]}, ${data.humanInstruction}) ON CONFLICT (owner_member_id, team_id) DO UPDATE SET answered_at = now(), projects = EXCLUDED.projects, human_instruction = EXCLUDED.human_instruction`;
-    return { shared: projects, published };
+    return { mode: data.mode, shared: data.mode === "all_selected" ? "all_selected" : projects, published };
   });
 }

@@ -46,10 +46,11 @@ export function ProjectSharing({
       {organisations.map((org) => (
         <div className="stack" key={org.teamId}>
           <h3>{org.teamName}</h3>
+          {org.grants.filter(grant => grant.kind === "all_selected").map(grant => <div className="row between wrap" key={grant.id}><span>All selected projects, now and in future · Shared</span><Button size="sm" variant="secondary" disabled={pending} onClick={() => void act(org.teamId, grant.pattern, grant.id)}>Make personal</Button></div>)}
           {[
             ...new Set([
               ...policy.include,
-              ...org.grants.map((grant) => grant.pattern),
+              ...org.grants.filter(grant => grant.kind !== "all_selected").map((grant) => grant.pattern),
             ]),
           ].map((pattern) => {
             const grant = org.grants.find((grant) => grant.pattern === pattern);

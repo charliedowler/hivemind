@@ -7,5 +7,8 @@ it("shows project counts without preselecting publication", () => {
   expect(html).toContain("Anything you don&#x27;t pick stays personal.");
   expect(html).toContain("12");
   expect(html).not.toContain("checked=");
-  expect(html).toContain("Keep personal");
+  expect(html).toContain("Choose projects");
+  expect(html).toContain("Not now");
+  expect(html).toContain(">Yes<");
+  expect(html).toContain("now and in future");
 });
