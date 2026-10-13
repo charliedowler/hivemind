@@ -46,7 +46,7 @@ jobs:
       - name: Locate the pnpm store
         id: pnpm
         run: echo "store=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm.outputs.store }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
