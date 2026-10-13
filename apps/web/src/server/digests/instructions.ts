@@ -5,7 +5,7 @@ import {
   digestZone,
   digestScheduleInput,
 } from "@hivemind/core";
-import type { SlackToolContext } from "@/slack/tools";
+import type { SlackToolContext, SlackToolResult } from "@/slack/tools";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { HiveError } from "../errors";
@@ -36,7 +36,7 @@ export async function digestInstruction(
   ctx: SlackToolContext,
   text: string,
   timezone: string,
-) {
+): Promise<SlackToolResult> {
   const member = await proposalContext(ctx.teamId, ctx.memberId);
   if (!ctx.messageTs)
     throw new HiveError("Ask Hive in a new message to change a schedule.", 400);

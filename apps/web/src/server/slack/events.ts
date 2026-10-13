@@ -1,5 +1,5 @@
 import { reactToSlack } from "@/slack/tools/react";
-import { hasThreadAction } from "./actions";
+import { latestThreadAction } from "@/slack/tools/undo";
 import { z } from "zod";
 import { redactSecrets, type HiveContext } from "@hivemind/core";
 import { getSql } from "../db/client";
@@ -259,19 +259,9 @@ export async function handleMessage(
         message.user!,
         direct,
       );
-      const undoRequest =
-        /^(?:please\s+)?undo(?:\s+(?:that|it|the last action|please))?[.!]?$/i.test(
-          message.text.trim(),
-        ) &&
-        !!message.thread_ts &&
-        (await hasThreadAction(teamId, channel, thread));
-      const digestFollowup =
-        actor && thread !== message.ts
-          ? await (
-              await import("../digests/instructions")
-            ).isDigestFollowup(teamId, actor.memberId, channel, thread)
-          : false;
-      const prompted = mentioned || direct || undoRequest || digestFollowup;
+      const threadFollowup = actor && !!message.thread_ts &&
+        (prior.length > 0 || Boolean(await latestThreadAction({ teamId, channelId: channel, threadTs: thread })));
+      const prompted = mentioned || direct || Boolean(threadFollowup);
       const cells =
         actor && !prompted
           ? (
