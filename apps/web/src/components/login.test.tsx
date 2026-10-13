@@ -43,7 +43,7 @@ describe.each(["Sign in", "Create a team", "Join"])("official provider buttons o
       const buttons = [...container.querySelectorAll<HTMLButtonElement>(".auth-providers button")];
       expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(names);
       expect(buttons.map((button) => button.querySelector("img")!.getAttribute("src"))).toEqual([
-        "/auth-providers/google-sign-in.svg", "/auth-providers/slack.svg", "/auth-providers/agentid.svg",
+        "/auth-providers/google.svg", "/auth-providers/slack.svg", "/auth-providers/agentid.svg",
       ]);
       expect(buttons.every((button) => button.type === "button" && button.querySelector("img")!.alt === "")).toBe(true);
       await act(async () => buttons[providers.indexOf(provider)].click());

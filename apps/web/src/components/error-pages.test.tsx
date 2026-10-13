@@ -44,6 +44,9 @@ describe("error pages", () => {
     expect(html).not.toContain("Sign-in could not finish.");
     expect(html).toContain('class="error-actions"');
   });
+  it.each(["email_not_verified", "email_not_found", "account_not_linked"])("opens email recovery from %s", (reason) => {
+    expect(renderToStaticMarkup(<AuthErrorPage reason={reason} />)).toContain('href="/app/login?email"');
+  });
   it("does not echo arbitrary callback error text", () => {
     expect(renderToStaticMarkup(<AuthErrorPage reason="secret-from-query" />)).not.toContain("secret-from-query");
   });

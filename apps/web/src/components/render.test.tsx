@@ -67,6 +67,20 @@ describe("dashboard components", () => {
     );
     expect(configured).toContain("Sign in with Google");
     expect(configured).toContain("Sign in with Slack");
+    expect(configured).toContain("<summary");
+    expect(configured).toContain("Or use your email</summary>");
+    expect(configured).toMatch(/<details[^>]*>/);
+    expect(configured).not.toMatch(/<details[^>]* open=/);
+  });
+  it.each([
+    { initialEmailOpen: true },
+    { initialError: "Your email is not verified." },
+  ])("opens email sign-in for an explicit request or email error: %j", (props) => {
+    const html = renderToStaticMarkup(<Login invite="" providers={["google"]} {...props} />);
+    expect(html).toMatch(/<details[^>]* open=""/);
+    expect(html).toContain('name="email"');
+    expect(html).toContain('name="password"');
+    expect(html).toContain("Set or reset your password");
   });
   it("renders a keyboard reachable cell with attribution, status and repeat pushes", () => {
     const html = renderToStaticMarkup(

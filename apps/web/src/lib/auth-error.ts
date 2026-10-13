@@ -7,9 +7,9 @@ export function authError(reason: string) {
   if (["connection_expired", "invalid_request", "invalid_client", "invalid_signature", "invalid_code_verifier", "invalid_grant"].includes(code))
     return { title: "This connection request has expired or changed.", next: "Start the connection again from your agent.", href: "/app/install", label: "Install Hive" };
   if (["email_not_verified", "email_not_verified_by_provider"].includes(code))
-    return { title: "Your email is not verified.", next: "Sign in with your email to request a verification code.", href: "/app/login", label: "Sign in" };
+    return { title: "Your email is not verified.", next: "Sign in with your email to request a verification code.", href: "/app/login?email", label: "Sign in" };
   if (["account_not_linked", "email_doesn't_match", "email_mismatch", "email_not_found", "unable_to_get_user_info"].includes(code))
-    return { title: "This sign-in option could not verify your account.", next: "Sign in with your email and password.", href: "/app/login", label: "Sign in" };
+    return { title: "This sign-in option could not verify your account.", next: "Sign in with your email and password.", href: "/app/login?email", label: "Sign in" };
   if (["invite_expired", "invite_revoked", "invite_invalid", "invite_exhausted"].includes(code))
     return { title: "This invite is no longer valid.", next: "Ask your team admin for a new invite.", href: "/app/login", label: "Sign in" };
   if (code === "domain_not_allowed")

@@ -9,7 +9,7 @@ import { ErrorPanel } from "./primitives";
 import { AuthForm, type LoginMode } from "./auth-form";
 import styles from "./auth-provider-buttons.module.css";
 
-export function Login({ invite, providers, initialError = "" }: { invite: string; providers: SignInProvider[]; initialError?: string }) {
+export function Login({ invite, providers, initialError = "", initialEmailOpen = false }: { invite: string; providers: SignInProvider[]; initialError?: string; initialEmailOpen?: boolean }) {
   const [mode, setMode] = useState<LoginMode>(invite ? "join" : "sign-in");
   return (
     <div className="login-layout">
@@ -24,8 +24,10 @@ export function Login({ invite, providers, initialError = "" }: { invite: string
         <Tabs label="Account options" tabs={[{ id: "sign-in", label: "Sign in" }, { id: "create", label: "Create a team" }, { id: "join", label: "Join" }]} value={mode} onChange={(value) => setMode(value as LoginMode)} />
         {initialError ? <ErrorPanel message={initialError} /> : null}
         {providers.length ? <ProviderButtons providers={providers} /> : null}
-        {providers.length ? <p className="auth-divider small muted">Or use your email</p> : null}
-        <AuthForm key={mode} mode={mode} invite={invite} />
+        {providers.length ? <details className={styles.emailDisclosure} open={initialEmailOpen || Boolean(initialError)}>
+          <summary className="auth-divider small">Or use your email</summary>
+          <AuthForm key={mode} mode={mode} invite={invite} />
+        </details> : <AuthForm key={mode} mode={mode} invite={invite} />}
       </Card>
     </div>
   );
@@ -47,7 +49,7 @@ function ProviderButtons({ providers }: { providers: SignInProvider[] }) {
       if (result.error) throw new Error(result.error.message);
     } catch (error) { setError(errorMessage(error)); setPending(undefined); }
   }
-  return <div className={`stack auth-providers ${styles.providers}`}>
+  return <div className="stack auth-providers">
     {providers.map((provider) => <button
       key={provider}
       type="button"
@@ -57,7 +59,14 @@ function ProviderButtons({ providers }: { providers: SignInProvider[] }) {
       disabled={Boolean(pending)}
       onClick={() => void signIn(provider)}
     >
-      {provider === "google" ? <img src="/auth-providers/google-sign-in.svg" alt="" width={180} height={40} className={styles.googleArtwork} /> : <>
+      {provider === "google" ? <>
+        <div className={styles.googleState} />
+        <div className={styles.googleContentWrapper}>
+          <div className={styles.googleIcon}><img src="/auth-providers/google.svg" alt="" width={20} height={20} /></div>
+          <span className={styles.googleContents}>{providerLabels.google}</span>
+          <span hidden>{providerLabels.google}</span>
+        </div>
+      </> : <>
         <img src={`/auth-providers/${provider}.svg`} alt="" width={20} height={20} />
         <span>{providerLabels[provider]}</span>
       </>}
