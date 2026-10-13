@@ -29,13 +29,25 @@ A matching drop takes precedence over other actions. Redaction and flagging can 
 
 ## Describe a rule
 
-The settings page turns a description into a structured proposal. Hive uses known repos and organisations from saved metadata to ask a concrete question when needed. For example, a request to exclude personal repos can propose keeping only the team organisations. The proposal is shown before it is saved. A description alone does not create or apply a rule.
+Describe what Hive should keep in settings or through `hive_set_capture_rule` in Slack. A clear, specific instruction saves the rule immediately. Hive restates the result in one line. There is no proposal or confirmation step. The web description field also accepts undo.
 
-Admins choose team scope explicitly. Members can only create rules for themselves. The structured form supports the same rule kinds as the description field.
+A pure decision checks whether the text is an instruction, whether it identifies the required matches and whether the requested scope is allowed. It has a 500 ms timeout. When this decision is unavailable, the schema model's own judgement provides the fallback. Current database membership and the admin role still control team rules. A model cannot grant permission.
+
+Hive asks one question when a required detail is missing. Known repo metadata helps identify work organisations. Several possible organisations can require a question about which owners to keep. Questions and tentative suggestions do not create rules.
+
+Description-based drop and redact rules apply to existing memories automatically. A member's flag rule applies to future captures. Team rules also apply across the team's existing memories. The reply reports the recorded counts. The decision and automatic actions are audited. Within one hour, the same caller can reply undo to remove the new rule and reverse its recorded changes, subject to revision and privacy guards. Undoing a team rule requires a current admin.
+
+Large scans continue in bounded batches. Replies distinguish completed updates from pending work. A changed rule or lost permission can stop a scan; the reply identifies stopped work. A persisted cursor and counts support recovery through `/api/cron/capture-rules` every 15 minutes. Undo also resumes safely if its reversal needs several batches.
+
+## Slack
+
+Ask Hive to set a capture rule in a thread or a direct message. A clear instruction saves directly without a button. Reply undo in the same thread or direct-message conversation within one hour. Undo checks the current caller, team and conversation context.
+
+Channel replies describe the action, match type and scope without quoting private names, paths or patterns. Direct messages can show the exact escaped restatement. Ask which capture rules apply to you to use `hive_list_capture_rules`. It lists enabled team rules and your own enabled rules, and excludes other members' personal rules.
 
 ## Existing cells
 
-Apply to existing memories first shows a bounded preview count. Confirmation applies the rule to the previewed revisions. The preview includes learnings, insights and friction. Drop rules retract matching cells through the existing lifecycle with reason `capture_rule` and the rule ID. Redact and flag rules use the same actions as new captures. The history records the action and count, and an admin can reverse it through the decision log.
+The structured editor offers a bounded preview before manual application. Description-based rules use the same guarded batches automatically. The preview includes learnings, insights and friction. Drop rules retract matching cells through the existing lifecycle with reason `capture_rule` and the rule ID. Redact and flag rules use the same actions as new captures. The history records the action and count, and an admin can reverse it through Applied history in capture settings.
 
 A preview checks at most 500 cells for a cheap rule or eight cells for a content rule. The smaller content batch bounds model work within the request. If more cells remain, Preview next batch advances the cursor, including batches with no matches. A changed rule or cell needs a new preview. Snapshot links issued before an applied privacy action are revoked and cannot be used to bypass a later privacy action.
 

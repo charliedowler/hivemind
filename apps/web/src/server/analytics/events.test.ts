@@ -4,6 +4,7 @@ import {
   analyticsTransaction,
   eventRow,
   originFor,
+  propertiesSchema,
   recordEvent,
   recordMutation,
   withOperation,
@@ -198,4 +199,25 @@ it("keeps conflict analytics bounded and excludes reasons and bodies", () => {
       properties: { decisionConfidence: 2 },
     }),
   ).toThrow();
+});
+
+
+describe("capture instruction analytics", () => {
+  it("stores only typed decision facts and joins, with no instruction content", () => {
+    const properties = {captureInstructionId: "cinstr_aaaaaaaaaaaa", ruleId: "crule_aaaaaaaaaaaa", instructionSource: "slack", instructionDecision: "save", instructionClear: true, instructionSpecific: true, instructionScopeAllowed: false, request: "private original", pattern: "private match", restatement: "private summary"} as const;
+    const row = eventRow({name: "capture.rule_instruction_decided", key: "cinstr_aaaaaaaaaaaa", outcome: "completed", properties});
+    expect(row.properties).toMatchObject({captureInstructionId: "cinstr_aaaaaaaaaaaa", ruleId: "crule_aaaaaaaaaaaa", instructionSource: "slack", instructionDecision: "save", instructionClear: true, instructionSpecific: true, instructionScopeAllowed: false});
+    expect(JSON.stringify(row)).not.toMatch(/private|C_PRIVATE|123\.456/);
+  });
+
+  it("stores bounded undo counts without snapshots or titles", () => {
+    const properties = {captureInstructionId: "cinstr_aaaaaaaaaaaa", ruleId: "crule_aaaaaaaaaaaa", instructionSource: "web", instructionDecision: "undo", scannedCount: 500, appliedCount: 2, restoredCount: 1, retainedCount: 1, pending: false, beforeSnapshot: "private", title: "private"} as const;
+    const row = eventRow({name: "capture.rule_instruction_undone", key: "cinstr_aaaaaaaaaaaa", properties});
+    expect(row.properties).toMatchObject({scannedCount: 500, appliedCount: 2, restoredCount: 1, retainedCount: 1, pending: false});
+    expect(JSON.stringify(row)).not.toContain("private");
+  });
+
+  it.each([{captureInstructionId: "freeform private text"}, {instructionClear: "yes"}, {instructionSpecific: 0.9}, {instructionScopeAllowed: "admin"}, {instructionSource: "provider"}, {instructionDecision: "confirm"}, {restoredCount: -1}, {appliedCount: 1.5}])("rejects untyped instruction facts", properties => {
+    expect(() => propertiesSchema.parse(properties)).toThrow();
+  });
 });
