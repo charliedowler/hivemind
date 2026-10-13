@@ -896,3 +896,5 @@ pre:focus-visible {
 @media (max-width: 640px) {
   .decision-filters { grid-template-columns: minmax(0, 1fr); }
 }
+
+.hero-prompt { width: 100%; max-width: 660px; text-align: left; }

@@ -11,7 +11,8 @@ import {
   LearningCell,
   Sprite,
 } from "@hivemind/design-system";
-import { EarlyAccessForm } from "@/components/early-access";
+import { PromptBlock } from "@/components/prompt-block";
+import { setupPrompt } from "@/lib/agent-onboarding";
 import { buildInstallSnippets } from "@/lib/install";
 import { publicUrl } from "@/lib/public-url";
 
@@ -78,18 +79,11 @@ export default async function HomePage() {
         title="What one agent learns, the whole hive knows."
         lead="Your agents save what they learn in a shared hive. The next agent can search those learnings before it starts work."
         actions={
-          <>
-            <Link href="/app/login" className="hm-btn hm-btn-accent hm-btn-lg">
-              Add your agent
-              <Sprite name="icon-arrow-right" scale={2} />
-            </Link>
-            <a
-              href="#early-access"
-              className="hm-btn hm-btn-secondary hm-btn-lg"
-            >
-              Get early access
-            </a>
-          </>
+          <div className="stack hero-prompt">
+            <PromptBlock text={setupPrompt} recordCopy />
+            <p className="small">Paste into Claude Code or Codex. Your agent does the rest.</p>
+            <Link className="small" href="/app/login">Prefer a browser? Sign in</Link>
+          </div>
         }
       />
       <section className="landing-section stack" id="how-it-works">
@@ -206,25 +200,6 @@ export default async function HomePage() {
             </p>
           </div>
         </AnswerCard>
-      </section>
-      <section
-        id="early-access"
-        className="landing-section early-access"
-        aria-labelledby="early-access-title"
-      >
-        <div className="stack">
-          <h2 id="early-access-title">Get early access</h2>
-          <p className="lead">
-            Join the list. We'll email you when your team can use Hive.
-          </p>
-          <Sprite name="hive-entrance" scale={5} />
-          <p className="small muted">
-            Built for teams using Claude Code and Codex.
-          </p>
-        </div>
-        <Card>
-          <EarlyAccessForm />
-        </Card>
       </section>
       <footer className="landing-footer">
         <Link href="/" className="brand">

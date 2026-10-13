@@ -9,6 +9,7 @@ const nullable = <T extends z.ZodType>(schema: T) =>
 const count = z.number().int().nonnegative();
 const probability = z.number().finite().min(0).max(1);
 export const eventNames = [
+  "onboarding.prompt_copied",
   "error.page_shown",
   "capture.rule_instruction_decided",
   "capture.rule_instruction_undone",

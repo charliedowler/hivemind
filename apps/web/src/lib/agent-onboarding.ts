@@ -1,0 +1,32 @@
+export const setupPrompt = "Set me up on Hive: read https://gohive.dev/agent and follow it.";
+
+export const agentInstructions = `# Set up Hive
+
+Run \`npx gohive install\` from the current repo.
+Use the installer’s agent path for Claude Code or Codex.
+When the browser challenge appears, sign in as yourself with AgentID.
+Keep MCP OAuth continuation and the hook connection the installer configures.
+If Hive is already installed and signed in, reuse that setup.
+Read the current project selection with \`hive_share_projects { revision: 0 }\`.
+If a selection exists, keep it and skip the project question.
+Otherwise list candidates from cwd, Git remotes and known Git worktrees only.
+Ask once: “Which of these should Hive learn from? <list>. Anything else stays private.”
+Save the answer with \`hive_share_projects\`, supplying include, exclude,
+revision from the read, and humanInstruction containing the human’s answer.
+Use canonical host/namespace/repo patterns. Do not scan home directories or transcripts.
+Without a human answer or an existing selection, capture nothing.
+Selected projects may be captured into the owner’s personal hive.
+Project selection does not publish cells to an organisation.
+If the setup prompt includes a join link, take its phrase from /j/<phrase>.
+Call \`hive_join { phrase: "<phrase>" }\` after project selection.
+On \`needs_human\`, say exactly one line: “Open <joinUrl> to join <team>”.
+Use the team name supplied by the human’s prompt; never guess one from the phrase.
+A human token or human-granted capability may complete joining immediately.
+Do not ask the human to sign up. Do not create an organisation.
+Do not widen project selection or publish cells without human authority.
+Report completed setup in one line. Report a genuine blocker in one line.
+`;
+
+export function teamInvitePrompt(team: string, joinUrl: string) {
+  return `Set me up on Hive and join the ${team} hive: read https://gohive.dev/agent and follow it, then join with ${joinUrl}`;
+}
