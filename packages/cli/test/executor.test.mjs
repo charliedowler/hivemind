@@ -1,10 +1,15 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { detectExecutor, executorEndpoint, executorSetupLink, doctorExecutor, installExecutor } from '../dist/executor.js';
 import { install, url } from '../dist/installer.js';
+
+mock.method(childProcess, 'spawn', () => ({ on() {}, unref() {} }));
+syncBuiltinESMExports();
 
 function fixture({ version = 'executor v1.6.8', integration = null, connections = [], oauth = true } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'gohive-executor-'));

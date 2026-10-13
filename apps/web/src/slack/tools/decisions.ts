@@ -22,7 +22,7 @@ export const decisionTools: SlackTool[] = [
           ...ctx,
           actionType: "decision_reverse",
         });
-        if (!judgment.act) return { text: judgment.reason };
+        if (!judgment.act) return { text: judgment.reason, ...(judgment.react ? { react: judgment.react } : {}) };
         const actor = await toolActor(ctx);
         const result = await runReversibleAction(
           ctx,

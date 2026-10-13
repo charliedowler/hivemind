@@ -288,6 +288,7 @@ function ReverseDecision({
             onChange={(event) => setReason(event.target.value)}
           />
           <Button
+            type="submit"
             variant="ghost"
             disabled={
               pending || reason === undefined || reason === record.reason

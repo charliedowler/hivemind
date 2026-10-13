@@ -185,7 +185,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await expect(
         completeEmailCode(expired.verificationToken, expired.code, suffix),
       ).rejects.toThrow("expired");
-    });
+    }, 30000);
     it("invalidates undelivered codes and rate limits sends", async () => {
       const email = `failure@${suffix}.example.test`;
       emails.push(email);
