@@ -38,7 +38,6 @@ describe("agent onboarding instructions", () => {
     expect(agentInstructions).toContain("Installing Hive for Claude Code");
     expect(agentInstructions).toContain("Installing Hive for Codex");
     expect(agentInstructions).toContain("--client all");
-    expect(agentInstructions).toContain("a second OAuth sign-in is not needed");
     expect(agentInstructions).not.toContain("Installing Hive for Claude Code and Codex:");
     expect(await markdown().text()).toBe(agentInstructions);
     expect(

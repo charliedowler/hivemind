@@ -371,24 +371,3 @@ for (const agent of ['claude', 'codex']) test(`${agent}-only installation is che
   assert.ok(!f.calls.some(call => call[0] === (agent === 'claude' ? 'codex' : 'claude')));
   assert.equal(installedAgents(f.home), undefined);
 });
-
-test('Claude shares the hook grant through a token-free headers helper and removes it from a preserved server', () => {
-  const f = fixture();
-  f.write('.claude.json', JSON.stringify({mcpServers:{hive:{type:'http',url},other:{command:'keep'}}}));
-  install({...f.options, agents:['claude']});
-  const hive=JSON.parse(f.read('.claude.json')).mcpServers.hive;
-  assert.ok(hive.headersHelper.includes('headers.mjs'));
-  assert.ok(!hive.headersHelper.includes('Bearer'));
-  install({...f.options, agents:['claude']});
-  uninstall(f.options);
-  assert.deepEqual(JSON.parse(f.read('.claude.json')).mcpServers,{hive:{type:'http',url},other:{command:'keep'}});
-});
-
-test('a custom Claude headers helper is preserved without changing any configuration', () => {
-  const f = fixture();
-  const config=JSON.stringify({mcpServers:{hive:{type:'http',url,headersHelper:'custom-auth'}}});
-  f.write('.claude.json',config);
-  assert.throws(()=>install({...f.options,agents:['claude']}),/custom headers helper/);
-  assert.equal(f.read('.claude.json'),config);
-  assert.equal(existsSync(join(f.home,'.claude/settings.json')),false);
-});

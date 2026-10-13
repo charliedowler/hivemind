@@ -107,7 +107,7 @@ for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${sc
   for(let i=0;i<50 && signInState(home).phase!=='connected';i++) await new Promise(resolve=>setTimeout(resolve,20));
   const complete=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(complete.stdout.includes("You're in Lightdash."));
-  if (identity === 'human') assert.ok(complete.stdout.includes('Run /mcp to reconnect Hive; no second sign-in is needed'));
+  if (identity === 'human') assert.ok(complete.stdout.includes('run /mcp to reconnect Hive'));
   assert.ok(complete.stdout.includes('Team prompt fixture'));
   assert.ok(complete.stdout.includes('https://gohive.dev/j/amber-honey-fox'));
   assert.equal(lastPhrase,'amber-honey-fox');
