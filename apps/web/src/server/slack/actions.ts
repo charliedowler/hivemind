@@ -1,3 +1,4 @@
+import { slackToolReply } from "@/slack/tools/reply";
 import type postgres from "postgres";
 import { z } from "zod";
 import type { SlackToolContext } from "@/slack/tools";
@@ -25,7 +26,7 @@ export type SlackActionInverse = z.infer<typeof inverseSchema>;
 export type ReversibleChange = {
   inverse: SlackActionInverse;
   text: string;
-  undo: string;
+  undo?: string;
 };
 async function authorize(tx: postgres.TransactionSql, ctx: SlackToolContext) {
   const rows =
@@ -55,11 +56,11 @@ export async function runReversibleAction(
     if (prior[0]) {
       if (prior[0].member_id !== ctx.memberId)
         throw new HiveError("This action belongs to another member.", 403);
-      return { text: String(prior[0].reply) };
+      return { text: slackToolReply(String(prior[0].reply), ctx) };
     }
     const result = await change(tx);
     const inverse = inverseSchema.parse(result.inverse);
-    const text = result.text.replace(/\s+/g, " ").trim();
+    const text = slackToolReply(result.text, ctx).replace(/\s+/g, " ").trim();
     await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${messageTs},${toolName},${tx.json(inverse)},${text})`;
     return { text };
   });

@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDate } from "@hivemind/core";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input } from "@hivemind/design-system";
@@ -126,16 +127,8 @@ export function Account({ initial }: { initial: AccountData }) {
               {item.label} · <code>{item.prefix}</code>
             </strong>
             <p className="small">
-              Created{" "}
-              {new Date(item.created_at).toLocaleDateString("en-GB", {
-                timeZone: "UTC",
-              })}{" "}
-              · Last used{" "}
-              {item.last_used_at
-                ? new Date(item.last_used_at).toLocaleDateString("en-GB", {
-                    timeZone: "UTC",
-                  })
-                : "Never"}
+              Created {formatHumanDate(item.created_at)} · Last used{" "}
+              {item.last_used_at ? formatHumanDate(item.last_used_at) : "Never"}
             </p>
             <Button
               size="sm"
@@ -180,7 +173,11 @@ export function Account({ initial }: { initial: AccountData }) {
         </form>
         {key ? <KeyBox apiKey={key} /> : null}
       </Card>
-      {data.member.email && data.member.email_verified ? <Card><PasswordReset email={data.member.email} /></Card> : null}
+      {data.member.email && data.member.email_verified ? (
+        <Card>
+          <PasswordReset email={data.member.email} />
+        </Card>
+      ) : null}
       <Button
         variant="ghost"
         loading={pending}

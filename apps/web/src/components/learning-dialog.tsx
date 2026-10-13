@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDate } from "@hivemind/core";
 import { AnalyticsBeacon } from "./analytics-beacon";
 
 import { useEffect, useState } from "react";
@@ -306,12 +307,12 @@ function LifecycleNotice({ learning }: { learning: LearningView }) {
       {learning.verifyBeforeUse ? (
         <p className="cell-warning">
           Verify before use. This learning passed its verification date{" "}
-          {learning.verifyAfter?.slice(0, 10)}.
+          {learning.verifyAfter ? formatHumanDate(learning.verifyAfter) : ""}.
         </p>
       ) : learning.verifyAfter ? (
         <p className="small muted">
-          Verify by {learning.verifyAfter.slice(0, 10)} · As of{" "}
-          {learning.updatedAt.slice(0, 10)}
+          Verify by {formatHumanDate(learning.verifyAfter)} · Updated{" "}
+          {formatHumanDate(learning.updatedAt)}
         </p>
       ) : null}
     </>

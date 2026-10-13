@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDate } from "@hivemind/core";
 import { useState } from "react";
 import type { MemberView, TeamOverview } from "@hivemind/core";
 import { Button, Card, MemberBee, Sprite } from "@hivemind/design-system";
@@ -79,10 +80,7 @@ export function Members({
             </div>
           ) : (
             <p className="small">
-              Current invite expires{" "}
-              {new Date(overview.inviteExpiresAt).toLocaleDateString("en-GB", {
-                timeZone: "UTC",
-              })}
+              Current invite expires {formatHumanDate(overview.inviteExpiresAt)}
               . The hive cannot show the code again.
             </p>
           )}
@@ -120,11 +118,7 @@ export function Members({
             <dl className="member-facts">
               <div>
                 <dt>Joined</dt>
-                <dd>
-                  {new Date(member.joinedAt).toLocaleDateString("en-GB", {
-                    timeZone: "UTC",
-                  })}
-                </dd>
+                <dd>{formatHumanDate(member.joinedAt)}</dd>
               </div>
               <div>
                 <dt>Last seen</dt>

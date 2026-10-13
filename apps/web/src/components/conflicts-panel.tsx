@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDateTime } from "@hivemind/core";
 import { useEffect, useState } from "react";
 import type { ConflictDecisionRecord } from "@hivemind/core";
 import {
@@ -160,9 +161,7 @@ export function DecisionCard({
           {decisionLabels[record.decision]}
         </Badge>
         <time className="small muted" dateTime={record.createdAt}>
-          {new Date(record.createdAt).toLocaleString("en-GB", {
-            dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
-          })} UTC
+          {formatHumanDateTime(record.createdAt)}
         </time>
       </div>
       <div className="conflict-pair">

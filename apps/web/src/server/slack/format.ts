@@ -1,3 +1,4 @@
+import { formatHumanDate } from "@hivemind/core";
 import type { AskCitation, AskResult, PushResult } from "@hivemind/core";
 export function slackEscape(text: string) {
   return text
@@ -43,7 +44,7 @@ function citationAliases(citations: AskCitation[]) {
     ]),
   );
 }
-export function slackAnswer(result: AskResult) {
+export function slackAnswer(result: AskResult, timeZone?: string) {
   const aliases = citationAliases(result.citations);
   const numbered = new Map<string, { number: number; citation: AskCitation }>();
   const paragraphs = result.answer
@@ -88,7 +89,7 @@ export function slackAnswer(result: AskResult) {
       `Sources\n${[...numbered.values()]
         .map(({ number, citation }) => {
           const date = citation.date?.slice(0, 10);
-          return `${number}. ${citationLink(citation)}${date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? ` (${date})` : ""}`;
+          return `${number}. ${citationLink(citation)}${date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? ` (${formatHumanDate(date, { timeZone })})` : ""}`;
         })
         .join("\n")}`,
     );

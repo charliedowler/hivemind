@@ -1,4 +1,5 @@
 import { decisionTools } from "./decisions";
+export { slackToolReply } from "./reply";
 import { captureTools } from "./capture";
 import { decideDecisiveness } from "@/server/slack/decisiveness";
 import { undoLastAction } from "@/server/slack/actions";
@@ -83,7 +84,7 @@ export const slackTools: SlackTool[] = [
       const result = await askHive(await toolActor(ctx), input, {
         publicOnly: await publicChannel(ctx),
       });
-      return { text: slackAnswer(result) };
+      return { text: slackAnswer(result, ctx.timeZone) };
     },
   },
   {

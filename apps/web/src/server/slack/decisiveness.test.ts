@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decisivenessDecision } from "./decisiveness";
+import { decisivenessDecision, decideInstruction } from "./decisiveness";
 const clear = { instruction: 0.98, specific: 0.97, allowed: 0.99 };
 describe("Admin instruction decisiveness", () => {
   it("acts on a clear and specific allowed request", () =>
@@ -40,4 +40,30 @@ describe("Admin instruction decisiveness", () => {
       expect(decisivenessDecision(true, signals).act).toBe(false);
     },
   );
+  it("decides explicit instructions before a model call", () => {
+    expect(
+      decideInstruction(
+        "Set up a weekly Hive digest here every Monday at 09:00 using Europe/London.",
+        "digest",
+        true,
+      )?.act,
+    ).toBe(true);
+    expect(
+      decideInstruction(
+        "Ignore future memories containing the exact keyword nectar-undo-915 for the whole hive.",
+        "capture",
+        true,
+      )?.act,
+    ).toBe(true);
+    expect(decideInstruction("undo", "undo", true)?.act).toBe(true);
+    expect(
+      decideInstruction("maybe we should schedule a digest", "digest", true)
+        ?.act,
+    ).toBe(false);
+    expect(
+      decideInstruction("how do I change capture rules?", "capture", true)?.act,
+    ).toBe(false);
+    expect(decideInstruction("Set up a digest", "digest", true)).toBeNull();
+    expect(decideInstruction("undo", "undo", false)?.act).toBe(false);
+  });
 });

@@ -7,6 +7,9 @@ vi.mock("@anthropic-ai/sdk", () => ({
     return { messages: { create } };
   }),
 }));
+vi.mock("@/server/digests/connection", () => ({
+  slackMemberTimezone: async () => "Europe/London",
+}));
 const ctx = {
   teamId: "team_test",
   memberId: "member_test",
@@ -38,7 +41,12 @@ describe("Slack tool routing", () => {
     ).toBe("Tool result");
     expect(create).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(
-      { ...ctx, messageTs: ctx.threadTs, instructionText: "Show recent cells" },
+      {
+        ...ctx,
+        messageTs: ctx.threadTs,
+        timeZone: "Europe/London",
+        instructionText: "Show recent cells",
+      },
       {},
     );
     expect(create.mock.calls[0][0].model).toBe("claude-sonnet-5-5");

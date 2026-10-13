@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDate } from "@hivemind/core";
 import { useState } from "react";
 import type { LearningVersion } from "@hivemind/core";
 import { Button } from "@hivemind/design-system";
@@ -46,9 +47,7 @@ export function LearningHistory({
         <details className="version-entry" key={version.revision}>
           <summary>
             Version {version.revision} · {version.author} ·{" "}
-            {new Date(version.createdAt).toLocaleDateString("en-GB", {
-              timeZone: "UTC",
-            })}
+            {formatHumanDate(version.createdAt)}
           </summary>
           {Object.keys(version.diff).length ? (
             Object.entries(version.diff).map(([field, change]) => (

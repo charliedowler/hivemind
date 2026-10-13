@@ -82,6 +82,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Atomic Slack admin actions", () => {
   it("commits a change and undo receipt together, and retries once", async () => {
     const s = await schedule("1800000010.1");
     expect(s.result.text).toBe("Schedule saved.");
+    expect(s.result.text).not.toContain("Reply undo");
     const retry = await runReversibleAction(
       s.context,
       "hive_schedule_digest",
