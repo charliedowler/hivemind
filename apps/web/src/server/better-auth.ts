@@ -19,6 +19,7 @@ import { rateLimit } from "./identity/rate-limit";
 import { enrollMember, memberContext, registrationForStorage } from "./identity/enrollment";
 import { agentClaims, isAgentMember, storeAgentOwner } from "./identity/agent-enrollment";
 import { agentidProvider } from "./identity/agentid-provider";
+import { welcomeClaimPlugin } from "./identity/claim-plugin";
 
 export function createHiveAuth(baseUrl: string, delivery = deliverCode, resourceUrl = baseUrl) {
   const secret = process.env.BETTER_AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "hive-local-development-secret-change-before-deploy" : undefined);
@@ -157,6 +158,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
       },
     },
     plugins: [
+      welcomeClaimPlugin(),
       ...(enabledSignInProviders().includes("agentid") ? [genericOAuth({ config: [agentidProvider()] })] : []),
       emailOTP({
         expiresIn: 900,

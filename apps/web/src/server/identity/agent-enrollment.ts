@@ -6,6 +6,7 @@ import { getSql } from "../db/client";
 import { HiveError, HiveInputError } from "../errors";
 import { memberContext, registrationForStorage } from "./enrollment";
 import { agentIdIssuer, bindVerifiedOwner, followOwnerMemberships } from "./owner-bindings";
+import { deliverWelcome } from "./welcome";
 
 export const agentClaims = z.object({
   sub: z.string().min(1),
@@ -53,6 +54,12 @@ export async function storeAgentOwner(account: { id: string; userId: string; acc
     await tx`UPDATE auth_accounts SET owner_issuer = ${claims.owner_sub ? agentIdIssuer : null}, owner_sub = ${claims.owner_sub ?? null}, owner_name = ${claims.owner_name ?? null}, owner_email = ${verified ? claims.owner_email!.toLowerCase() : null}, owner_email_verified = ${verified} WHERE id = ${account.id}`;
   });
   await enrollAgent(account.userId);
+  const owners = await getSql()`SELECT b.owner_member_id FROM agent_owner_bindings b WHERE b.issuer = ${agentIdIssuer} AND b.owner_sub = ${claims.owner_sub ?? ""}`;
+  if (owners[0]) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { await deliverWelcome(owners[0].owner_member_id); } catch { break; }
+    }
+  }
 }
 
 export async function enrollAgent(memberId: string, input?: HiveRegistration, selectedTeam?: string): Promise<HiveContext | null> {

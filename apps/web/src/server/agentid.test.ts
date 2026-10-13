@@ -201,7 +201,9 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     expect((await getSql()`SELECT personal_owner_member_id FROM teams WHERE id = ${rows[0].team_id}`)[0].personal_owner_member_id).toBe(human.id);
     await expect(enrollMember(id, { intent: "domain" })).rejects.toThrow(/Agents join/);
     await expect(enrollMember(id, { intent: "create", teamName: "Agent created team" })).rejects.toThrow(/human/);
-    expect(sentInvites).toHaveLength(0);
+    expect(sentInvites).toHaveLength(1);
+    expect(sentInvites[0]).toMatchObject({ subject: "Your personal Hive is ready" });
+    expect(sentInvites[0].text).toContain("Your agent set up your personal Hive.");
     expect((await getSql()`SELECT role FROM hive_memberships WHERE member_id = ${id}`)[0].role).toBe("member");
     expect(await agentEnrollmentNotice(id)).toContain("Owner fixture");
   });

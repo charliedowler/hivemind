@@ -15,7 +15,7 @@ export async function deliverInvite(email: string, teamName: string, url: string
   return deliverEmail(email, `Join ${teamName} on Hive`, `Your agent invited you to manage ${teamName} on Hive.\n\nSign in with your own account to join as a team admin:\n${url}\n\nThis invite expires in seven days.`, `hive-owner-invite/${id}`);
 }
 
-async function deliverEmail(email: string, subject: string, text: string, id: string): Promise<boolean> {
+export async function deliverEmail(email: string, subject: string, text: string, id: string, html?: string): Promise<boolean> {
   if (!emailConfigured()) return false;
   try {
     const response = await fetch("https://api.resend.com/emails", {
@@ -32,6 +32,7 @@ async function deliverEmail(email: string, subject: string, text: string, id: st
         to: [email],
         subject,
         text,
+        ...(html ? { html } : {}),
       }),
     });
     if (!response.ok) {
