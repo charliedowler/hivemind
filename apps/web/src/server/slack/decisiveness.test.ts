@@ -67,3 +67,11 @@ describe("Admin instruction decisiveness", () => {
     expect(decideInstruction("undo", "undo", false)?.act).toBe(false);
   });
 });
+
+it("allows an explicit decision reversal only for an admin and an identified target", () => {
+  expect(decideInstruction("Reverse dec_abcdefghijkl", "decision_reverse", true)?.act).toBe(true);
+  expect(decideInstruction("Reverse dec_abcdefghijkl", "decision_reverse", false)?.act).toBe(false);
+  expect(decideInstruction("Maybe we should reverse dec_abcdefghijkl", "decision_reverse", true)?.act).toBe(false);
+  expect(decideInstruction("How do I reverse dec_abcdefghijkl?", "decision_reverse", true)?.act).toBe(false);
+  expect(decideInstruction("Reverse that", "decision_reverse", true)).toBeNull();
+});

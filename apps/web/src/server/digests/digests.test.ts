@@ -15,8 +15,8 @@ import {
   DigestDeliveryError,
   type DigestTransport,
 } from "./runner";
-import { proposeScheduleFromText, confirmDigestProposal } from "./proposal";
-import { digestTools } from "@/slack/tools/digests";
+import { proposeScheduleFromText } from "./proposal";
+import { digestInstruction, undoDigestFromWeb } from "./instructions";
 import type { HiveContext } from "@hivemind/core";
 const model = vi.hoisted(() => vi.fn());
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -79,6 +79,8 @@ describe.skipIf(!enabled)(
     });
     afterAll(async () => {
       const ids = [a.teamId, b.teamId];
+      await getSql()`DELETE FROM slack_digest_instructions WHERE team_id=ANY(${ids}::text[])`;
+      await getSql()`DELETE FROM slack_decisions WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM slack_digest_proposals WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM slack_digest_receipts WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM slack_digest_posts WHERE team_id=ANY(${ids}::text[])`;
@@ -223,77 +225,278 @@ describe.skipIf(!enabled)(
       );
       expect((await getSchedule(a.teamId, s.id)).lastCursor).toBe(s.lastCursor);
     });
-    it("turns text into a proposal with one model call and confirms once", async () => {
-      model.mockResolvedValue({
-        stop_reason: "tool_use",
-        content: [{ type: "tool_use", name: "propose_digest", input }],
-      });
+    it("reads one schema model result, acts once and undoes only in the owning thread", async () => {
+      vi.stubEnv("TYPESAFE_API_KEY", "");
+      model.mockClear();
+      const set = {
+        action: "set",
+        schedule: input,
+        targetScheduleId: null,
+        clearInstruction: true,
+        enoughDetail: true,
+        timeSpecified: true,
+        missing: null,
+      };
+      const respond = (value: unknown) =>
+        model.mockResolvedValue({
+          stop_reason: "tool_use",
+          content: [{ type: "tool_use", name: "propose_digest", input: value }],
+        });
+      respond(set);
       const proposal = await proposeScheduleFromText(
         a.teamId,
         a.memberId,
-        "post an update every Monday at 9 in here",
+        "post every Monday at 9",
         { channelId: input.channelId, timezone: input.timezone },
       );
-      expect(proposal.schedule).toMatchObject(input);
-      expect(proposal.restatement).toContain(
-        "every Monday at 09:00 (Europe/London)",
-      );
+      expect(proposal.restatement).toBe("Every Monday at 9am");
       expect(model).toHaveBeenCalledTimes(1);
       expect(model.mock.calls[0]![0]).toMatchObject({
-        model: "claude-sonnet-5-5",
         tool_choice: { type: "auto" },
+        tools: [{ strict: true }],
+      });
+      const ctx = {
+        teamId: a.teamId,
+        memberId: a.memberId,
+        isAdmin: true,
+        channelId: input.channelId,
+        threadTs: "1800000000.1",
+        messageTs: "1800000000.2",
+        requestText: "post every Monday at 9",
+      };
+      const [first, second] = await Promise.all([
+        digestInstruction(ctx, ctx.requestText, input.timezone),
+        digestInstruction(ctx, ctx.requestText, input.timezone),
+      ]);
+      expect(first.text).toBe(second.text);
+      expect(first.text).toContain("Set. Every Monday");
+      expect(first).not.toHaveProperty("blocks");
+      const audit = (
+        await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`
+      )[0];
+      expect(audit).toBeTruthy();
+      const saved = await getSchedule(a.teamId, String(audit.schedule_id));
+      expect(saved.enabled).toBe(true);
+      respond({ ...set, clearInstruction: false, missing: "intent" });
+      expect(
+        (
+          await digestInstruction(
+            { ...ctx, messageTs: "1800000000.3", requestText: "maybe Mondays" },
+            "maybe",
+            input.timezone,
+          )
+        ).text,
+      ).toBe("Should I set that digest schedule?");
+      respond({
+        ...set,
+        schedule: null,
+        timeSpecified: false,
+        enoughDetail: false,
+        missing: "time",
+      });
+      expect(
+        (
+          await digestInstruction(
+            { ...ctx, messageTs: "1800000000.4" },
+            "Monday",
+            input.timezone,
+          )
+        ).text,
+      ).toBe("What time should the update run?");
+      respond(set);
+      expect(
+        (
+          await digestInstruction(
+            { ...ctx, memberId: member.memberId, messageTs: "1800000000.5" },
+            "set",
+            input.timezone,
+          )
+        ).text,
+      ).toContain("Only hive admins");
+      respond({
+        action: "undo",
+        schedule: null,
+        targetScheduleId: null,
+        clearInstruction: true,
+        enoughDetail: true,
+        timeSpecified: false,
+        missing: null,
       });
       await expect(
-        confirmDigestProposal(
-          b.teamId,
-          b.memberId,
-          input.channelId,
-          proposal.id,
-        ),
-      ).rejects.toMatchObject({ status: 403 });
-      await expect(
-        confirmDigestProposal(a.teamId, a.memberId, "COTHER1", proposal.id),
-      ).rejects.toMatchObject({ status: 403 });
-      const [first, second] = await Promise.all([
-        confirmDigestProposal(
-          a.teamId,
-          a.memberId,
-          input.channelId,
-          proposal.id,
-        ),
-        confirmDigestProposal(
-          a.teamId,
-          a.memberId,
-          input.channelId,
-          proposal.id,
-        ),
-      ]);
-      expect(first.id).toBe(second.id);
-      await expect(
-        proposeScheduleFromText(member.teamId, member.memberId, "every day", {
-          channelId: input.channelId,
-          timezone: input.timezone,
-        }),
-      ).rejects.toMatchObject({ status: 403 });
-      expect(model).toHaveBeenCalledTimes(1);
-      expect(model.mock.calls[0]![0].tools[0]).toMatchObject({ strict: true });
-      expect(
-        model.mock.calls[0]![0].tools[0].input_schema.properties.weekday,
-      ).not.toHaveProperty("minimum");
-      const result = await digestTools
-        .find((t) => t.name === "hive_schedule_digest")!
-        .handler(
+        digestInstruction(
           {
-            teamId: member.teamId,
-            memberId: member.memberId,
-            isAdmin: true,
-            channelId: input.channelId,
-            threadTs: "1800000000.1",
+            ...ctx,
+            teamId: b.teamId,
+            memberId: b.memberId,
+            messageTs: "1800000000.6",
           },
-          { text: "every day at 9" },
-        );
-      expect(result.text).toBe("A team admin is needed to change Hive from Slack.");
-      expect(model).toHaveBeenCalledTimes(1);
+          "undo",
+          input.timezone,
+        ),
+      ).rejects.toMatchObject({ status: 410 });
+      await expect(
+        digestInstruction(
+          { ...ctx, threadTs: "1800000001.1", messageTs: "1800000000.7" },
+          "undo",
+          input.timezone,
+        ),
+      ).rejects.toMatchObject({ status: 410 });
+      expect(
+        (
+          await digestInstruction(
+            { ...ctx, messageTs: "1800000000.8", requestText: "undo" },
+            "undo",
+            input.timezone,
+          )
+        ).text,
+      ).toContain("Removed.");
+      expect((await getSchedule(a.teamId, saved.id)).enabled).toBe(false);
+      const saved2 = await schedule();
+      expect(
+        (await listSchedules(a.teamId)).some((s) => s.id === saved.id),
+      ).toBe(false);
+      respond({
+        action: "disable",
+        schedule: null,
+        targetScheduleId: saved2.id,
+        clearInstruction: true,
+        enoughDetail: true,
+        timeSpecified: false,
+        missing: null,
+      });
+      await digestInstruction(
+        {
+          ...ctx,
+          messageTs: "1800000000.9",
+          requestText: "stop the Monday update",
+        },
+        "stop",
+        input.timezone,
+      );
+      await getSql()`UPDATE slack_digest_instructions SET created_at=now()-interval '2 hours' WHERE team_id=${a.teamId} AND message_ts='1800000000.9'`;
+      respond({
+        action: "undo",
+        schedule: null,
+        targetScheduleId: null,
+        clearInstruction: true,
+        enoughDetail: true,
+        timeSpecified: false,
+        missing: null,
+      });
+      await expect(
+        digestInstruction(
+          { ...ctx, messageTs: "1800000000.10", requestText: "cancel that" },
+          "undo",
+          input.timezone,
+        ),
+      ).rejects.toMatchObject({ status: 410 });
+    });
+    it("refuses stale undo and another admin's web undo", async () => {
+      vi.stubEnv("TYPESAFE_API_KEY", "");
+      model.mockResolvedValue({
+        stop_reason: "tool_use",
+        content: [
+          {
+            type: "tool_use",
+            name: "propose_digest",
+            input: {
+              action: "set",
+              schedule: input,
+              targetScheduleId: null,
+              clearInstruction: true,
+              enoughDetail: true,
+              timeSpecified: true,
+              missing: null,
+            },
+          },
+        ],
+      });
+      const ctx = {
+        teamId: a.teamId,
+        memberId: a.memberId,
+        isAdmin: true,
+        channelId: input.channelId,
+        threadTs: "1800000090.1",
+        messageTs: "1800000090.2",
+        requestText: "post every Monday at 9",
+      };
+      await digestInstruction(ctx, ctx.requestText, input.timezone);
+      const audit = (
+        await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`
+      )[0];
+      expect(
+        (await listSchedules(a.teamId, a.memberId)).find(
+          (s) => s.id === audit.schedule_id,
+        )?.undoId,
+      ).toBe(audit.id);
+      await expect(
+        undoDigestFromWeb(b, String(audit.id)),
+      ).rejects.toMatchObject({ status: 404 });
+      await saveSchedule(
+        a,
+        { ...input, time: "10:00" },
+        { id: input.channelId, name: "fixture" },
+        String(audit.schedule_id),
+      );
+      await expect(
+        undoDigestFromWeb(a, String(audit.id)),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(
+        (await listSchedules(a.teamId, a.memberId)).find(
+          (s) => s.id === audit.schedule_id,
+        )?.undoId,
+      ).toBeUndefined();
+    });
+    it("acts on a complete suggestion and retains a reaction-only receipt", async () => {
+      vi.stubEnv("TYPESAFE_API_KEY", "");
+      const scheduleInput = {
+        ...input,
+        weekday: (new Date().getUTCDay() + 1) % 7,
+      };
+      model.mockResolvedValue({
+        stop_reason: "tool_use",
+        content: [
+          {
+            type: "tool_use",
+            name: "propose_digest",
+            input: {
+              action: "set",
+              schedule: scheduleInput,
+              targetScheduleId: null,
+              clearInstruction: false,
+              actionableSuggestion: true,
+              defaultedDetails: false,
+              enoughDetail: true,
+              timeSpecified: true,
+              missing: null,
+            },
+          },
+        ],
+      });
+      const ctx = {
+        teamId: a.teamId,
+        memberId: a.memberId,
+        isAdmin: true,
+        channelId: input.channelId,
+        threadTs: "1800000095.1",
+        messageTs: "1800000095.2",
+        requestText:
+          "Maybe we should schedule a digest here tomorrow at 9am London time.",
+      };
+      const first = await digestInstruction(
+        ctx,
+        ctx.requestText,
+        input.timezone,
+      );
+      expect(first).toEqual({ text: "", react: "+1" });
+      expect(
+        await digestInstruction(ctx, ctx.requestText, input.timezone),
+      ).toEqual(first);
+      const rows =
+        await getSql()`SELECT schedule_id FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`;
+      expect(
+        (await getSchedule(a.teamId, String(rows[0].schedule_id))).enabled,
+      ).toBe(true);
     });
   },
 );

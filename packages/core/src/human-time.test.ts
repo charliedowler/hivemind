@@ -34,7 +34,7 @@ describe("Human time formatting", () => {
     expect(formatHumanDate("2025-10-12", options)).toBe(
       "Sunday 12 October 2025",
     );
-    expect(timeZoneLabel("invalid")).toBe("UTC time");
+    expect(timeZoneLabel("invalid")).toBe("UTC");
     expect(timeZoneLabel("America/New_York")).toBe("New York time");
   });
   it("handles invalid input without showing raw dates", () =>

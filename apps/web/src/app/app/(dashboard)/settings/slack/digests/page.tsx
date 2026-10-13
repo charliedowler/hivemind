@@ -10,7 +10,7 @@ export default async function DigestsPage() {
   const ctx = await getWebContext();
   if (!ctx) redirect("/app/login");
   const [schedules, history, channels, member] = await Promise.all([
-    listSchedules(ctx.teamId),
+    listSchedules(ctx.teamId, ctx.memberId),
     digestHistory(ctx.teamId),
     digestChannels(ctx),
     account(ctx),

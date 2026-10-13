@@ -280,5 +280,6 @@ export type ConflictDecisionRecord = {
   author: string;
   repo: string | null;
   canReverse: boolean;
+  canEditReason?: boolean;
   createdAt: string;
 };

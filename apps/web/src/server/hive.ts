@@ -62,7 +62,7 @@ import { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
 import { newId } from "./db/ids";
 import { saveEarlyAccess } from "./early-access";
-import { HiveInputError, HiveNotFoundError } from "./errors";
+import { HiveError, HiveInputError, HiveNotFoundError } from "./errors";
 import {
   embedText,
   synthesizeAnswer,
@@ -121,8 +121,11 @@ async function pushLearningAction(
     agent: data.agent ?? data.source,
     sessionType: data.sessionType,
   }, undefined, sidecar);
-  if (capture.action === "drop")
-    return {dropped: true, rule: capture.matches.find(match => match.action === "drop")!.kind};
+  if (capture.action === "drop") {
+    const matched = capture.matches.find(match => match.action === "drop");
+    if (!matched) throw new HiveError("The capture rule could not be evaluated. Try again.", 503);
+    return {dropped: true, rule: matched.kind};
+  }
   const captureRedacted = capture.redacted;
   const captureFlagged = capture.flagged;
   const captureRuleIds = capture.matches.map(match => match.ruleId);

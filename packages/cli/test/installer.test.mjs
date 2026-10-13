@@ -245,3 +245,62 @@ test('a retry after MCP removal fails cannot remove a surviving duplicate', () =
   uninstall(f.options);
   assert.equal(JSON.parse(f.read('.claude/settings.json')).hooks.Stop.length, 1);
 });
+
+import { completeSignIn } from '../dist/installer.js';
+
+function signInFixture({ codex = false, hooks = false } = {}) {
+  const f = fixture();
+  install(f.options);
+  const health = { codex, hooks };
+  const logins = [];
+  const options = { ...f.options, run: (command, args, home) => {
+    if (args.includes('--codex') || args.includes('--hooks')) return { status: health[args.includes('--codex') ? 'codex' : 'hooks'] ? 0 : 1, stdout: '', stderr: '' };
+    return f.options.run(command, args, home);
+  } };
+  const login = (client, home, script) => {
+    assert.equal(home, f.home);
+    if (client === 'hooks') assert.ok(script.startsWith(join(home, '.claude/skills/hive/')));
+    logins.push(client);
+    health[client] = true;
+    return 0;
+  };
+  return { ...f, options, health, logins, login };
+}
+
+test('interactive install skips sign-in for healthy agent and hook connections', () => {
+  const f = signInFixture({ codex: true, hooks: true });
+  completeSignIn(f.options, true, f.login);
+  assert.deepEqual(f.logins, []);
+  assert.equal(doctor(f.options), true);
+});
+
+test('expired connections sign in sequentially with separate stores for multiple clients', () => {
+  const f = signInFixture();
+  completeSignIn(f.options, true, f.login);
+  assert.deepEqual(f.logins, ['codex', 'hooks']);
+  assert.equal(doctor(f.options), true);
+});
+
+test('headless install does not open sign-in and doctor prints one step per client', () => {
+  const f = signInFixture();
+  completeSignIn(f.options, false, f.login);
+  assert.deepEqual(f.logins, []);
+  f.output.length = 0;
+  assert.equal(doctor(f.options), false);
+  assert.equal(f.output.length, 2);
+  assert.ok(f.output[1].includes('codex mcp login hive'));
+  assert.ok(!f.output.join('\n').includes('Open sign-in now?'));
+});
+
+test('a failed agent sign-in does not prevent hook sign-in or a useful doctor result', () => {
+  const f = signInFixture();
+  completeSignIn(f.options, true, (client, ...args) => {
+    if (client === 'codex') { f.logins.push(client); throw new Error('Browser declined'); }
+    return f.login(client, ...args);
+  });
+  assert.deepEqual(f.logins, ['codex', 'hooks']);
+  f.output.length = 0;
+  assert.equal(doctor(f.options), false);
+  assert.ok(f.output[0].endsWith('Connected'));
+  assert.ok(f.output[1].endsWith('Run codex mcp login hive'));
+});

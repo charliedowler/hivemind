@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authenticated, readJson } from "@/lib/http";
-import { proposeRuleFromText } from "@/server/capture-rules";
+import { setCaptureRuleFromText } from "@/server/capture-rule-instructions";
 import { rateLimit } from "@/server/identity/rate-limit";
 
 const input = z.object({
@@ -15,13 +15,13 @@ export async function POST(request: Request) {
   return authenticated(async (ctx) => {
     const { text } = input.parse(await readJson(request));
     await rateLimit(
-      "capture-rule-proposal",
+      "capture-rule-instruction",
       `${ctx.teamId}/${ctx.memberId}`,
       10,
       60,
     );
     return Response.json(
-      await proposeRuleFromText(ctx.teamId, ctx.memberId, text),
+      await setCaptureRuleFromText(ctx, text, { source: "web" }),
     );
   });
 }

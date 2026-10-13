@@ -1,3 +1,4 @@
+import type { DigestScheduleInput } from "./digest-schedule";
 export type HumanTimeOptions = { timeZone?: string; now?: Date };
 function zone(options: HumanTimeOptions) {
   try {
@@ -19,7 +20,9 @@ function dateValue(value: string | Date) {
 }
 export function timeZoneLabel(timeZone?: string) {
   const resolved = zone({ timeZone });
-  return `${resolved === "UTC" ? "UTC" : resolved.split("/").at(-1)!.replaceAll("_", " ")} time`;
+  return resolved === "UTC"
+    ? "UTC"
+    : `${resolved.split("/").at(-1)!.replaceAll("_", " ")} time`;
 }
 export function formatHumanDate(
   value: string | Date,
@@ -145,4 +148,71 @@ export function humanizeTimeText(text: string, options: HumanTimeOptions = {}) {
         : convert(part);
     })
     .join("");
+}
+
+export function digestTime(
+  value: string | Date,
+  timezone: string,
+  options: {
+    mode?: "date" | "datetime" | "clock";
+    now?: Date;
+    relative?: boolean;
+  } = {},
+) {
+  const mode = options.mode ?? "datetime",
+    now = options.now ?? new Date();
+  const date = typeof value === "string" ? new Date(value) : value;
+  const optionsForZone = { timeZone: timezone, now };
+  const clock = formatHumanClock(date, optionsForZone);
+  if (mode === "clock") return clock;
+  let day = formatHumanDate(date, optionsForZone);
+  if (options.relative && mode !== "date") {
+    const calendar = (d: Date) =>
+      Object.fromEntries(
+        new Intl.DateTimeFormat("en-GB", {
+          timeZone: timezone,
+          year: "numeric",
+          month: "numeric",
+          day: "numeric",
+        })
+          .formatToParts(d)
+          .map((p) => [p.type, p.value]),
+      );
+    const current = calendar(now),
+      target = calendar(date);
+    const ordinal = (p: Record<string, string>) =>
+      Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day));
+    if (ordinal(target) === ordinal(current)) day = "today";
+    else if (ordinal(target) === ordinal(current) + 86400000) day = "tomorrow";
+  }
+  return mode === "date" ? day : `${day} at ${clock}`;
+}
+export const digestZone = timeZoneLabel;
+export function digestCadence(schedule: DigestScheduleInput) {
+  const days = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  const cadence =
+    schedule.cadence === "weekly"
+      ? `Every ${days[schedule.weekday]}`
+      : schedule.cadence === "fortnightly"
+        ? `Every other ${days[schedule.weekday]}`
+        : schedule.cadence === "monthly"
+          ? `Monthly on day ${schedule.monthDay}`
+          : schedule.cadence === "weekdays"
+            ? "Every weekday"
+            : "Every day";
+  const [hour, minute] = schedule.time.split(":");
+  const clock = digestTime(
+    new Date(Date.UTC(2000, 0, 1, Number(hour), Number(minute))),
+    "UTC",
+    { mode: "clock" },
+  );
+  return `${cadence} at ${clock}`;
 }

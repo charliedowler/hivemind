@@ -10,8 +10,10 @@ export type SlackToolContext = {
   threadTs: string;
   messageTs?: string;
   instructionText?: string;
+  requestText?: string;
+  history?: Array<{ question: string; answer: string }>;
   timeZone?: string;
-  actionType?: "digest" | "digest_pause" | "capture" | "undo";
+  actionType?: "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse";
 };
 export async function slackToolContext(
   actor: HiveContext,

@@ -26,7 +26,7 @@ const instructionPaths = (home: string, agent: Agent) => join(home, agent === 'c
 const hookCommand = (home: string, script: string) => `node "${join(home, '.claude/skills/hive/scripts', script).replace(/(["\\$`])/g, '\\$1')}"`;
 
 export const runCommand: Runner = (command, args, home) => {
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, CODEX_HOME: join(home, '.codex') };
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, HIVE_HOME: home, CODEX_HOME: join(home, '.codex') };
   delete env.CLAUDE_CONFIG_DIR;
   const result = spawnSync(command, args, { encoding: 'utf8', env, cwd: home, timeout: 15000, maxBuffer: 2_000_000 });
   return { status: result.status ?? 1, stdout: result.stdout || '', stderr: result.stderr || result.error?.message || '' };
@@ -227,53 +227,66 @@ export function install(options: Options): Manifest {
   });
 }
 
+export function connectionHealthy(options: Options, client: Agent | 'hooks'): boolean {
+  const run = options.run || runCommand;
+  try {
+    if (client === 'claude') {
+      const result = run('claude', ['mcp', 'list'], options.home);
+      const line = result.stdout.split('\n').find(line => /^hive(?:\s|:)/i.test(line.trim()));
+      return result.status === 0 && !!line && /connected/i.test(line) && !/not connected|disconnected/i.test(line);
+    }
+    return run(process.execPath, [join(options.assets || assetDirectory, 'scripts/doctor.mjs'), client === 'codex' ? '--codex' : '--hooks'], options.home).status === 0;
+  } catch { return false; }
+}
+
+export type SignInRunner = (client: 'codex' | 'hooks', home: string, script: string) => number;
+export function completeSignIn(options: Options, interactive: boolean, signIn: SignInRunner) {
+  const agents = options.agents || detectAgents(options.home, options.run);
+  const log = options.log || console.log;
+  if (!interactive) return;
+  for (const agent of agents) {
+    if (agent !== 'codex' || connectionHealthy(options, agent)) continue;
+    log('Codex: Opening sign-in');
+    try { signIn('codex', options.home, ''); } catch {}
+  }
+  if (agents.includes('claude') && !connectionHealthy(options, 'hooks')) {
+    log('Hooks: Opening sign-in');
+    try { signIn('hooks', options.home, join(options.home, '.claude/skills/hive/scripts/login.mjs')); } catch {}
+  }
+}
+
 export function doctor(options: Options): boolean {
   const home = resolve(options.home);
   const log = options.log || console.log;
-  const run = options.run || runCommand;
-  const agents = options.agents || detectAgents(home, run);
-  if (!agents.length) { log('No forager found. Install Claude Code or Codex first'); return false; }
+  const agents = options.agents || detectAgents(home, options.run);
+  if (!agents.length) { log('No agent found. Install Claude Code or Codex'); return false; }
   let healthy = true;
-  const checks = new Map<Agent, boolean>();
   for (const agent of agents) {
-    let connected = false;
-    try {
-      const result = run(agent, ['mcp', 'list'], home);
-      const line = result.stdout.split('\n').find(line => /^hive(?:\s|:)/i.test(line.trim()));
-      connected = result.status === 0 && !!line && (agent === 'claude' ? /connected/i.test(line) && !/not connected|disconnected/i.test(line) : /enabled/i.test(line));
-    } catch {}
     const directories = agent === 'claude' ? ['.claude/skills/hive'] : ['.agents/skills/hive', '.codex/skills/hive'];
     const requiredFiles = filesUnder(options.assets || assetDirectory).map(path => relative(options.assets || assetDirectory, path));
     const skills = directories.every(directory => requiredFiles.every(path => existsSync(join(home, directory, path))));
-    let instructions = false;
-    try { const text = read(instructionPaths(home, agent)) || ''; instructions = text.includes(startMarker) && text.includes(endMarker); } catch {}
-    log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} MCP: ${connected ? agent === 'claude' ? 'Connected' : 'Enabled (run Codex to verify the connection)' : 'Sign-in or connection check needed'}`);
-    log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} skill: ${skills ? 'Present' : 'Missing'}`);
-    log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} instructions: ${instructions ? 'Present' : 'Missing'}`);
-    healthy &&= connected && skills && instructions;
-    checks.set(agent, connected && skills && instructions);
+    const text = read(instructionPaths(home, agent)) || '';
+    const instructions = text.includes(startMarker) && text.includes(endMarker);
+    let hooks = true;
+    if (agent === 'claude') {
+      try {
+        const settings: Settings = JSON.parse(read(join(home, '.claude/settings.json')) || '{}');
+        validateSettings(settings);
+        hooks = [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']].every(([event, script]) =>
+          (settings.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.command === hookCommand(home, script))) && existsSync(join(home, '.claude/skills/hive/scripts', script)));
+      } catch { hooks = false; }
+    }
+    const installed = skills && instructions && hooks;
+    const connected = connectionHealthy({ ...options, home }, agent);
+    const hookConnected = agent !== 'claude' || connectionHealthy({ ...options, home }, 'hooks');
+    const ready = installed && connected && hookConnected;
+    const step = !installed ? `Run npx gohive install --client ${agent}`
+      : !connected ? agent === 'codex' ? 'Run codex mcp login hive' : 'Open Claude Code, then use /mcp to sign in to hive'
+      : 'Run npx gohive login';
+    log(`${agent === 'claude' ? 'Claude Code' : 'Codex'}: ${ready ? 'Connected' : !installed ? 'Setup incomplete' : !connected ? 'Sign-in or connection check needed' : 'Hook sign-in needed'}${ready ? '' : `. ${step}`}`);
+    healthy &&= ready;
+    options.onDoctor?.(agent, ready);
   }
-  if (agents.includes('claude')) {
-    try {
-      const settings: Settings = JSON.parse(read(join(home, '.claude/settings.json')) || '{}');
-      validateSettings(settings);
-      for (const [event, script] of [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']]) {
-        const present = (settings.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.command === hookCommand(home, script))) && existsSync(join(home, '.claude/skills/hive/scripts', script));
-        log(`${event} hook: ${present ? 'Present' : 'Missing'}`);
-        healthy &&= present;
-        checks.set('claude', !!checks.get('claude') && present);
-      }
-    } catch { log('Claude hooks: Could not read settings'); healthy = false; checks.set('claude', false); }
-  }
-  const oauth = read(join(home, '.hive/oauth.json'));
-  const config = read(join(home, '.claude.json'));
-  let hookCredentials = !!process.env.HIVE_KEY || !!oauth;
-  try { hookCredentials ||= !!JSON.parse(config || '{}').mcpServers?.hive?.headers?.Authorization; } catch {}
-  log(`Hook credentials: ${hookCredentials ? 'Present (the next SessionStart checks them)' : 'Run gohive login; hooks stay silent until sign-in'}`);
-  if (agents.includes('claude')) healthy &&= hookCredentials;
-  if (agents.includes('claude')) checks.set('claude', !!checks.get('claude') && hookCredentials);
-  for (const [agent, ready] of checks) options.onDoctor?.(agent, ready);
-  log(healthy ? 'Your foragers are ready. Start a new agent session in a repo your team knows' : 'Finish sign-in, then run gohive doctor again');
   return healthy;
 }
 

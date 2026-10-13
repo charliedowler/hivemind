@@ -10,9 +10,12 @@ const count = z.number().int().nonnegative();
 const probability = z.number().finite().min(0).max(1);
 export const eventNames = [
   "error.page_shown",
+  "capture.rule_instruction_decided",
+  "capture.rule_instruction_undone",
   "capture.rule_dropped",
   "capture.rule_applied",
   "access.changed",
+  "digest_action_decided",
   "digest_scheduled",
   "digest_posted",
   "digest_skipped_empty",
@@ -37,6 +40,7 @@ export const eventNames = [
   "snapshot.exported",
   "slack.event_received",
   "slack.reply_decided",
+  "slack.reaction_added",
   "page.viewed",
   "operation.started",
   "operation.finished",
@@ -134,13 +138,45 @@ const conflictProbabilities = z.object({
   decision: z.record(conflictChoices, probability),
 });
 export const propertiesSchema = z.object({
+  captureInstructionId: nullable(z.string().regex(/^cinstr_[a-z2-7]{12}$/)),
+  instructionClear: nullable(z.boolean()),
+  instructionSpecific: nullable(z.boolean()),
+  instructionScopeAllowed: nullable(z.boolean()),
+  instructionSource: nullable(z.enum(["web", "slack", "mcp"])),
+  instructionDecision: nullable(z.enum(["save", "question", "undo"])),
+  scannedCount: nullable(count),
+  appliedCount: nullable(count),
+  restoredCount: nullable(count),
+  retainedCount: nullable(count),
+  pending: nullable(z.boolean()),
   ruleId: nullable(z.string().regex(/^crule_[a-z2-7]{12}$/)),
-  ruleKind: nullable(z.enum(["repo_owner", "repo_match", "path_match", "content_category", "agent_or_client", "keyword"])),
+  ruleKind: nullable(
+    z.enum([
+      "repo_owner",
+      "repo_match",
+      "path_match",
+      "content_category",
+      "agent_or_client",
+      "keyword",
+    ]),
+  ),
   ruleAction: nullable(z.enum(["drop", "redact", "flag"])),
   ingress: nullable(z.enum(["mcp", "web", "hook", "slack", "unknown"])),
+  digestAction: nullable(z.enum(["set", "disable", "undo", "list", "clarify"])),
+  digestDecision: nullable(z.enum(["act", "clarify", "refuse"])),
+  digestDecisionSource: nullable(z.enum(["jev", "model"])),
+  digestSignals: nullable(
+    z.object({
+      instruction: probability,
+      enough: probability,
+      allowed: probability,
+    }),
+  ),
   digestScheduleId: nullable(z.string().regex(/^dgs_[a-z2-7]{12}$/)),
   digestPostId: nullable(z.string().regex(/^dgp_[a-z2-7]{12}$/)),
-  cadence: nullable(z.enum(["daily", "weekdays", "weekly", "fortnightly", "monthly"])),
+  cadence: nullable(
+    z.enum(["daily", "weekdays", "weekly", "fortnightly", "monthly"]),
+  ),
   digestTrigger: nullable(z.enum(["scheduled", "manual"])),
   learningCount: nullable(count),
   insightCount: nullable(count),
@@ -289,13 +325,7 @@ export const propertiesSchema = z.object({
 });
 export type Properties = z.input<typeof propertiesSchema> & { route?: string; digest?: string | null };
 export type EntryPoint =
-  | "mcp"
-  | "web"
-  | "slack"
-  | "hook"
-  | "installer"
-  | "scheduled"
-  | "unknown";
+  "mcp" | "web" | "slack" | "hook" | "installer" | "scheduled" | "unknown";
 export type Origin = {
   teamId: string | null;
   memberId: string | null;

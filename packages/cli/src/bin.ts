@@ -3,9 +3,8 @@ import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createInterface } from 'node:readline/promises';
 import { installExecutor, doctorExecutor, detectExecutor } from './executor.js';
-import { install, uninstall, doctor, detectAgents, type Agent } from './installer.js';
+import { install, uninstall, doctor, detectAgents, completeSignIn, type Agent } from './installer.js';
 
 async function main() {
   if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Hive needs Node 20 or later');
@@ -53,27 +52,14 @@ async function main() {
   }
   if (command === 'install') {
     install(options);
-    console.log('A little memory goes a long way. Your skill and hooks are in place');
-    if (agents.includes('codex')) console.log('Sign in to Codex: codex mcp login hive');
-    if (agents.includes('claude')) console.log('Sign in to Claude Code: run claude, then open /mcp and authenticate hive');
-    if (agents.includes('claude')) console.log('Let the hooks catch up too: npx gohive login');
-    if (!yes && process.stdin.isTTY && process.stdout.isTTY) {
-      const prompt = createInterface({ input: process.stdin, output: process.stdout });
-      try {
-        for (const agent of agents) {
-          const answer = await prompt.question(`Open ${agent === 'claude' ? 'Claude Code' : 'Codex'} sign-in now? [y/N] `);
-          if (!/^y(es)?$/i.test(answer.trim())) continue;
-          const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, CODEX_HOME: join(home, '.codex') };
-          delete env.CLAUDE_CONFIG_DIR;
-          const loginArgs = agent === 'codex' ? ['mcp', 'login', 'hive'] : [];
-          spawnSync(agent, loginArgs, { env, stdio: 'inherit', cwd: home });
-        }
-        if (agents.includes('claude')) {
-          const answer = await prompt.question('Open the lightweight hook sign-in too? [y/N] ');
-          if (/^y(es)?$/i.test(answer.trim())) login(home, agents);
-        }
-      } finally { prompt.close(); }
-    }
+    completeSignIn(options, !yes && !!process.stdin.isTTY && !!process.stdout.isTTY, (client, selectedHome, script) => {
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: selectedHome, CODEX_HOME: join(selectedHome, '.codex'), HIVE_HOME: selectedHome };
+      delete env.CLAUDE_CONFIG_DIR;
+      const result = client === 'codex'
+        ? spawnSync('codex', ['mcp', 'login', 'hive'], { env, stdio: 'inherit', cwd: selectedHome, timeout: 120000 })
+        : spawnSync(process.execPath, [script], { env, stdio: 'inherit', cwd: selectedHome, timeout: 130000 });
+      return result.status ?? 1;
+    });
     const results: DoctorResult[] = [];
     doctor({ ...options, onDoctor: (agent, healthy) => results.push({ agent, healthy }) });
     await reportDoctor(results, home);
@@ -89,7 +75,7 @@ async function main() {
     if (!healthy) process.exitCode = 1;
   } else if (command === 'uninstall') uninstall(options);
   else if (command === 'login') login(home, agents);
-  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--yes] [--client claude|codex|executor]\ngohive doctor\ngohive login\ngohive uninstall\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
+  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--yes] [--client claude|codex|executor]\ngohive doctor\ngohive login\ngohive uninstall\n\nInteractive install starts supported sign-in flows automatically. --yes or a terminal without input prints sign-in commands.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
   else throw new Error(`Unknown command: ${command}. Run gohive --help`);
 }
 
