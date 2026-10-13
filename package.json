@@ -12,6 +12,10 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "e2e": "pnpm e2e:real",
+    "e2e:fast": "node packages/e2e/src/run.mjs --fast",
+    "e2e:full": "node packages/e2e/src/run.mjs --full",
+    "e2e:real": "node packages/e2e/src/run.mjs --real",
     "prepare": "npm --prefix packages/cli run build"
   },
   "devDependencies": {

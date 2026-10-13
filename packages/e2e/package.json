@@ -1,0 +1,11 @@
+{
+  "name": "@hivemind/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "fast": "node src/run.mjs --fast",
+    "full": "node src/run.mjs --full",
+    "real": "node src/run.mjs --real"
+  }
+}
