@@ -24,6 +24,7 @@ vi.mock("@/server/identity/onboarding-web", () => ({
   joinFailure:
     "This hive could not be joined. Check the link or ask your admin.",
 }));
+vi.mock("@/server/identity/join-requests", () => ({joinOrRequest:mocks.join}));
 vi.mock("@/server/web-hive-session", () => ({ selectHive: mocks.select }));
 vi.mock("@/lib/public-url", () => ({
   publicUrl: async () => "https://gohive.dev",
@@ -51,7 +52,7 @@ beforeEach(() => {
     teamName: "Team",
     paused: false,
   });
-  mocks.join.mockResolvedValue({ teamId: "team", teamName: "Team" });
+  mocks.join.mockResolvedValue({ status:"joined", teamId: "team", teamName: "Team" });
   mocks.invite.mockResolvedValue({
     teamId: "team",
     teamName: "Team",

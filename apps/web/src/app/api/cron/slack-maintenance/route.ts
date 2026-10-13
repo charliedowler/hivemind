@@ -1,3 +1,4 @@
+import { maintainJoinRequests } from "@/server/identity/join-requests";
 import { getSql } from "@/server/db/client";
 import { syncChannels } from "@/server/slack/install";
 import { retryPendingSlack } from "@/server/slack/queue";
@@ -9,6 +10,7 @@ export const maxDuration = 300;
 export async function GET(request: Request) {
   if (!authorizedCron(request))
     return Response.json({ error: "Unauthorised." }, { status: 401 });
+  const joinRequests = await maintainJoinRequests();
   const started = Date.now();
   const teams =
     await getSql()`SELECT i.team_id,t.name AS team_name,m.id AS member_id,m.name AS member_name
@@ -35,5 +37,5 @@ export async function GET(request: Request) {
       retried: pending.status === "fulfilled" ? pending.value : 0,
     });
   }
-  return Response.json({ results, remaining: teams.length - results.length });
+  return Response.json({ joinRequests, results, remaining: teams.length - results.length });
 }

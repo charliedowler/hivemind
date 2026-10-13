@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { JoinRequests } from "@/components/join-requests";
+import { listJoinRequests } from "@/server/identity/join-requests";
 import { Members } from "@/components/members";
 import { SlackSettings } from "@/components/slack-settings";
 import { CaptureRules } from "@/components/capture-rules";
@@ -34,6 +36,7 @@ export default async function Page({
     searchParams,
   ]);
   const isAdmin = members.overview.role === "admin";
+  const requests = isAdmin ? await listJoinRequests(ctx) : [];
   const phrase = isAdmin ? await adminJoinPhrase(ctx) : null;
   const invite = !isAdmin ? await readOrganisationInvite(ctx, baseUrl) : null;
   return (
@@ -58,6 +61,16 @@ export default async function Page({
       ) : (
         <p className="muted">Your admin can create the join link.</p>
       )}
+      {isAdmin ? (
+        <section
+          id="requests"
+          className={styles.section}
+          aria-labelledby="requests-heading"
+        >
+          <h2 id="requests-heading">Requests</h2>
+          <JoinRequests initial={requests} />
+        </section>
+      ) : null}
       <section
         id="members"
         className={styles.section}

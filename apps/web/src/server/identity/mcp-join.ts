@@ -1,3 +1,4 @@
+import { joinOrRequest } from "./join-requests";
 import type { HiveContext } from "@hivemind/core";
 import { getSql } from "../db/client";
 import { HiveError } from "../errors";
@@ -11,8 +12,8 @@ export async function mcpJoin(ctx: HiveContext, input: string, options: {trusted
   const phrase = normaliseJoinPhrase(input);
   if (!phrase) throw new HiveError("Use the three-word hive phrase.", 400);
   if (actors[0].actor_type === "human" && options.sessionKind === "oauth") {
-    const joined = await joinByPhrase(ctx, phrase, {trustedProxyIp: options.trustedProxyIp});
-    return {status: "joined", teamId: joined.teamId, teamName: joined.teamName};
+    const result = await joinOrRequest(ctx, phrase, options.trustedProxyIp);
+    return result.status === "requested" ? {status: "requested"} : result;
   }
   const capabilities = actors[0].actor_type === "agent" ? await getSql()`SELECT c.token_hash FROM hive_join_capabilities c JOIN hive_join_phrases p ON p.team_id = c.team_id AND p.generation = c.generation AND p.retired_at IS NULL WHERE c.agent_member_id = ${ctx.memberId} AND c.owner_member_id = ${actors[0].owner_member_id ?? ""} AND p.phrase = ${phrase} AND c.revoked_at IS NULL AND c.expires_at > now() ORDER BY c.created_at DESC LIMIT 1` : [];
   if (capabilities[0]) {

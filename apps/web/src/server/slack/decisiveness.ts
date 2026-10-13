@@ -56,6 +56,8 @@ export function decideInstruction(
 ): DecisivenessResult | null {
   if (!allowed) return decisivenessDecision(false, null);
   const request = text.trim().replace(/\s+/g, " ");
+  if (actionType === "join_request" && /^(?:please )?(?:approve|decline)(?:\s+.+)?[.!?]*$/i.test(request))
+    return { act: true, reason: "Explicit join request decision from an admin." };
   const cadence =
     /\b(?:every|each|daily|weekly|weekdays|fortnightly|monthly)\b/i.test(
       request,

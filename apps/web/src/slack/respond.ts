@@ -1,3 +1,4 @@
+import { respondToJoinRequest } from "./tools/join-requests";
 import { slackToolReply } from "./tools/reply";
 import { isExplicitUndoIntent, latestThreadAction } from "./tools/undo";
 import { slackMemberTimezone } from "@/server/digests/connection";
@@ -15,6 +16,8 @@ export async function respondToSlack(
   messageTs: string,
   history: Array<{ question: string; answer: string }>,
 ): Promise<SlackToolResult> {
+  const joinDecision = await respondToJoinRequest(ctx, message, messageTs);
+  if (joinDecision) return joinDecision;
   if (!process.env.ANTHROPIC_API_KEY)
     return {
       text: "The hive cannot choose a tool right now. Try /hive ask with your question.",

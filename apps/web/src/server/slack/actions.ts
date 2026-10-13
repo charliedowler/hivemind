@@ -10,7 +10,10 @@ import { HiveError } from "../errors";
 import { reverseDecision } from "../conflict-decisions";
 import { lockLearningWrites } from "../lifecycle";
 
+import { undoJoinRequest } from "../identity/join-requests";
+
 const inverseSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("join_request_decided"), id: z.string(), version: z.string() }),
   z.object({ kind: z.literal("decision_reversed"), id: z.string() }),
   z.object({
     kind: z.literal("digest"),
@@ -71,6 +74,7 @@ export async function runReversibleAction(
     const react = result.react === false ? null : (result.react ?? "+1");
     const text = slackToolReply(result.text, ctx).replace(/\s+/g, " ").trim();
     await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${messageTs},${toolName},${tx.json({ ...inverse, replyReact: react })},${text})`;
+    if (inverse.kind === "join_request_decided") await tx`UPDATE hive_join_requests SET undo_action_id=(SELECT id FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${messageTs}) WHERE id=${inverse.id} AND team_id=${ctx.teamId} AND decided_by=${ctx.memberId}`;
     return { text, ...(react ? { react } : {}) };
   });
 }
@@ -110,7 +114,9 @@ export async function undoLastAction(ctx: SlackToolContext, expectedActionId?: s
         text: "The one-hour undo window has ended. Change it in Hive settings.",
       };
     const inverse = inverseSchema.parse(action.inverse);
-    if (inverse.kind === "digest") {
+    if (inverse.kind === "join_request_decided") {
+      await undoJoinRequest(tx, { ...ctx, memberName: "", teamName: "" }, inverse.id, inverse.version);
+    } else if (inverse.kind === "digest") {
       const schedules =
         await tx`SELECT *,updated_at::text AS expected_updated_at FROM slack_digest_schedules WHERE team_id=${ctx.teamId} AND id=${inverse.id} FOR UPDATE`;
       if (
@@ -176,7 +182,9 @@ export async function undoLastAction(ctx: SlackToolContext, expectedActionId?: s
     return {
       react: "white_check_mark",
       text:
-        inverse.kind === "decision_reversed"
+        inverse.kind === "join_request_decided"
+          ? "Join request decision undone."
+          : inverse.kind === "decision_reversed"
           ? decisionReply!
           : inverse.kind === "digest"
             ? inverse.enabled

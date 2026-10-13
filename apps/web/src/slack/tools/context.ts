@@ -14,7 +14,7 @@ export type SlackToolContext = {
   history?: Array<{ question: string; answer: string }>;
   timeZone?: string;
   actionType?:
-    "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse";
+    "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse" | "join_request";
 };
 export async function slackToolContext(
   actor: HiveContext,

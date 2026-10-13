@@ -2,7 +2,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { Card, Sprite } from "@hivemind/design-system";
 import { getWebContext } from "@/server/auth";
-import { joinLanding } from "@/server/identity/onboarding-web";
+import { joinRequestLanding } from "@/server/identity/join-requests";
+import { RequestToJoin, ApprovedJoin } from "@/components/request-to-join";
 import { trustedProxyIp } from "@/server/trusted-proxy";
 import { enabledSignInProviders } from "@/lib/auth-providers";
 import { ProviderButtons } from "@/components/login";
@@ -23,7 +24,7 @@ export default async function Page({
   let team;
   if (ctx) {
     try {
-      team = await joinLanding(
+      team = await joinRequestLanding(
         ctx,
         phrase,
         trustedProxyIp(
@@ -54,6 +55,19 @@ export default async function Page({
             Sign in with email
           </Link>
         </Card>
+      ) : team?.joined ? (
+        <>
+          <ApprovedJoin phrase={phrase} teamName={team.teamName} />
+          {/* TODO: Mount the A11 share-on-join offer here when it lands. */}
+        </>
+      ) : team && !team.automatic ? (
+        <RequestToJoin
+          phrase={phrase}
+          teamName={team.teamName}
+          domains={team.domains}
+          status={team.requestStatus}
+          retryAt={team.retryAt}
+        />
       ) : team ? (
         <JoinHive
           phrase={phrase}
