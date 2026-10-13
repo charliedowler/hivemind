@@ -212,11 +212,13 @@ function AccountProjectChoices({
       : policy;
   return (
     <>
-      <CaptureRules
-        initial={{ rules, policy: currentPolicy, isAdmin }}
-        onPolicySaved={setEditedPolicy}
-        scope="personal"
-      />
+      <div id="projects">
+        <CaptureRules
+          initial={{ rules, policy: currentPolicy, isAdmin }}
+          onPolicySaved={setEditedPolicy}
+          scope="personal"
+        />
+      </div>
       {currentPolicy ? (
         <ProjectSharing policy={currentPolicy} initial={sharing} />
       ) : null}

@@ -1,0 +1,51 @@
+import { JSDOM } from "jsdom";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ShareOnJoin } from "./share-on-join";
+import { requestJson } from "@/lib/client";
+vi.mock("@/lib/client", () => ({ requestJson: vi.fn(), errorMessage: (error: Error) => error.message }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+let dom: JSDOM;
+let host: HTMLDivElement;
+let root: ReturnType<typeof createRoot>;
+const button = (label: string) => [...host.querySelectorAll('button')].find(item => item.textContent === label)!;
+beforeEach(() => {
+  vi.clearAllMocks();
+  dom = new JSDOM("<!doctype html><html><body></body></html>");
+  vi.stubGlobal("window", dom.window);
+  vi.stubGlobal("self", dom.window);
+  vi.stubGlobal("document", dom.window.document);
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  host=document.createElement('div'); document.body.append(host); root=createRoot(host);
+});
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); dom.window.close(); vi.unstubAllGlobals(); });
+it("saves Yes with no selected projects and offers Change after the successful request", async () => {
+  await act(async () => root.render(<ShareOnJoin teamId="team_example" teamName="Example" projects={[]} />));
+  await act(async () => button('Yes').click());
+  expect(requestJson).toHaveBeenCalledWith('/api/app/share-on-join',{teamId:'team_example',mode:'all_selected',projects:[],humanInstruction:'Share my learnings from all selected projects with Example, now and in future.'});
+  expect(host.textContent).toContain('Sharing with Example: everything from your selected projects');
+  expect(host.textContent).not.toContain('Share your learnings with');
+  await act(async () => button('Change').click());
+  await act(async () => button('Not now').click());
+  expect(host.textContent).toContain('Not sharing with Example');
+  expect(button('Change')).toBeDefined();
+});
+it("opens an unchecked project picker and records only the chosen projects", async () => {
+  await act(async () => root.render(<ShareOnJoin teamId="team_example" teamName="Example" projects={[{pattern:'github.com/example/widget',cells:2},{pattern:'github.com/example/private',cells:1}]} />));
+  await act(async () => button('Choose projects').click());
+  const inputs=[...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+  expect(inputs.every(input=>!input.checked)).toBe(true);
+  expect(button('Share selected projects').disabled).toBe(true);
+  await act(async () => inputs[0].click());
+  await act(async () => button('Share selected projects').click());
+  expect(requestJson).toHaveBeenCalledWith('/api/app/share-on-join',expect.objectContaining({mode:'projects',projects:['github.com/example/widget']}));
+  expect(host.textContent).toContain('Sharing with Example: chosen projects');
+});
+it("keeps an unsuccessful answer visible with its error", async () => {
+  vi.mocked(requestJson).mockRejectedValueOnce(new Error('Try again.'));
+  await act(async () => root.render(<ShareOnJoin teamId="team_example" teamName="Example" projects={[]} />));
+  await act(async () => button('Yes').click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe('Try again.');
+  expect(button('Yes').disabled).toBe(false);
+});

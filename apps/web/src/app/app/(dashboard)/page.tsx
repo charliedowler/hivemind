@@ -1,4 +1,5 @@
-import { shareOnJoinOffer } from "@/server/share-on-join";
+import { shareOnJoinSettings } from "@/server/share-on-join";
+import Link from "next/link";
 import { ShareOnJoin } from "@/components/share-on-join";
 import { Feed } from "@/components/feed";
 import { getWebContext } from "@/server/auth";
@@ -14,13 +15,13 @@ export default async function Page() {
       justJoined?: { teamId: string; teamName: string } | null;
     }
   )?.justJoined;
-  const offer = ctx && !personal ? await shareOnJoinOffer(ctx, ctx.teamId) : null;
+  const offer = ctx && !personal ? await shareOnJoinSettings(ctx, ctx.teamId) : null;
   return (
     <>
       {ctx && justJoined ? (
         <p role="status">You're in {justJoined.teamName}.</p>
       ) : null}
-      {offer ? <ShareOnJoin {...offer} /> : null}
+      {offer && !offer.decision ? <ShareOnJoin {...offer} /> : offer && !offer.projects.length ? <p>Nothing selected yet; <Link href="/app/account#projects">pick projects on Account</Link>{offer.decision === "yes" ? " and they'll be shared" : ""}.</p> : null}
       <Feed teamName={ctx?.teamName} personal={personal} />
     </>
   );

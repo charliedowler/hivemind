@@ -3,7 +3,7 @@ import { JoinRequests } from "@/components/join-requests";
 import { listJoinRequests } from "@/server/identity/join-requests";
 import { AgentCredentials } from "@/components/agent-credentials";
 import { ShareOnJoin } from "@/components/share-on-join";
-import { shareOnJoinOffer } from "@/server/share-on-join";
+import { shareOnJoinSettings } from "@/server/share-on-join";
 import { ownerAgentChoices } from "@/server/web-sharing";
 import { Members } from "@/components/members";
 import { SlackSettings } from "@/components/slack-settings";
@@ -39,7 +39,7 @@ export default async function Page({
     listCaptureRules(ctx),
     searchParams,
     ownerAgentChoices(ctx),
-    shareOnJoinOffer(ctx, ctx.teamId, true),
+    shareOnJoinSettings(ctx, ctx.teamId),
   ]);
   const isAdmin = members.overview.role === "admin";
   const requests = isAdmin ? await listJoinRequests(ctx) : [];
@@ -48,7 +48,7 @@ export default async function Page({
   return (
     <div className={`stack ${styles.team}`}>
       <h1>{ctx.teamName}</h1>
-      {shareOffer ? <ShareOnJoin {...shareOffer} /> : null}
+      {shareOffer ? <ShareOnJoin key={shareOffer.decision ?? "offer"} {...shareOffer} /> : null}
       <AgentCredentials agents={agents} />
       {isAdmin ? (
         <HiveInvite

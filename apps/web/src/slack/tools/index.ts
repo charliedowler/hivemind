@@ -1,4 +1,5 @@
 import { joinRequestTools } from "./join-requests";
+import { sharingTools } from "./sharing";
 import { joinTools } from "./join";
 import { decisionTools } from "./decisions";
 export { reactToSlack } from "./react";
@@ -56,6 +57,7 @@ const save = z.strictObject({
 });
 export const slackTools: SlackTool[] = [
   ...joinTools,
+  ...sharingTools,
   ...joinRequestTools,
   ...decisionTools,
   ...digestTools,

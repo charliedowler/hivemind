@@ -66,6 +66,7 @@ export async function startRuntime({ signal } = {}) {
     PORT: String(port),
     VERCEL_GIT_COMMIT_SHA: commit,
     NEXT_TELEMETRY_DISABLED: '1',
+    NEXT_PUBLIC_C15T_BACKEND_URL: sink.url,
     BLOB_READ_WRITE_TOKEN: 'e2e-local-only',
     SLACK_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 23).toString('base64'),
     SLACK_SIGNING_SECRET: 'hive-e2e-slack-signing',

@@ -1,7 +1,9 @@
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
 export async function startSinks() {
+  const consentManifest = JSON.parse(await readFile(new URL('../fixtures/consent-manifest.json', import.meta.url), 'utf8'));
   const events = [];
   const blobs = new Map();
   const server = createServer(async (request, response) => {
@@ -11,7 +13,9 @@ export async function startSinks() {
       const body = text ? JSON.parse(text) : {};
       const path = new URL(request.url, 'http://localhost').pathname;
       let data;
-      if (path === '/mail') {
+      if (path === '/manifest') {
+        data = consentManifest;
+      } else if (path === '/mail') {
         const event = { kind: 'mail', body, id: randomUUID() };
         events.push(event);
         data = { id: event.id };

@@ -1,4 +1,5 @@
 import type { HiveContext } from "@hivemind/core";
+import { shareOnJoinSettings } from "./share-on-join";
 import { getSql } from "./db/client";
 import { hiveChoices } from "./identity/onboarding-web";
 
@@ -7,10 +8,11 @@ export async function projectShareState(ctx: HiveContext) {
     hiveChoices(ctx),
     getSql()`SELECT g.id, g.team_id, g.repo_pattern, g.grant_kind FROM project_sharing_grants g JOIN hive_memberships h ON h.team_id = g.team_id AND h.member_id = ${ctx.memberId} AND h.removed_at IS NULL WHERE g.owner_member_id = ${ctx.memberId} AND g.withdrawn_at IS NULL ORDER BY g.team_id, g.repo_pattern, g.grant_kind`,
   ]);
-  return hives
+  return Promise.all(hives
     .filter((hive) => !hive.personal)
-    .map((hive) => ({
+    .map(async (hive) => ({
       ...hive,
+      sharing: await shareOnJoinSettings(ctx, hive.teamId),
       grants: grants
         .filter((grant) => grant.team_id === hive.teamId)
         .map((grant) => ({
@@ -18,7 +20,7 @@ export async function projectShareState(ctx: HiveContext) {
           pattern: String(grant.repo_pattern),
           kind: String(grant.grant_kind),
         })),
-    }));
+    })));
 }
 
 export async function cellShareState(ctx: HiveContext, id: string) {

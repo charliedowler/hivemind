@@ -1,0 +1,69 @@
+{
+  "appName": "hive-e2e",
+  "branding": "c15t",
+  "hosting": "inth",
+  "policyPacks": [
+    {
+      "fingerprints": {
+        "choice": "a35ac43b3d435b98441c5c39ccb3879d59d813fd9185d5fa9e3cfc08385412a9",
+        "notice": "7f05073243a60d3d057f8945113f5282024b4f5bcd13933e35952534ad1cf423",
+        "policy": "8aca68633714c54fb0a96eaee313aa415ae0a3137e56764cf629a20793b2f969"
+      },
+      "match": {
+        "fallback": true
+      },
+      "rule": {
+        "actions": {
+          "allowed": [
+            "accept",
+            "customize",
+            "reject"
+          ],
+          "equivalent": [
+            [
+              "accept",
+              "reject"
+            ]
+          ],
+          "required": [
+            "accept",
+            "reject"
+          ]
+        },
+        "copyRevision": null,
+        "id": "europe_opt_in",
+        "model": "opt-in",
+        "preselectedCategories": [],
+        "privacySignals": {
+          "gpc": {
+            "denyCategories": []
+          }
+        },
+        "prompt": "choice",
+        "proof": {
+          "storeIp": true,
+          "storeLanguage": true,
+          "storeUserAgent": true
+        },
+        "rights": [
+          "disclosure",
+          "preferences"
+        ],
+        "scope": [
+          "experience",
+          "functionality",
+          "marketing",
+          "measurement"
+        ],
+        "scopeMode": "permissive",
+        "validity": {
+          "choiceMs": 31536000000,
+          "noticeMs": 31536000000
+        }
+      }
+    }
+  ],
+  "revision": "e2e-consent-manifest",
+  "schemaVersion": 2,
+  "translations": {}
+}

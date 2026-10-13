@@ -460,6 +460,52 @@ for (const mode of ['all_selected', 'projects', 'not_now']) {
 }
 
 scenarios.push({
+  name: 'onboarding-share-yes-empty-selection', fast: true,
+  async run(ctx) {
+    const team = await organisation(ctx);
+    const person = await bootstrapWithClaim(ctx, email('empty-sharing'));
+    await approve(ctx, team, await requestJoin(ctx, team, person));
+    const offer = (await agentStatus(ctx, person.credential)).shareOffers.find(row => row.teamId === team.teamId);
+    assert.deepEqual(offer.projects, []);
+    await post(ctx, '/api/app/switch-hive', person.cookie, {teamId: team.teamId});
+    const before = await ctx.request('/app/team', {cookie: person.cookie});
+    assert.match(before.text, /Share your learnings with/);
+    assert.match(before.text, /Nothing selected yet/);
+    const humanInstruction = 'Share all selected projects now and in future.';
+    await post(ctx, '/api/app/share-on-join', person.cookie, {teamId:team.teamId, mode:'all_selected', projects:[], humanInstruction});
+    const decision = (await ctx.sql`SELECT decision, human_instruction, answered_at FROM join_share_offers WHERE owner_member_id=${person.memberId} AND team_id=${team.teamId}`)[0];
+    assert.equal(decision.decision, 'yes');
+    assert.equal(decision.human_instruction, humanInstruction);
+    assert.ok(decision.answered_at);
+    assert.equal((await agentStatus(ctx, person.credential)).shareOffers.some(row => row.teamId === team.teamId), false);
+    for (const path of ['/app/team', '/app/team', '/app', '/app/claimed', `/j/${team.phrase}`, '/app/account']) {
+      const page = await ctx.request(path, {cookie:person.cookie});
+      assert.equal(page.status, 200, `${path} must load`);
+      assert.doesNotMatch(page.text, /Share your learnings with/, `${path} must hide the answered offer`);
+      if (path === '/app/team' || path === '/app/account') {
+        assert.match(page.text, /everything from your selected projects/);
+        assert.match(page.text, /Change/);
+      }
+      if (path === '/app/team' || path === '/app') assert.match(page.text, /pick projects on Account/);
+    }
+    const grants = await ctx.sql`SELECT grant_kind FROM project_sharing_grants WHERE owner_member_id=${person.memberId} AND team_id=${team.teamId} AND withdrawn_at IS NULL`;
+    assert.deepEqual([...grants], [{grant_kind:'all_selected'}]);
+    await selectProjects(ctx, person, ['example.com/fixture/later']);
+    const later = await capture(ctx, person.credential, 'example.com/fixture/later', 'Later selection');
+    await assertShares(ctx,person.memberId,team.teamId,[later]);
+    await post(ctx, '/api/app/share-on-join',person.cookie,{teamId:team.teamId,mode:'not_now',humanInstruction:'Keep personal.'});
+    await assertShares(ctx,person.memberId,team.teamId,[]);
+    for (const path of ['/app/team','/app/account']) {
+      const page=await ctx.request(path,{cookie:person.cookie});
+      assert.doesNotMatch(page.text,/Share your learnings with/);
+      assert.match(page.text,/Not sharing with/);
+      assert.match(page.text,/Change/);
+    }
+    await ctx.artifact('empty-sharing-decision.json',{decision,grants,later});
+  },
+});
+
+scenarios.push({
   name: 'onboarding-invitation-keeps-local-origin', fast: true,
   async run(ctx) {
     const team = await organisation(ctx);

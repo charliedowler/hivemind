@@ -1,4 +1,4 @@
-vi.mock("@/server/share-on-join", () => ({ shareOnJoinOffer: async () => null }));
+vi.mock("@/server/share-on-join", () => ({ shareOnJoinSettings: async () => null }));
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 
