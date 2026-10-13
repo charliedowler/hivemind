@@ -37,7 +37,7 @@ pnpm --filter gohive version:patch
 
 The `Publish gohive` workflow checks the CLI and publishes new versions with npm trusted publishing (OIDC). No npm token or manual publish is needed. It skips versions that already exist. You can also run the workflow manually from `main`.
 
-Provenance attestations are off because npm only issues them for public source repositories; turn them on if the repository becomes public.
+The workflow enables provenance attestations. Each release links to its source commit and GitHub Actions build on npm. Provenance requires a public source repository.
 
 ## Executor
 
