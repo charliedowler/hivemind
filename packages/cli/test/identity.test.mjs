@@ -3,22 +3,13 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { installerIdentity, harness, displayName } from '../dist/identity.js';
+import { harness, displayName } from '../dist/identity.js';
 import { markInstructions } from '../dist/installer.js';
 
-test('interactive harness sessions stay human; agent identity needs a explicit flag', () => {
-  assert.equal(installerIdentity({}, false), 'human');
-  assert.equal(installerIdentity({ CLAUDECODE: '1' }, false), 'human');
-  for (const key of ['CODEX_CI', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CODEX_VERSION']) assert.equal(installerIdentity({ [key]: 'fixture' }, false), 'human');
-  assert.equal(installerIdentity({ TERM_PROGRAM: 'Codex', CODEX_HOME: '/home/config' }, false), 'human');
-  assert.equal(installerIdentity({ CLAUDECODE: '1' }, true), 'human');
-  assert.equal(installerIdentity({ CLAUDECODE: '1' }, false, 'human'), 'human');
-  assert.equal(installerIdentity({}, true, 'agent'), 'agent');
-  assert.equal(installerIdentity({}, false, undefined, true), 'agent');
-  for (const key of ['CI','HIVE_HEADLESS','HIVE_NO_HUMAN']) for (const value of ['true','1']) assert.equal(installerIdentity({[key]:value, CLAUDECODE:'1'}, false), 'human');
-  assert.equal(installerIdentity({CI:'true'}, false, 'agent'), 'agent');
-  assert.equal(installerIdentity({CI:'false'}, false), 'human');
+test('harness markers identify the current client', () => {
   assert.equal(harness({ CLAUDECODE: '1' }), 'Claude Code');
+  assert.equal(harness({ CODEX_THREAD_ID: 'fixture' }), 'Codex');
+  assert.equal(harness({ CODEX_HOME: '/home/config' }), undefined);
 });
 
 test('display names remove unsafe characters and fit the local 80-character limit', () => {

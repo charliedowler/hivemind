@@ -4,7 +4,7 @@ import { getSql } from "../db/client";
 import { hashToken, newId } from "../db/ids";
 import { enrollMember, personalMemberContext, memberContext } from "./enrollment";
 import { loadMemberContext } from "./session-context";
-import { bindVerifiedOwner } from "./owner-bindings";
+import { bindVerifiedOwner } from "./legacy-owner-fixture";
 import { joinByPhrase, rotateJoinPhrase, pauseJoinPhrase } from "./join-phrases";
 import { createHiveAuth } from "../better-auth";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";

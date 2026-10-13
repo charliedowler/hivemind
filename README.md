@@ -28,25 +28,25 @@ Sign in at https://gohive.dev/app/login with email and password, Google or Slack
    ```
    Switch to the dashboard. Within 5 seconds a new cell fills in and "Fresh nectar" shows the arrival with a teal Codex badge.
 6. **Nobody asked (20 seconds).** In "Fresh nectar", point at "Stop hook demo's Claude brought nectar from billing-cutoff". That session was only asked to fix a failing test. The Stop hook asked it once, before it stopped, what a teammate would otherwise have to rediscover.
-7. **Install (25 seconds).** Open https://gohive.dev/app/connect. Copy the OAuth command. Sign in through the browser and allow access to your hive. That is the whole setup for a teammate.
+7. **Install (25 seconds).** Open https://gohive.dev/app/connect. Paste the setup prompt into your agent. Confirm the email and claim with the email link. That is the whole setup for a teammate.
 8. **Close (15 seconds).** Open a cell and vote it useful or outdated. The hive ranks on that feedback.
 
 Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/screenshots).
 
 ## Install for a teammate
 
-**MCP auth is OAuth-first.** People sign in with email and password, Google or Slack. Agents use AgentID with their own identity. Create a team, or join with an invite link or an allowed work domain. Email accounts verify a six-digit Resend code within 15 minutes.
+**People use OAuth; coding agents use Hive credentials.** The installer asks which email to use, then connects the current harness without opening a browser. A new owner starts privately and claims with one email link. Already verified owners click an email link before the machine receives a credential. Any email provider works. See [agent setup and sharing](docs/agents.md).
 
 Run the installer with Node 20 or later:
 
 ```sh
-npx gohive install
+npx --yes gohive@latest install
 npx gohive doctor
 ```
 
-It detects Claude Code and Codex, adds their MCP connection, installs the [Hive skill](skills/hive/SKILL.md), and merges the Claude hooks. It backs up existing settings and instructions before changing them. Run `npx gohive login` for the hooks' own OAuth session. Use `npx gohive uninstall` to remove owned files and hooks.
+It detects Claude Code and Codex, adds their MCP connection, installs the [Hive skill](skills/hive/SKILL.md), and merges the Claude hooks. It backs up existing settings and instructions before changing them. The MCP client and hooks use the same private agent credential. `gohive login` remains available for human OAuth. Use `npx gohive uninstall` to remove owned files and hooks.
 
-For Executor, run `npx gohive install --client executor`. It opens the organisation setup page with the MCP URL where supported and walks through OAuth sign-in. It keeps existing organisation accounts and policies. Doctor recognises an existing Hive namespace by its server URL.
+For Executor, run `npx gohive install --client executor`. It uses a local proxy with the agent credential and opens no browser. It keeps existing organisation accounts and policies. Doctor recognises an existing Hive namespace by its server URL.
 
 The [CLI guide](packages/cli/README.md) covers backup paths, hook login and client selection. Manual setup remains available. For Claude Code:
 
@@ -242,7 +242,7 @@ The [analytics contract](docs/analytics.md) describes the private append-only ev
 
 `GOOGLE_CLIENT_ID` plus `GOOGLE_CLIENT_SECRET` enable the Google button. `SLACK_CLIENT_ID` plus `SLACK_CLIENT_SECRET` enable Slack. Missing pairs hide the buttons. `SLACK_SIGNING_SECRET` verifies Slack events, commands and interactivity; it is not used for sign-in. Production requires `BETTER_AUTH_SECRET`; `BETTER_AUTH_URL` sets the authorization origin. `PUBLIC_URL` supplies the protected MCP resource. Development can run without provider credentials; the local secret fallback is never used in production.
 
-`AGENTID_CLIENT_ID` plus `AGENTID_CLIENT_SECRET` enable "Sign in as an agent" below the human providers. AgentID uses the Generic OAuth helper with PKCE and verified owner claims. An agent joins its verified owner's team as a member, or chooses when several teams match. Invite links also work. Agents cannot manage members, Slack, privacy rules or keys. Apply migration `0026_agentid.sql` before deploying this provider. See [AgentID setup and join rules](docs/agentid.md).
+Hive-issued agent credentials bind each agent to its human owner. Unclaimed agents use only the personal hive. Claim runs domain joining and owner membership following. The owner can revoke each agent on Account or Team. Apply migrations through `0033_retire_agentid.sql` with the repository runner; historical owner bindings and cells stay readable.
 
 Apply `0011_better_auth.sql` and `0012_mcp_oauth.sql` with the repository migrate script from committed main before deploying the auth code. SQL uses guarded schema changes, lock and statement timeouts. Rollbacks refuse to discard linked accounts or populated OAuth grants. Old session hashes are not copied into raw Better Auth tokens. They remain readable through a compatibility path until expiry or sign-out. API keys never open a web session.
 

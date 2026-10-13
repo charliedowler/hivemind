@@ -32,7 +32,7 @@ import {
 } from "@/slack/tools/join-requests";
 import { undoThreadAction } from "@/slack/tools/undo";
 import { createTeam } from "../auth";
-import { followOwnerMemberships, bindVerifiedOwner } from "./owner-bindings";
+import { followOwnerMemberships, bindVerifiedOwner } from "./legacy-owner-fixture";
 
 const transport = vi.hoisted(() => ({ slack: vi.fn(), email: vi.fn() }));
 vi.mock("server-only", () => ({}));

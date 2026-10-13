@@ -8,13 +8,13 @@ async function main() {
   if (state.phase === 'exchanging') { console.log('Finishing sign-in. Run npx gohive status again in a few seconds.'); return; }
   if (state.phase === 'waiting' && Date.now() - state.started < 600000) {
     if (state.url) console.log(`Open ${state.url}`);
-    console.log(state.identity === 'agent' ? 'Approve this sign-in as the agent with the command on its waiting page, then run `npx gohive status`.' : "Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
+    console.log("Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
   }
   const token = await bearerToken(homeDirectory(), endpoint(), AbortSignal.timeout(2000));
   if (!token) {
     if (state.url && Date.now() - state.started < 600000 && state.phase !== 'failed') {
       console.log(`Open ${state.url}`);
-      console.log(state.identity === 'agent' ? 'Approve this sign-in as the agent with the command on its waiting page, then run `npx gohive status`.' : "Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
+      console.log("Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
     }
     throw new Error('Sign in first');
   }

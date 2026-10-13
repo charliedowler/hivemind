@@ -3,10 +3,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from '
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { displayName, type Identity } from './identity.js';
 import type { Agent } from './installer.js';
 
-type SignInState = { attempt: string; started: number; pid?: number; identity: Identity; phase: string; agents?: Agent[]; url?: string; joinPhrase?: string };
+type SignInState = { attempt: string; started: number; pid?: number; identity: 'human'; phase: string; agents?: Agent[]; url?: string; joinPhrase?: string };
 const statePath = (home: string) => join(home, '.hive/sign-in.json');
 export function signInState(home: string): SignInState | undefined {
   try { return JSON.parse(readFileSync(statePath(home), 'utf8')); } catch { return undefined; }
@@ -18,7 +17,7 @@ export function joinPhrase(value?: string): string | undefined {
   if (!/^[a-z]+-[a-z]+-[a-z]+$/.test(phrase)) throw new Error('Use the three-word Hive phrase or its /j/ link');
   return phrase;
 }
-export async function beginSignIn({ home, agents, identity, headless = false, phrase, force = false, log = console.log }: { home: string; agents: Agent[]; identity: Identity; headless?: boolean; phrase?: string; force?: boolean; log?: (line: string) => void }) {
+export async function beginSignIn({ home, agents, identity, headless = false, phrase, force = false, log = console.log }: { home: string; agents: Agent[]; identity: 'human'; headless?: boolean; phrase?: string; force?: boolean; log?: (line: string) => void }) {
   const previous = signInState(home);
   force = force || Boolean(previous && previous.identity !== identity && ['starting', 'waiting', 'native-waiting'].includes(previous.phase));
   if (force && previous?.pid && Date.now() - previous.started < 600000 && ['starting', 'waiting', 'native-waiting'].includes(previous.phase)) { try { process.kill(previous.pid); } catch {} }
@@ -30,7 +29,7 @@ export async function beginSignIn({ home, agents, identity, headless = false, ph
   const state: SignInState = { attempt: randomUUID(), started: Date.now(), identity, phase: 'starting', agents, joinPhrase: phrase };
   const temp = `${statePath(home)}.${state.attempt}.tmp`;
   writeFileSync(temp, JSON.stringify(state), { mode: 0o600 }); renameSync(temp, statePath(home));
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, HIVE_HOME: home, CODEX_HOME: join(home, '.codex'), HIVE_IDENTITY: identity, HIVE_AGENT_NAME: displayName(process.env), HIVE_SIGN_IN_ATTEMPT: state.attempt, HIVE_SIGN_IN_CLIENT: agents.length === 1 ? agents[0] : '', HIVE_NATIVE_CODEX: agents.includes('codex') ? '1' : '0', ...(headless ? { HIVE_NO_BROWSER: '1' } : {}) };
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, HIVE_HOME: home, CODEX_HOME: join(home, '.codex'), HIVE_SIGN_IN_ATTEMPT: state.attempt, HIVE_SIGN_IN_CLIENT: agents.length === 1 ? agents[0] : '', HIVE_NATIVE_CODEX: agents.includes('codex') ? '1' : '0', ...(headless ? { HIVE_NO_BROWSER: '1' } : {}) };
   delete env.CLAUDE_CONFIG_DIR;
   const child = spawn(process.execPath, [fileURLToPath(new URL('../assets/hive/scripts/login.mjs', import.meta.url))], { env, cwd: home, detached: true, stdio: 'ignore' });
   child.on('error', () => {}); child.unref();

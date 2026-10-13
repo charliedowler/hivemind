@@ -9,7 +9,7 @@ import { authenticateApiKey } from "../auth";
 import { contextFromClaims } from "../bearer-auth";
 import { createHiveAuth } from "../better-auth";
 import { getLearning, listMembers, searchLearnings } from "../hive";
-import { bindVerifiedOwner, agentIdIssuer } from "./owner-bindings";
+import { bindVerifiedOwner, agentIdIssuer } from "./legacy-owner-fixture";
 import { enrollAgent } from "./agent-enrollment";
 import { enrollMember, memberContext } from "./enrollment";
 import { joinPageState } from "./join-page";

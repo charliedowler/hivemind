@@ -106,8 +106,7 @@
   opacity: 38%;
 }
 
-.slack,
-.agentid {
+.slack {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -126,20 +125,12 @@
   border: 1px solid #4a154b;
 }
 
-.agentid {
-  color: #000;
-  background-color: #fff;
-  border: 1px solid #747775;
-}
-
-.slack img,
-.agentid img {
+.slack img {
   flex-shrink: 0;
   margin-right: 10px;
 }
 
-.slack span,
-.agentid span {
+.slack span {
   flex-grow: 1;
   text-align: center;
 }

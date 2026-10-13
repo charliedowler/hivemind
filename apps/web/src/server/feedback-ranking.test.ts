@@ -21,7 +21,7 @@ import { captureOwner, publishCell, shareProjects } from "./project-sharing";
 import {
   bindVerifiedOwner,
   followOwnerMemberships,
-} from "./identity/owner-bindings";
+} from "./identity/legacy-owner-fixture";
 import { memberContext } from "./identity/enrollment";
 import * as judgments from "./memory-judgments";
 

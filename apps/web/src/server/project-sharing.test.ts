@@ -6,7 +6,7 @@ import { getSql } from "./db/client";
 import { newId } from "./db/ids";
 import { createTeam } from "./auth";
 import { memberContext } from "./identity/enrollment";
-import { bindVerifiedOwner, followOwnerMemberships } from "./identity/owner-bindings";
+import { bindVerifiedOwner, followOwnerMemberships } from "./identity/legacy-owner-fixture";
 import { captureOwner, delegateProjectSelection, ownerCapturePolicy, publishCell, publishProject, shareProjects, withdrawProject, withdrawPublication } from "./project-sharing";
 import { getLearning, pushLearning, recentLearnings, searchLearnings, askHive, recordFeedback } from "./hive";
 import { learningVersions, editLearning, listConflicts } from "./lifecycle";

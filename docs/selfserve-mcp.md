@@ -1,6 +1,6 @@
 # Connect Hive over MCP
 
-Hive's remote MCP endpoint is `https://gohive.dev/api/mcp`. Sign in through OAuth with Google, Slack or AgentID. Use the hosted endpoint without a local proxy or API key.
+Hive's remote MCP endpoint is `https://gohive.dev/api/mcp`. People sign in through OAuth with Google, Slack or email. Coding agents use [Hive-issued credentials](agents.md). Use the hosted endpoint without a local proxy or API key.
 
 ## Claude desktop, web and mobile
 

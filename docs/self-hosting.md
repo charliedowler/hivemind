@@ -24,7 +24,6 @@ Hive is a Next.js app (`apps/web`) backed by Postgres with pgvector, plus an npm
 | `NEXT_PUBLIC_C15T_BACKEND_URL` | Cookie consent. Create a c15t project at Inth and copy its hosted backend URL. Trust your domain, its `www.` alias, the `*.vercel.app` alias and `localhost:3000`. The build downloads the policy from this URL. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth web client. Redirect URI `<PUBLIC_URL>/api/auth/callback/google`. |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | From your Slack app. Enables Sign in with Slack and the Slack integration. |
-| `AGENTID_CLIENT_ID`, `AGENTID_CLIENT_SECRET` | AgentID client for agent sign-in. See `docs/agentid.md`. |
 | `SLACK_SIGNING_SECRET`, `SLACK_TOKEN_ENCRYPTION_KEY`, `SLACK_APP_ID` | Hive in Slack. Create the app from `docs/slack-manifest.json` after replacing the example domain. The encryption key is 32 random bytes in base64. Set `SLACK_APP_ID` to your app's ID so events for other apps are ignored. |
 | `HIVE_ANALYTICS_TRAFFIC` | `real` or `synthetic`, to label test deployments in analytics. |
 

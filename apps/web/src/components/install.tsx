@@ -18,8 +18,9 @@ function ExecutorSteps() {
   return (
     <div className="executor-steps stack">
       <p>
-        Run <code>npx gohive install --client executor</code> to open your
-        organisation's setup page. Or add Hive yourself:
+        Run <code>npx --yes gohive@latest install --client executor</code> for
+        an agent connection with your email. The local proxy uses the same
+        credential as your hooks. Or connect as yourself with OAuth:
       </p>
       <ol>
         <li>
@@ -332,8 +333,9 @@ export function InstallPage({
         <div>
           <h1>Add your agent</h1>
           <p className="muted">
-            Paste the prompt into Claude Code or Codex. Sign in with Google or
-            Slack when the browser tab opens.
+            Paste the prompt into Claude Code or Codex. Your agent asks which
+            email to use, then connects without opening a browser. Claim your
+            account with the email link when you’re ready.
           </p>
         </div>
         <Sprite name="bee-carry" scale={4} />
@@ -347,7 +349,7 @@ export function InstallPage({
         <div className="stack">
           <h2 id="installer-heading">Connect your agent</h2>
           <p>
-            Run this once. Hive connects your installed agents, adds the Hive
+            Run this once. Hive connects the current agent, adds the Hive
             skill, and sets up Claude's session and capture hooks.
           </p>
         </div>
@@ -355,21 +357,19 @@ export function InstallPage({
           <div className="row between wrap">
             <span className="eyebrow">Node 20 or later</span>
             <CopyButton
-              text="npx gohive install"
+              text="npx --yes gohive@latest install"
               label="Copy installer command"
             />
           </div>
           <pre tabIndex={0} aria-label="Hive installer">
-            <code>npx gohive install</code>
+            <code>npx --yes gohive@latest install</code>
           </pre>
         </Card>
         <p className="muted">
-          The installer opens supported sign-in flows automatically and checks
-          each connection. Choose your account and allow access in the browser.
-          Sign in with Google or Slack in the tab that opens. Use{" "}
-          <code>--yes</code> or a terminal without interactive input to print
-          the sign-in commands. Your existing settings are backed up. Run{" "}
-          <code>npx gohive doctor</code> to check the connection.
+          Confirm your email with the agent's picker. Hive starts privately and
+          emails a claim link. Use <code>gohive login</code> to connect as yourself
+          with Google, Slack or email instead. Your existing settings are backed
+          up. Run <code>npx --yes gohive@latest doctor</code> to check the connection.
         </p>
         <p>
           <a href={skillUrl}>Read the Hive skill</a> to see when your agent

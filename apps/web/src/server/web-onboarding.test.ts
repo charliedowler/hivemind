@@ -16,7 +16,7 @@ import {
   bindVerifiedOwner,
   followOwnerMemberships,
   agentIdIssuer,
-} from "./identity/owner-bindings";
+} from "./identity/legacy-owner-fixture";
 import { adminJoinPhrase } from "./identity/join-phrases";
 import { webMemberPage } from "./web-member-page";
 import { getLearning } from "./hive";

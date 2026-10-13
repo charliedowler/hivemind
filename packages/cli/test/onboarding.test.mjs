@@ -61,10 +61,10 @@ for (const scenario of ['human', 'token-error', 'declined']) test(`${scenario} i
   const state=signInState(home);
   assert.equal(state.phase,'waiting');
   assert.equal(statSync(join(home,'.hive/sign-in.json')).mode&0o777,0o600);
-  const instruction = identity === 'human' ? 'Sign in with Google in the tab that just opened; run `npx gohive status` when done.' : 'Approve this sign-in as the agent at https://auth.agentid.com using its AgentMail command, then run `npx gohive status`.';
+  const instruction = 'Sign in with Google in the tab that just opened; run `npx gohive status` when done.';
   assert.ok(logs.includes(instruction));
   assert.ok(!logs.some(line=>line.includes('as yourself')));
-  assert.equal(new URL(state.url).pathname,identity==='agent'?'/api/auth/agentid/start':'/authorize');
+  assert.equal(new URL(state.url).pathname,'/authorize');
   const env={...process.env,HOME:home,HIVE_HOME:home,CODEX_HOME:join(home,'.codex')};
   const pending=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(pending.stdout.includes('Open '));

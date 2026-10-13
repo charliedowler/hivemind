@@ -1,9 +1,9 @@
-import { createAuthMiddleware, getOAuthState, isAPIError } from "better-auth/api";
+import { createAuthMiddleware, isAPIError } from "better-auth/api";
 import { authAccess } from "./analytics/auth";
 import { recordEvent } from "./analytics/events";
 import { betterAuth, APIError } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { emailOTP, genericOAuth, jwt } from "better-auth/plugins";
+import { emailOTP, jwt } from "better-auth/plugins";
 import { mcp } from "@better-auth/mcp";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
@@ -17,15 +17,14 @@ import { hashToken, newId } from "./db/ids";
 import { deliverCode } from "./identity/email";
 import { rateLimit } from "./identity/rate-limit";
 import { enrollMember, memberContext, personalMemberContext, registrationForStorage } from "./identity/enrollment";
-import { agentClaims, isAgentMember, storeAgentOwner } from "./identity/agent-enrollment";
-import { agentidProvider } from "./identity/agentid-provider";
+import { isAgentMember } from "./identity/agent-enrollment";
 import { welcomeClaimPlugin } from "./identity/claim-plugin";
 import { credentialVersion, credentialEpoch, personScope } from "./identity/credential-scope";
 import { enrollSessionContext, signInMemberContext } from "./identity/session-context";
 
 export function createHiveAuth(baseUrl: string, delivery = deliverCode, resourceUrl = baseUrl) {
   const secret = process.env.BETTER_AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "hive-local-development-secret-change-before-deploy" : undefined);
-  const socialProviders = Object.fromEntries(enabledSignInProviders().filter(provider => provider !== "agentid").map((provider) => [provider, {
+  const socialProviders = Object.fromEntries(enabledSignInProviders().map((provider) => [provider, {
     clientId: process.env[`${provider.toUpperCase()}_CLIENT_ID`]!,
     clientSecret: process.env[`${provider.toUpperCase()}_CLIENT_SECRET`]!,
     requireEmailVerification: true,
@@ -45,23 +44,13 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
       validateUserInfo: async ({ user, source }) => {
         const provider = source.oauth?.providerId;
         const rows = await getSql()`SELECT m.id, m.actor_type, m.provisional, m.email_verified FROM members m WHERE m.id = ${user.id ?? ""} OR lower(m.email) = ${(user.email ?? "").toLowerCase()}`;
-        if (provider === "agentid") {
-          const claims = agentClaims.safeParse(source.oauth?.profile);
-          if (!claims.success) return { error: "invalid_agent_identity", errorDescription: "AgentID must verify this agent." };
-          if (process.env.AGENTID_CLIENT_SECRET && (!claims.data.owner_sub || !claims.data.owner_email || claims.data.owner_email_verified !== true)) return { error: "owner_not_verified", errorDescription: "AgentID must verify the owner email." };
-          if (rows.length) {
-            const accounts = await getSql()`SELECT user_id FROM auth_accounts WHERE provider_id = 'agentid' AND account_id = ${claims.data.sub}`;
-            if (!accounts[0] || rows.some(row => row.id !== accounts[0].user_id || row.actor_type !== "agent")) return { error: "agent_account_conflict", errorDescription: "This inbox belongs to a different identity. Use a separate agent inbox." };
-          }
-        } else {
-          if (rows.some(row => row.actor_type === "agent")) return { error: "agentid_required", errorDescription: "Sign in as an agent with AgentID." };
-          if (source.action === "link-account" && rows.some(row => !row.email_verified && !row.provisional)) return { error: "account_not_linked", errorDescription: "Verify the existing human account before linking another sign-in." };
-          if (rows.some(row => row.provisional)) {
-            const passwords = await getSql()`SELECT id FROM auth_accounts WHERE user_id IN ${getSql()(rows.map(row => String(row.id)))} AND password IS NOT NULL`;
-            if (passwords.length) return { error: "account_not_linked", errorDescription: "Sign in with the existing human account." };
-          }
-          if (rows.some(row => row.provisional) && (!user.emailVerified || !source.oauth || !["google", "slack"].includes(provider ?? ""))) return { error: "human_proof_required", errorDescription: "Verify this email with a human sign-in provider." };
+        if (rows.some(row => row.actor_type === "agent")) return { error: "agent_credentials_required", errorDescription: "Agents connect with Hive credentials." };
+        if (source.action === "link-account" && rows.some(row => !row.email_verified && !row.provisional)) return { error: "account_not_linked", errorDescription: "Verify the existing human account before linking another sign-in." };
+        if (rows.some(row => row.provisional)) {
+          const passwords = await getSql()`SELECT id FROM auth_accounts WHERE user_id IN ${getSql()(rows.map(row => String(row.id)))} AND password IS NOT NULL`;
+          if (passwords.length) return { error: "account_not_linked", errorDescription: "Sign in with the existing human account." };
         }
+        if (rows.some(row => row.provisional) && (!user.emailVerified || !source.oauth || !["google", "slack"].includes(provider ?? ""))) return { error: "human_proof_required", errorDescription: "Verify this email with a human sign-in provider." };
       },
       additionalFields: {
         actorType: { type: "string", required: false, defaultValue: "human", input: false, returned: false },
@@ -87,7 +76,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
     disabledPaths: ["/token", "/sign-in/email-otp", "/update-user", "/delete-user", "/change-email"],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if ((ctx.path === "/link-social" || ctx.path === "/unlink-account" || ctx.path === "/change-password" || ctx.path === "/set-password") && ctx.context.session?.user && await isAgentMember(ctx.context.session.user.id)) throw new APIError("FORBIDDEN", { message: "Agents sign in only with AgentID." });
+        if ((ctx.path === "/link-social" || ctx.path === "/unlink-account" || ctx.path === "/change-password" || ctx.path === "/set-password") && ctx.context.session?.user && await isAgentMember(ctx.context.session.user.id)) throw new APIError("FORBIDDEN", { message: "Agents connect with Hive credentials." });
       }),
       after: createAuthMiddleware(async (ctx) => {
         const result = ctx.context.returned;
@@ -109,12 +98,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
             let registration: string | null;
             try { registration = registrationForStorage((user as Record<string, unknown>).hiveRegistration); }
             catch { throw new APIError("BAD_REQUEST", { message: "Choose a valid team or invite." }); }
-            const agent = Boolean(ctx?.path?.startsWith("/callback/") && (ctx.params?.id === "agentid" || ctx.path.endsWith("/agentid")));
-            if (agent) {
-              const state = await getOAuthState<{ hiveRegistration?: unknown }>();
-              if (state?.hiveRegistration) registration = registrationForStorage(state.hiveRegistration);
-            }
-            return { data: { ...user, actorType: agent ? "agent" : "human", email: user.email.trim().toLowerCase(), hiveRegistration: registration } };
+            return { data: { ...user, actorType: "human", email: user.email.trim().toLowerCase(), hiveRegistration: registration } };
           },
           after: async (user) => {
             if (user.emailVerified && !await isAgentMember(user.id)) {
@@ -130,25 +114,10 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
           }
         } },
       },
-      account: {
-        create: {
-          before: async (account) => {
-            if (account.providerId !== "agentid" && await isAgentMember(account.userId)) throw new APIError("FORBIDDEN", { message: "Agent and human accounts stay separate." });
-            return { data: account };
-          },
-          after: async (account) => {
-            const state = account.providerId === "agentid" ? await getOAuthState<{ hiveAgentName?: unknown }>() : null;
-            await storeAgentOwner(account, state?.hiveAgentName);
-          },
-        },
-        update: { after: async (account) => {
-          if (account.providerId === "agentid") {
-            const state = await getOAuthState<{ hiveRegistration?: unknown }>();
-            if (state?.hiveRegistration) await getSql()`UPDATE members SET hive_registration = ${registrationForStorage(state.hiveRegistration)} WHERE id = ${account.userId} AND actor_type = 'agent'`;
-          }
-          await storeAgentOwner(account);
-        } },
-      },
+      account: { create: { before: async (account) => {
+        if (await isAgentMember(account.userId)) throw new APIError("FORBIDDEN", { message: "Agent and human accounts stay separate." });
+        return { data: account };
+      } } },
       session: { create: { before: async (session) => {
         const rows = await getSql()`SELECT disabled_at, provisional FROM members WHERE id = ${session.userId}`;
         if (!rows[0] || rows[0].disabled_at || rows[0].provisional) throw new APIError("FORBIDDEN", { message: "This membership is no longer active." });
@@ -161,7 +130,6 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
     },
     plugins: [
       welcomeClaimPlugin(),
-      ...(enabledSignInProviders().includes("agentid") ? [genericOAuth({ config: [agentidProvider()] })] : []),
       emailOTP({
         expiresIn: 900,
         allowedAttempts: 5,

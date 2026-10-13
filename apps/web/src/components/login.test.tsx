@@ -13,8 +13,8 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-const providers = ["google", "slack", "agentid"] as const;
-const names = ["Sign in with Google", "Sign in with Slack", "Sign in with AgentID"];
+const providers = ["google", "slack"] as const;
+const names = ["Sign in with Google", "Sign in with Slack"];
 const query = "?invite=invite_test&client_id=cli_test&state=state_test";
 
 async function mountLogin() {
@@ -42,22 +42,19 @@ describe.each(["Sign in", "Create a team", "Join"])("official provider buttons o
       await act(async () => mode.click());
       const buttons = [...container.querySelectorAll<HTMLButtonElement>(".auth-providers button")];
       expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(names);
+      expect(container.textContent).not.toContain("AgentID");
+      expect(container.querySelector('input[type="email"]')).not.toBeNull();
       expect(buttons.map((button) => button.querySelector("img")!.getAttribute("src"))).toEqual([
-        "/auth-providers/google.svg", "/auth-providers/slack.svg", "/auth-providers/agentid.svg",
+        "/auth-providers/google.svg", "/auth-providers/slack.svg",
       ]);
       expect(buttons.every((button) => button.type === "button" && button.querySelector("img")!.alt === "")).toBe(true);
       await act(async () => buttons[providers.indexOf(provider)].click());
-      if (provider === "agentid") {
-        expect(assign).toHaveBeenCalledExactlyOnceWith(`/api/auth/agentid/start${query}`);
-        expect(authClient.signIn.social).not.toHaveBeenCalled();
-      } else {
-        expect(authClient.signIn.social).toHaveBeenCalledExactlyOnceWith({
-          provider,
-          callbackURL: `https://hive.example/app/join${query}`,
-          errorCallbackURL: "https://hive.example/app/auth-error",
-        });
-        expect(assign).not.toHaveBeenCalled();
-      }
+      expect(authClient.signIn.social).toHaveBeenCalledExactlyOnceWith({
+        provider,
+        callbackURL: `https://hive.example/app/join${query}`,
+        errorCallbackURL: "https://hive.example/app/auth-error",
+      });
+      expect(assign).not.toHaveBeenCalled();
       expect(buttons.every((button) => button.disabled)).toBe(true);
       expect(buttons[providers.indexOf(provider)].getAttribute("aria-busy")).toBe("true");
       expect(container.querySelector('[role="status"]')?.textContent).toContain("sign-in");

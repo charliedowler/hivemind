@@ -3,7 +3,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { createHiveAuth } from "../better-auth";
-import { bindVerifiedOwner } from "./owner-bindings";
+import { bindVerifiedOwner } from "./legacy-owner-fixture";
 import { claimWelcome, deliverWelcome, issueWelcomeLink } from "./welcome";
 
 vi.mock("server-only", () => ({}));

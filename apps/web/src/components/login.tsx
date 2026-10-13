@@ -107,12 +107,6 @@ export function ProviderButtons({
       const callbackURL = returnTo
         ? `${window.location.origin}${returnTo}`
         : `${window.location.origin}/app/join${window.location.search}`;
-      if (provider === "agentid") {
-        window.location.assign(
-          `/api/auth/agentid/start${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : window.location.search}`,
-        );
-        return;
-      }
       const result = await authClient.signIn.social({
         provider,
         callbackURL,
@@ -177,9 +171,8 @@ export function ProviderButtons({
   );
 }
 
-const providerNames = { google: "Google", slack: "Slack", agentid: "AgentID" };
+const providerNames = { google: "Google", slack: "Slack" };
 const providerLabels = {
   google: "Sign in with Google",
   slack: "Sign in with Slack",
-  agentid: "Sign in with AgentID",
 };

@@ -47,7 +47,6 @@ design/system                @hivemind/design-system: tokens, pixel sprites and 
 | `RESEND_EMAIL_DOMAIN` | configured sender domain for delivery operations | sender-domain configuration needs checking |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in | Google button hidden |
 | `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | Slack OpenID Connect sign-in | Slack button hidden |
-| `AGENTID_CLIENT_ID` / `AGENTID_CLIENT_SECRET` | AgentID sign-in with verified owner claims | agent button hidden |
 | `BETTER_AUTH_SECRET` | session, verification and OAuth secrets | production authentication refuses to start; development has a local fallback |
 | `BETTER_AUTH_URL` | authorization origin | uses publicUrl() |
 | `PUBLIC_URL`        | canonical URL in metadata, install snippets and invite links | falls back to the request origin                              |
@@ -67,7 +66,11 @@ Driver: `postgres` (postgres.js) with `drizzle-orm/postgres-js`, `prepare: false
 
 - `teams` (id, name, invite_code unique hash, invite_expires_at, created_at)
 - `members` (id, team_id, name, email unique nullable, email_verified, actor_type human or agent, role, removed_at, created_at, last_seen_at)
-- `auth_accounts`: AgentID accounts use `(provider_id, account_id)` with `sub` as `account_id`. Owner snapshots are nullable `owner_sub`, `owner_name`, `owner_email` and `owner_email_verified`.
+- `auth_accounts`: human provider and password accounts. Retired provider rows remain for historical attribution.
+- `agent_credentials`: agent and owner IDs, hashed bearer, machine, pending phrase, claim expiry and revocation.
+- `agent_connection_requests`: verified-owner connection requests with a hashed polling secret and single-use email approval.
+- `hive_agent_owners`: the unified owner relation for new credentials and historical owner bindings.
+- `join_share_offers`: each human's organisation offer and answer. Project grants record the human instruction; all_selected covers future selections.
 - `agent_owner_invites`: one owner invite per agent-created team; stores the expected owner email, invite hash, expiry, delivery time and accepting human.
 - `api_keys` (id, team_id, member_id, key_hash unique, prefix, label, created_at, last_used_at, revoked_at)
 - `web_sessions` (id, member_id, team_id, token_hash unique, created_at, expires_at)
@@ -84,11 +87,11 @@ The migration runner keeps a `_migrations` table. It applies the pgvector migrat
 
 ## Agent sign-in and team access
 
-AgentID is a Generic OAuth provider through `@agentmail/agentid-better-auth`. Better Auth 1.7.7 verifies its ES256 tokens, issuer and audience. The helper requires PKCE S256. The registered provider requests `openid email profile owner_profile owner_email`. Its callback is `/api/auth/callback/agentid`; `/api/auth/agentid/start` forwards `login_hint` and copies all state cookies.
+POST /api/agents/bootstrap accepts email, agentName, machine and optional joinPhrase. Email is canonicalised and any provider is allowed. Shared limits are five per IP and email each hour, and 100 globally. A new owner receives a provisional personal hive, a hashed bearer agent credential and one claim email. A verified human receives only a single-use connection link until they approve that machine.
 
-Agent accounts stay separate from human accounts. An AgentID subject identifies the account; an email collision never links identities or transfers old history. Agents always have the member role, enforced by the database. Agent inbox domains and every agent actor are excluded from domain joins. A verified owner email may match only an active, verified human member. One matching team joins immediately. Several matching teams require one choice. No match uses the normal create or invite page. The current human account schema allows one team per email; the several-team decision and UI also support a future membership expansion.
+The bearer authenticates MCP and hook endpoints as the agent actor. Capture uses the owner's selection. Unclaimed owners and their agents have no organisation access. A claim link, or verified Google or Slack sign-in with the same email, claims the human, runs domain enrollment and completes pending joins or outside-domain requests. Agents follow claimed owners as members only. Unclaimed accounts, credentials and private cells expire after seven days.
 
-An agent-created team keeps its creator as a member. A known verified owner receives the existing join-link email and accepts explicitly with a separate human account. Only that verified human, with the matching invite, becomes the admin. Unknown owners can use the normal invite flow when a human admin becomes available. Agents cannot change members, Slack, privacy rules or keys. They can read, search, push, give feedback and ask through the same OAuth MCP consent flow as humans. The AgentID console account limit is unlimited. Hive adds no cap on agents per team, agents per owner, or separate MCP OAuth grants and harness connections.
+Every organisation join records a sharing offer. Yes creates one all_selected grant for the owner's current and future project selection. Choose projects creates exact pattern grants atomically; nothing is pre-ticked. Not now creates no grants and remains available on Account or Team. All grants record the human instruction and keep originals personal. Agent status returns offers; hive_share_with saves the explicit answer.
 
 ## Contracts (`@hivemind/core`)
 
@@ -364,7 +367,7 @@ The session model maps to web_sessions, with new token, updated_at, ip_address a
 
 The authorization issuer is Better Auth's canonical base URL including /api/auth. Well-known resource and issuer aliases and /oauth2/* reach auth.handler. The protected resource comes from publicUrl(). Token grants are authorization_code and refresh_token; public clients require S256 PKCE. The hive scope keeps a credential in one hive. The additional hive:person scope requires explicit consent to personal access and active organisation memberships, including organisations joined in future. It resolves the personal hive independently of browser selection. Existing keys never gain this scope. New JWTs carry a credential version and cutover epoch; the bearer gate rejects old grants even though their signatures remain valid. Migration 0029 retires the selected member columns while keeping the OAuth epoch at zero and preserving current grants. A separate operator command reports grants per person in dry-run mode. Its apply mode requires the approved report digest, revokes existing OAuth grants, clears remembered consent and advances the epoch once. Schema deployment does not force a reconnect. It preserves keys, web sessions and audience-scoped snapshot links. offline_access must be requested to get refresh tokens. Login and post-login flows preserve the signed oauth_query through email, social sign-in, enrollment and consent. Tampered or expired consent queries do not render a permission request. Dynamic native registrations that omit application_type receive a validated native hint; explicit client choices remain intact.
 
-Install commands are `claude mcp add --transport http hive https://gohive.dev/api/mcp --scope user` and `codex mcp add hive --url https://gohive.dev/api/mcp`, followed by `codex mcp login hive`. Claude authenticates through /mcp. No HIVE_KEY is required for this path. The installer accepts --identity human|agent. Runtime harness markers select agent mode without a confirmed human terminal. Agent setup starts AgentID with a known inbox hint when available and preserves the MCP PKCE continuation. The Stop hook has its own OAuth token store because native agent stores are private. The shared bearer helper makes its Jev gate work with OAuth and preserves the legacy key fallback. Connecting Slack for digests is outside this round.
+The default installer asks for email, then writes the same agent bearer for MCP and hooks without a browser. Harness markers choose only the current client. Claude Code uses an Authorization header; Codex uses a private header helper and static header fallback. Executor uses a local bearer proxy. Human OAuth remains available through gohive login, with its detached listener and /signed-in landing. Missing MCP tools never trigger installation during unrelated work.
 
 The install page offers Claude Code, Codex and Executor tabs. Executor uses the remote MCP URL and OAuth. Dynamic registration accepts hosted HTTPS redirect URIs as well as native loopback clients.
 

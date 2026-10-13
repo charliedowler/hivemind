@@ -56,7 +56,7 @@ for (const [identity, inbox] of [['human', '']]) test(`${identity} ${inbox ? 'kn
   const completed = new Promise((resolve, reject) => { child.on('error', reject); child.on('close', code => code ? reject(new Error(stderr)) : resolve()); });
   child.stdout.on('data', async chunk => {
     stdout += chunk;
-    const link = stdout.split('\n').find(line => line.startsWith(`Open ${baseUrl}/${identity === 'agent' ? 'api/auth/agentid/start' : 'authorize'}?`))?.slice(5);
+    const link = stdout.split('\n').find(line => line.startsWith(`Open ${baseUrl}/authorize?`))?.slice(5);
     if (!link || signedIn) return;
     signedIn = true;
     const authorize = new URL(link);
