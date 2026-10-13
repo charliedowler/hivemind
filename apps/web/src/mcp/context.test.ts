@@ -178,6 +178,11 @@ describe("MCP model-facing wire contract", () => {
       expect.anything(),
       expect.objectContaining({ since: "24h" }),
     );
+    await rpc("prompts/get", { name: "catch-up", arguments: { period: "" } });
+    expect(mocks.recent).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ since: "24h" }),
+    );
     await rpc("prompts/get", { name: "catch-up", arguments: { period: "7d" } });
     expect(mocks.recent).toHaveBeenLastCalledWith(
       expect.anything(),

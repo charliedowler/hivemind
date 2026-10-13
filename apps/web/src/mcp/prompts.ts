@@ -15,7 +15,9 @@ export function registerHivePrompts(server: McpServer) {
       description:
         "What the team learned since a period or your last catch-up.",
       argsSchema: z.object({
-        period: hiveRecentInput.shape.since.removeDefault().optional(),
+        period: z
+          .union([hiveRecentInput.shape.since.removeDefault(), z.literal("")])
+          .optional(),
       }),
     },
     async ({ period }, ctx) =>
@@ -25,7 +27,7 @@ export function registerHivePrompts(server: McpServer) {
           : (
               await getSql()`SELECT occurred_at FROM analytics_events WHERE member_id = ${actor.memberId} AND team_id = ${actor.teamId} AND event_name = 'recent.performed' AND entrypoint = 'mcp' AND outcome = 'completed' AND request_id LIKE 'mcp-catch-up:%' ORDER BY occurred_at DESC LIMIT 1`
             )[0];
-        const since = period ?? last?.occurred_at.toISOString() ?? "24h";
+        const since = period || last?.occurred_at.toISOString() || "24h";
         const cells = await withOrigin(
           { ...currentOrigin()!, requestId: `mcp-catch-up:${randomUUID()}` },
           () =>
