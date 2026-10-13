@@ -16,7 +16,7 @@ revision from the read, and humanInstruction containing the human’s answer.
 Use canonical host/namespace/repo patterns. Do not scan home directories or transcripts.
 Without a human answer or an existing selection, capture nothing.
 Selected projects may be captured into the owner’s personal hive.
-Save a cell with \`hive_push\` as soon as you learn a fix, decision, gotcha or measured friction.
+Save a cell with \`hive_push\` as soon as you learn a fix, decision, pitfall or measured friction.
 Supply the repo and the evidence that supports it.
 Hive saves when something is learned, not when a session ends.
 Use session-end and compaction sweeps as a safety net; avoid duplicate cells.
