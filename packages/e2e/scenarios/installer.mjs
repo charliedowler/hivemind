@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createMachine } from '../src/machine.mjs';
 import { installationDecision, installerProtocol, loadPolicy, applyProjectAnswer, assertHumanOutput } from '../src/policy.mjs';
 import { bootstrapWithClaim, human, claim } from '../fixtures/humans.mjs';
@@ -88,6 +89,62 @@ async function humanLogin(ctx, machine) {
 }
 
 export default [
+  {
+    name: 'installer-executor-detection-offer-fallback', fast: true,
+    run: ctx => withMachine(ctx, {}, async machine => {
+      const exec = args => machine.exec(machine.executables.node, [machine.paths.installer, ...args], { env: { HIVE_EXECUTOR_TOOLS: '1', HIVE_NO_AUTO_UPDATE: '1', CLAUDECODE: '1' } });
+      const first = await exec(['install']);
+      assert.equal(first.status, 0, first.stderr);
+      assert.match(first.stdout, /Executor detection: Detected \(session tools\)/);
+      const offer = first.stdout.split('\n').map(line => { try { return JSON.parse(line); } catch { return null; } }).find(item => item?.status === 'offer_executor');
+      assert.ok(offer);
+      assert.deepEqual(offer.options.map(item => item.label), ['Yes', 'Not now']);
+      assert.ok(!first.stdout.includes('needs_email'));
+      const decline = await exec(['install', '--skip-executor']);
+      assert.equal(decline.status, 0, decline.stderr);
+      assert.ok(decline.stdout.includes('needs_email'));
+      assert.equal(JSON.parse(await machine.read('.hive/executor.json')).declined, true);
+      assert.ok(!(await exec(['install'])).stdout.includes('offer_executor'));
+      const setup = await exec(['install', '--client', 'executor']);
+      assert.equal(setup.status, 0, setup.stderr);
+      for (const text of ['Add app → Quick Add', 'remote MCP server', `${ctx.url}/api/mcp`, 'Choose OAuth']) assert.ok(setup.stdout.includes(text), text);
+      assert.ok(!setup.stdout.includes('needs_email'));
+      assert.equal(existsSync(machine.path('.hive/agent.json')), false);
+      assert.equal(existsSync(machine.path('.claude/settings.json')), false);
+      const instructions = await ctx.request('/agent');
+      for (const text of ['HIVE_EXECUTOR_TOOLS=1', 'offer_executor', 'mcp.addServer', 'oauth.start', 'connection link']) assert.ok(instructions.text.includes(text), text);
+      const status = await exec(['status']);
+      assert.equal(status.status, 0, status.stderr);
+      assert.ok(status.stdout.includes('Connection check needed'));
+      await ctx.artifact('executor-output.json', { first: first.stdout, decline: decline.stdout, setup: setup.stdout, status: status.stdout });
+      assert.equal(ctx.events.filter(item => item.kind === 'mail').length, 0, 'Executor setup sends no claim email');
+    }),
+  },
+  {
+    name: 'installer-executor-already-connected-guard', fast: true,
+    run: ctx => withMachine(ctx, {}, async machine => {
+      await machine.write('.executor/profile-fixture', 'configured');
+      const fixture = new URL('../fixtures/bin/executor.mjs', import.meta.url).pathname;
+      await writeFile(join(machine.paths.bin, 'executor'), `#!${machine.executables.node}\nimport ${JSON.stringify(fixture)};\n`, { mode: 0o700 });
+      const exec = args => machine.exec(machine.executables.node, [machine.paths.installer, ...args], { env: { HIVE_NO_AUTO_UPDATE: '1' } });
+      const setup = await exec(['install', '--client', 'executor']);
+      assert.equal(setup.status, 0, setup.stderr);
+      assert.ok(setup.stdout.includes('Hive is already connected in Executor'));
+      assert.ok(!setup.stdout.includes('needs_email'));
+      const status = await exec(['status']);
+      assert.equal(status.status, 0, status.stderr);
+      assert.ok(status.stdout.includes('Executor detection: Detected (CLI, config directory)'));
+      assert.ok(status.stdout.includes('Executor: Connected'));
+      const calls = (await machine.calls()).filter(item => item.command === 'executor');
+      assert.ok(calls.some(item => item.args.includes('getServer')));
+      for (const call of calls) assert.ok(!call.args.some(arg => ['addServer', 'registerDynamic', 'start', 'create', 'refresh', 'remove'].includes(arg)), JSON.stringify(call));
+      assert.equal(existsSync(machine.path('.hive/agent.json')), false);
+      assert.equal(existsSync(machine.path('.claude/settings.json')), false);
+      assert.ok((await machine.read('.hive/EXECUTOR.md')).includes('Capture on-signal'));
+      await ctx.artifact('executor-output.json', { setup: setup.stdout, status: status.stdout, calls });
+      assert.equal(ctx.events.filter(item => item.kind === 'mail').length, 0);
+    }),
+  },
   {
     name: 'installer-human-login-oauth', fast: true,
     run: ctx => withMachine(ctx, { client: 'claude', email: email('human-login') }, async machine => {

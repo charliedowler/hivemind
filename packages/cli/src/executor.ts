@@ -1,10 +1,30 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { runCommand, url, type Runner } from './installer.js';
 
-export type ExecutorOptions = { home: string; endpoint?: string; run?: Runner; log?: (line: string) => void; open?: boolean };
-export type ExecutorDetection = { detected: boolean; cli: boolean; version?: string; endpoint?: string };
+export type ExecutorOptions = { home: string; endpoint?: string; run?: Runner; log?: (line: string) => void; env?: NodeJS.ProcessEnv; dryRun?: boolean };
+export type ExecutorDetection = { detected: boolean; cli: boolean; signals: string[]; version?: string; endpoint?: string };
+type ExecutorState = { offered?: boolean; declined?: boolean; setup?: boolean; state?: string };
+const statePath = (home: string) => join(home, '.hive/executor.json');
+export function executorState(home: string): ExecutorState {
+  try { return JSON.parse(readFileSync(statePath(home), 'utf8')); } catch { return {}; }
+}
+function saveState(home: string, changes: ExecutorState) {
+  mkdirSync(join(home, '.hive'), { recursive: true, mode: 0o700 });
+  const temp = `${statePath(home)}.${randomUUID()}.tmp`;
+  writeFileSync(temp, JSON.stringify({ ...executorState(home), ...changes }) + '\n', { mode: 0o600 });
+  renameSync(temp, statePath(home));
+}
+export function declineExecutor(home: string) { saveState(home, { offered: true, declined: true }); }
+export function offerExecutor(options: ExecutorOptions, found = detectExecutor(options)) {
+  if (!found.detected || executorState(options.home).offered || executorState(options.home).setup) return;
+  saveState(options.home, { offered: true });
+  return { status: 'offer_executor', question: 'You use Executor. Hive can be a connection there too, so every app and agent you run through it shares the same memory. Set it up?', picker: { options: ['Yes', 'Not now'] }, options: [
+    { label: 'Yes', args: ['install', '--client', 'executor'] },
+    { label: 'Not now', args: ['install', '--skip-executor'] },
+  ] };
+}
 
 export function executorEndpoint(value: string): string {
   const parsed = new URL(value);
@@ -13,7 +33,9 @@ export function executorEndpoint(value: string): string {
   if (!parsed.pathname.replace(/\/$/, '').endsWith('/mcp')) throw new Error('The Executor MCP URL must end with /mcp');
   return parsed.href.replace(/\/$/, '');
 }
-
+function hiveEndpoint(env: NodeJS.ProcessEnv = process.env) {
+  return executorEndpoint(new URL('/api/mcp', env.HIVE_URL || url).href);
+}
 export function executorSetupLink(endpoint?: string): string {
   if (!endpoint) return 'https://app.executor.sh';
   const parsed = new URL(executorEndpoint(endpoint));
@@ -25,8 +47,12 @@ export function executorSetupLink(endpoint?: string): string {
 }
 
 export function detectExecutor(options: ExecutorOptions): ExecutorDetection {
+  const env = options.env || process.env;
   const run = options.run || runCommand;
   const version = run('executor', ['--version'], options.home);
+  const signals: string[] = version.status === 0 ? ['CLI'] : [];
+  if ([join(options.home, '.executor'), join(env.XDG_CONFIG_HOME || join(options.home, '.config'), 'executor')].some(path => { try { return statSync(path).isDirectory(); } catch { return false; } })) signals.push('config directory');
+  if (env.HIVE_EXECUTOR_TOOLS === '1') signals.push('session tools');
   let endpoint = options.endpoint ? executorEndpoint(options.endpoint) : undefined;
   if (!endpoint) {
     try {
@@ -39,16 +65,11 @@ export function detectExecutor(options: ExecutorOptions): ExecutorDetection {
       if (candidate?.url) endpoint = executorEndpoint(candidate.url);
     } catch {}
   }
-  if (!endpoint) {
-    try {
-      const result = run('codex', ['mcp', 'get', 'executor', '--json'], options.home);
-      if (result.status === 0) {
-        const value = JSON.parse(result.stdout);
-        if (value.transport?.url) endpoint = executorEndpoint(value.transport.url);
-      }
-    } catch {}
-  }
-  return { detected: version.status === 0 || !!endpoint, cli: version.status === 0, ...(version.status === 0 ? { version: version.stdout.trim() } : {}), ...(endpoint ? { endpoint } : {}) };
+  if (endpoint) signals.push('MCP config');
+  return { detected: signals.length > 0, cli: version.status === 0, signals, ...(version.status === 0 ? { version: version.stdout.trim() } : {}), ...(endpoint ? { endpoint } : {}) };
+}
+export function reportExecutorDetection(found: ExecutorDetection, log = console.log) {
+  log(`Executor detection: ${found.detected ? `Detected (${found.signals.join(', ')})` : 'Not detected'}`);
 }
 
 function call(options: ExecutorOptions, path: string[], input: object): { ok: boolean; data?: Record<string, unknown> } | undefined {
@@ -56,149 +77,110 @@ function call(options: ExecutorOptions, path: string[], input: object): { ok: bo
   if (result.status !== 0) return;
   try { return JSON.parse(result.stdout); } catch { return; }
 }
-
 type RemoteIntegration = { slug: string; config?: { endpoint?: string }; endpoint?: string };
-
-function findHive(options: ExecutorOptions): { checked: boolean; integration?: RemoteIntegration } {
-  const primary = call(options, ['mcp', 'getServer'], { slug: 'hive' });
-  if (!primary?.ok) return { checked: false };
-  if (primary.data?.integration) return { checked: true, integration: primary.data.integration as RemoteIntegration };
+type Connection = { integration: string; owner?: 'user' | 'org'; name?: string; lastHealth?: { status?: string } };
+function findHive(options: ExecutorOptions): { checked: boolean; integration?: RemoteIntegration; connected?: boolean; mismatch?: boolean; connection?: Connection } {
+  const connections = call(options, ['coreTools', 'connections', 'list'], {});
   const list = call(options, ['coreTools', 'integrations', 'list'], {});
-  const integrations = list?.ok && Array.isArray(list.data?.integrations) ? list.data.integrations as { slug: string; kind?: string; description?: string }[] : [];
-  for (const candidate of integrations.filter(item => item.kind === 'mcp' && /hive/i.test(item.slug + ' ' + item.description)).slice(0, 5)) {
+  if (!connections?.ok || !Array.isArray(connections.data?.connections) || !list?.ok || !Array.isArray(list.data?.integrations)) return { checked: false };
+  const candidates = (list.data.integrations as { slug: string; kind?: string }[]).filter(item => item.kind === 'mcp').sort((a, b) => Number(/hive/i.test(b.slug)) - Number(/hive/i.test(a.slug)));
+  let mismatch = false;
+  let existing: RemoteIntegration | undefined;
+  let savedConnection: Connection | undefined;
+  for (const candidate of candidates) {
     const result = call(options, ['mcp', 'getServer'], { slug: candidate.slug });
-    const integration = result?.ok ? result.data?.integration as RemoteIntegration | undefined : undefined;
-    if ((integration?.config?.endpoint || integration?.endpoint)?.replace(/\/$/, '') === url) return { checked: true, integration: { ...integration, slug: candidate.slug } };
+    if (!result?.ok) return { checked: false };
+    const integration = result.data?.integration as RemoteIntegration | undefined;
+    const endpoint = (integration?.config?.endpoint || integration?.endpoint)?.replace(/\/$/, '');
+    if (endpoint === hiveEndpoint(options.env)) {
+      const saved = (connections.data.connections as Connection[]).filter(connection => connection.integration === candidate.slug);
+      if (saved.some(connection => connection.lastHealth?.status === 'healthy')) return { checked: true, integration: { ...integration, slug: candidate.slug }, connected: true };
+      if (!existing) { existing = { ...integration, slug: candidate.slug }; savedConnection = saved.find(connection => connection.owner === 'user') || saved[0]; }
+    }
+    if (candidate.slug === 'hive') mismatch = true;
   }
-  return { checked: true };
-}
-
-function executorHealth(options: ExecutorOptions, integration: RemoteIntegration): boolean {
-  const response = call(options, ['coreTools', 'connections', 'list'], { integration: integration.slug || 'hive' });
-  const connections = response?.ok && Array.isArray(response.data?.connections) ? response.data.connections as { integration?: string; owner?: 'org' | 'user'; name?: string; expiresAt?: number; lastHealth?: { status?: string } }[] : [];
-  for (const connection of connections.filter(connection => connection.integration === (integration.slug || 'hive'))) {
-    if (!connection.owner || !connection.name) continue;
-    const refreshed = call(options, ['coreTools', 'connections', 'refresh'], { owner: connection.owner, name: connection.name, integration: integration.slug || 'hive' });
-    const health = refreshed?.data?.lastHealth as { status?: string } | undefined;
-    const tools = refreshed?.data?.tools as { name?: string }[] | undefined;
-    if (refreshed?.ok && health?.status === 'healthy' && Array.isArray(tools) && tools.some(tool => tool.name === 'hive_search') && tools.some(tool => tool.name === 'hive_push')) return true;
-  }
-  return false;
+  return { checked: true, integration: existing, connection: savedConnection, mismatch: !existing && mismatch };
 }
 
 export function doctorExecutor(options: ExecutorOptions): boolean {
   const log = options.log || console.log;
-  try {
-    const state = JSON.parse(readFileSync(join(options.home, '.hive/agent.json'), 'utf8'));
-    if (state.executor && state.credential) {
-      const result = call(options, ['coreTools', 'connections', 'refresh'], {owner:'user',name:'hive-agent',integration:'hive-agent'});
-      const healthy = result?.ok && (result.data?.lastHealth as {status?:string})?.status === 'healthy';
-      log(`Executor: ${healthy ? 'Connected' : 'Connection check needed.'}`);
-      return Boolean(healthy);
-    }
-  } catch {}
   const found = detectExecutor(options);
-  if (!found.detected) { log('Executor: Not detected. Run npx gohive@latest install --client executor --executor-url <organisation MCP URL>'); return false; }
-  if (!found.cli || !/^executor v1\./.test(found.version || '')) {
-    log(`Executor: Connection check needed. Open ${executorSetupLink(found.endpoint)}`);
-    return false;
-  }
-  const { checked, integration } = findHive(options);
-  if (!checked) { log('Executor: Profile check failed. Run executor login'); return false; }
-  if (!integration) { log('Executor: Hive is missing. Run npx gohive@latest install --client executor'); return false; }
-  if ((integration.config?.endpoint || integration.endpoint)?.replace(/\/$/, '') !== url) { log('Executor: The Hive URL differs. Open the existing integration and check its server URL'); return false; }
-  const healthy = executorHealth(options, integration);
-  log(`Executor: ${healthy ? 'Connected' : 'Sign-in or connection check needed. Open the Hive account in Executor'}`);
-  return healthy;
+  if (!found.cli) { log(`Executor: ${found.detected ? 'Connection check needed. Ask the session tools to check Hive' : 'Not detected'}`); return false; }
+  if (!found.endpoint && !found.signals.includes('config directory')) { log('Executor: Connection check needed. Open Executor and sign in to your existing account'); return false; }
+  const result = findHive(options);
+  log(`Executor: ${!result.checked ? 'Connection check failed. Check the active Executor profile' : result.connected ? 'Connected' : result.integration ? 'Sign-in needed. Open the Hive connection in Executor' : 'Hive is not connected. Run npx gohive install --client executor'}`);
+  return Boolean(result.connected);
 }
 
 export function installExecutor(options: ExecutorOptions) {
   const log = options.log || console.log;
   const found = detectExecutor(options);
-  let link = executorSetupLink(found.endpoint);
-  if (found.cli && /^executor v1\./.test(found.version || '')) {
-    const { checked, integration } = findHive(options);
-    if (integration && (integration.config?.endpoint || integration.endpoint)?.replace(/\/$/, '') !== url) {
-      log('Executor: The existing Hive URL differs. Open the existing integration and check its server URL');
-      return { link, detection: found };
-    }
-    if (integration && new URL(link).pathname.endsWith('/integrations/add/mcp')) {
-      const existing = new URL(link);
-      existing.pathname = existing.pathname.replace('/integrations/add/mcp', `/integrations/${encodeURIComponent(integration.slug || 'hive')}`);
-      existing.search = '';
-      link = existing.href;
-    }
-    if (integration && executorHealth(options, integration)) {
-      log('Executor: Connected');
-      return { link, detection: found };
-    }
-    const probe = call(options, ['mcp', 'probeEndpoint'], { endpoint: url });
-    if (probe?.ok && probe.data?.requiresOAuth === false) {
-      log('Executor: Hive OAuth is unavailable. Retry npx gohive@latest install --client executor when OAuth is available');
-      return { link, detection: found };
-    }
-    let slug = integration?.slug || 'hive';
-    let registered = !!integration;
-    if (options.open && checked && !integration && probe?.ok && probe.data?.requiresOAuth === true) {
-      const added = call(options, ['mcp', 'addServer'], { name: 'Hive', slug: 'hive', endpoint: url, transport: 'remote', remoteTransport: 'streamable-http', auth: { kind: 'oauth2' } });
-      if (added?.ok && typeof added.data?.slug === 'string') { slug = added.data.slug; registered = true; }
-    }
-    if (registered) {
-      const parsed = new URL(link);
-      if (parsed.pathname.endsWith('/integrations/add/mcp')) {
-        parsed.pathname = parsed.pathname.replace('/integrations/add/mcp', `/integrations/${encodeURIComponent(slug)}`);
-        parsed.search = '';
-        link = parsed.href;
-      }
-    }
-    const metadata = call(options, ['coreTools', 'oauth', 'probe'], { url });
-    if (metadata?.ok && options.open && registered) {
-      const clients = call(options, ['coreTools', 'oauth', 'clients', 'list'], {});
-      const entries = clients?.ok && Array.isArray(clients.data?.clients) ? clients.data.clients as { owner: string; slug: string; resource?: string }[] : [];
-      let client = entries.find(client => client.owner === 'user' && client.resource === url);
-      if (!client && clients?.ok && typeof metadata.data?.registrationEndpoint === 'string') {
-        const created = call(options, ['coreTools', 'oauth', 'clients', 'registerDynamic'], {
-          owner: 'user', slug: 'hive-installer', originIntegration: slug, clientName: 'Hive for Executor',
-          issuer: metadata.data.issuer, registrationEndpoint: metadata.data.registrationEndpoint,
-          authorizationUrl: metadata.data.authorizationUrl, tokenUrl: metadata.data.tokenUrl,
-          resource: metadata.data.resource, scopes: metadata.data.scopesSupported || ['hive'],
-          tokenEndpointAuthMethodsSupported: metadata.data.tokenEndpointAuthMethodsSupported,
-        });
-        if (created?.ok && typeof created.data?.client === 'string') client = { owner: 'user', slug: created.data.client };
-      }
-      if (client) {
-        const started = call(options, ['coreTools', 'oauth', 'start'], {
-          client: client.slug, clientOwner: client.owner, owner: 'user', name: 'hive', integration: slug, template: 'oauth2',
-        });
-        if (started?.ok && typeof started.data?.authorizationUrl === 'string') link = started.data.authorizationUrl;
-      }
-    }
+  const endpoint = hiveEndpoint(options.env);
+  const fallback = (reason?: string) => {
+    if (reason) log(reason);
+    log('In Executor, choose Add app → Quick Add.');
+    log(`Choose remote MCP server; name it Hive and use ${endpoint}.`);
+    log('Choose OAuth, then open its connection link and sign in as yourself.');
+    return { status: 'quick_add', endpoint, name: 'Hive', auth: 'oauth2', detection: found };
+  };
+  if (!options.dryRun) saveState(options.home, { offered: true, setup: true, declined: false });
+  if (!found.cli) return fallback();
+  if (!found.endpoint && !found.signals.includes('config directory')) return fallback('Executor CLI has no saved profile. Open Executor and sign in to your existing account.');
+  const result = findHive(options);
+  if (!result.checked) {
+    log('Executor: Connection check failed. Check the active Executor profile before adding Hive.');
+    return { status: 'check_failed', detection: found };
   }
-  log(`Executor: Sign-in needed. Open ${link}`);
-  if (options.open) {
-    const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-    const args = process.platform === 'win32' ? ['/c', 'start', '', link] : [link];
-    const browser = spawn(command, args, { stdio: 'ignore', detached: true });
-    browser.on('error', () => {});
-    browser.unref();
+  if (result.connected) {
+    log('Hive is already connected in Executor');
+    if (!options.dryRun) saveState(options.home, { state: 'connected' });
+    return { status: 'already_connected', detection: found };
   }
-  return { link, detection: found };
+  if (result.connection?.owner === 'org') return fallback('Executor: Open the existing organisation Hive connection to finish sign-in.');
+  if (result.mismatch) return fallback('Executor: The name hive belongs to a different server. Keep that app intact.');
+  const registration = { name: 'Hive', slug: 'hive', endpoint, transport: 'remote', remoteTransport: 'streamable-http', auth: { kind: 'oauth2' } };
+  const help = (options.run || runCommand)('executor', ['call', 'executor', 'mcp', 'addServer', '--help'], options.home);
+  if (help.status !== 0 || !help.stdout.includes('endpoint')) return fallback('Executor CLI cannot register a remote MCP server non-interactively.');
+  if (options.dryRun) {
+    log(JSON.stringify({ status: 'dry_run', command: ['executor', 'call', 'executor', 'mcp', 'addServer', JSON.stringify(registration)], existing: result.integration?.slug }));
+    return { status: 'dry_run', detection: found };
+  }
+  const metadata = call(options, ['coreTools', 'oauth', 'probe'], { url: endpoint });
+  const clients = call(options, ['coreTools', 'oauth', 'clients', 'list'], {});
+  if (!metadata?.ok || !clients?.ok || !Array.isArray(clients.data?.clients)) return fallback('Executor: OAuth discovery needs attention.');
+  const entries = clients.data.clients as { owner: 'user' | 'org'; slug: string; resource?: string; grant?: string }[];
+  let client = entries.find(client => client.owner === 'user' && client.resource === endpoint && client.grant === 'authorization_code');
+  if (!client && typeof metadata.data?.registrationEndpoint !== 'string') return fallback('Executor: Set up the OAuth client in Quick Add.');
+  let slug = result.integration?.slug;
+  if (!slug) {
+    const added = call(options, ['mcp', 'addServer'], registration);
+    if (!added?.ok || typeof added.data?.slug !== 'string') return fallback('Executor: Remote MCP registration needs attention.');
+    slug = added.data.slug;
+  }
+  if (!client) {
+    const created = call(options, ['coreTools', 'oauth', 'clients', 'registerDynamic'], {
+      owner: 'user', slug: 'hive-installer', originIntegration: slug, clientName: 'Hive for Executor',
+      issuer: metadata.data?.issuer, registrationEndpoint: metadata.data?.registrationEndpoint,
+      authorizationUrl: metadata.data?.authorizationUrl, tokenUrl: metadata.data?.tokenUrl,
+      resource: endpoint, scopes: metadata.data?.scopesSupported || ['hive', 'offline_access'],
+      tokenEndpointAuthMethodsSupported: metadata.data?.tokenEndpointAuthMethodsSupported,
+    });
+    if (!created?.ok || typeof created.data?.client !== 'string') return fallback('Executor: OAuth client registration needs attention. Reuse the Hive app.');
+    client = { owner: 'user', slug: created.data.client };
+  }
+  const started = call(options, ['coreTools', 'oauth', 'start'], { client: client.slug, clientOwner: client.owner, owner: 'user', name: result.connection?.name || 'hive', integration: slug, template: 'oauth2' });
+  if (!started?.ok || typeof started.data?.authorizationUrl !== 'string') return fallback('Executor: Open the existing Hive app to finish OAuth.');
+  const link = started.data.authorizationUrl;
+  const parsed = new URL(link);
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname))) return fallback('Executor: The connection link must use HTTPS.');
+  saveState(options.home, { state: 'needs_connection' });
+  log(link);
+  log('Click it once to connect; then run `npx gohive status`.');
+  return { status: 'needs_connection', link, detection: found };
 }
 
 export function installExecutorBearer(options: ExecutorOptions) {
   const log = options.log || console.log;
-  const found = detectExecutor(options);
-  if (!found.cli || !/^executor v1\./.test(found.version || '')) {
-    log('Executor needs attention: its local CLI is unavailable. The agent credential and skill are installed.');
-    return false;
-  }
-  const added = call(options, ['mcp', 'addServer'], { transport: 'stdio', name: 'Hive agent', slug: 'hive-agent', command: process.execPath, args: [join(options.home, '.hive/skills/hive/scripts/agent-proxy.mjs'), options.home], spawnPerCall: true });
-  if (!added?.ok || typeof added.data?.slug !== 'string') { log('Executor needs attention: its profile could not register this local agent. The credential stays private.'); return false; }
-  const connection = call(options, ['coreTools', 'connections', 'create'], { owner: 'user', name: 'hive-agent', integration: added.data.slug, template: 'none' });
-  if (!connection?.ok) {
-    const existing = call(options, ['coreTools', 'connections', 'refresh'], { owner: 'user', name: 'hive-agent', integration: added.data.slug });
-    if (!existing?.ok) { log('Executor needs attention: reconnect the local Hive agent profile.'); return false; }
-  }
-  log('Executor: Connected with this machine’s private agent credential.');
-  return true;
+  log('Executor uses human OAuth. Run npx gohive install --client executor; the local agent credential stays private.');
+  return false;
 }

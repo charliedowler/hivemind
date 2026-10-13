@@ -11,11 +11,14 @@ import { markInstructions } from '../dist/installer.js';
 import { prepareHumanLogin, revokeInstalledAgent } from '../dist/bootstrap.js';
 const exec=promisify(execFile);
 const bin=new URL('../dist/bin.js',import.meta.url).pathname;
+const fixtureBin=mkdtempSync(join(tmpdir(),'hive-bootstrap-bin-'));
+writeFileSync(join(fixtureBin,'executor'),'#!/bin/sh\nexit 1\n',{mode:0o755});
+const testEnv={...process.env,PATH:fixtureBin+':'+process.env.PATH,HIVE_EXECUTOR_TOOLS:'0'};
 const credential='ha_'+'x'.repeat(43);
 test('the email question changes no config and reports the native picker choices',async()=>{
   const home=mkdtempSync(join(tmpdir(),'hive-email-'));
   await exec('git',['init',home]);await exec('git',['-C',home,'config','user.email','person@example.test']);
-  const result=await exec(process.execPath,[bin,'install','--home',home],{cwd:home,env:{...process.env,CLAUDECODE:'1'}});
+  const result=await exec(process.execPath,[bin,'install','--skip-executor','--home',home],{cwd:home,env:{...testEnv,CLAUDECODE:'1'}});
   const question=JSON.parse(result.stdout.trim().split('\n').at(-1));
   assert.equal(question.status,'needs_email');assert.equal(question.question,'I found person@example.test. Use it, or type a different one?');assert.deepEqual(question.picker.options,['Yes','Type a different one']);
   assert.equal(existsSync(join(home,'.claude.json')),false);assert.equal(existsSync(join(home,'.hive/install.json')),false);
@@ -31,8 +34,8 @@ for(const client of ['claude','codex'])test(`${client} gets a bearer with --emai
     if(req.url==='/api/agents/status')return send({claimPending:true,organisations:[],joinPending:'amber-honey-fox',shareOffers:[]});
     if(req.url==='/api/agents/revoke'){revoked=true;return send({revoked:true});}res.writeHead(404).end();
   });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>server.close());
-  const env={...process.env,HIVE_URL:`http://127.0.0.1:${server.address().port}`,CLAUDECODE:client==='claude'?'1':'',CODEX_THREAD_ID:client==='codex'?'fixture':''};
-  const installed=await exec(process.execPath,[bin,'install','--home',home,'--email','person@example.test','--join-url','https://gohive.dev/j/amber-honey-fox'],{env});
+  const env={...testEnv,HIVE_URL:`http://127.0.0.1:${server.address().port}`,CLAUDECODE:client==='claude'?'1':'',CODEX_THREAD_ID:client==='codex'?'fixture':''};
+  const installed=await exec(process.execPath,[bin,'install','--skip-executor','--home',home,'--email','person@example.test','--join-url','https://gohive.dev/j/amber-honey-fox'],{env});
   assert.ok(installed.stdout.includes(`Installing Hive for ${client==='claude'?'Claude Code':'Codex'}`));assert.ok(!installed.stdout.includes('Open http'));assert.ok(!installed.stdout.includes(credential));
   assert.equal(bootstraps,1);assert.equal(statSync(join(home,'.hive/agent.json')).mode&0o777,0o600);
   if(client==='claude')assert.equal(JSON.parse(readFileSync(join(home,'.claude.json'),'utf8')).mcpServers.hive.headers.Authorization,`Bearer ${credential}`);
@@ -43,8 +46,8 @@ for(const client of ['claude','codex'])test(`${client} gets a bearer with --emai
 test('claimed-human installation waits for the one-click link, then status writes its credential',async t=>{
  const home=mkdtempSync(join(tmpdir(),'hive-claimed-cli-'));let approved=false;
  const server=createServer(async(req,res)=>{for await(const c of req){};const send=v=>res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(v));if(req.url==='/api/agents/bootstrap')return send({status:'link_sent',requestId:'pending',pollingToken:'y'.repeat(43)});if(req.url==='/api/agents/connect')return send(approved?{status:'issued',credential,agentId:'agent_fixture',claimPending:false}:{status:'pending'});if(req.url==='/api/agents/status')return send({claimPending:false,organisations:[{teamName:'Example team'}],shareOffers:[]});if(req.url==='/api/mcp'){const rpc=JSON.parse(Buffer.concat([]).toString()||'{}');res.writeHead(204).end();return;}res.writeHead(404).end();});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>server.close());
- const env={...process.env,CLAUDECODE:'1',HIVE_URL:`http://127.0.0.1:${server.address().port}`};
- const result=await exec(process.execPath,[bin,'install','--email','person@example.test','--home',home],{env});assert.ok(result.stdout.includes('Click the link in your email to connect this machine'));assert.equal(existsSync(join(home,'.claude.json')),false);
+ const env={...testEnv,CLAUDECODE:'1',HIVE_URL:`http://127.0.0.1:${server.address().port}`};
+ const result=await exec(process.execPath,[bin,'install','--skip-executor','--email','person@example.test','--home',home],{env});assert.ok(result.stdout.includes('Click the link in your email to connect this machine'));assert.equal(existsSync(join(home,'.claude.json')),false);
  approved=true;const status=await exec(process.execPath,[bin,'status','--home',home],{env});assert.ok(status.stdout.includes('Account claimed'));assert.equal(JSON.parse(readFileSync(join(home,'.claude.json'),'utf8')).mcpServers.hive.headers.Authorization,`Bearer ${credential}`);
 });
 test('both configs preserve unrelated servers and credentials never appear in announcements',()=>{

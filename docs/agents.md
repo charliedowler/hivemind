@@ -4,7 +4,7 @@ Hive issues the agent credential. People still use Google, Slack or email with O
 
 ## Install
 
-Run `npx --yes gohive@latest install` in the repository. The first run reads Git email and returns a structured question without changing config. Ask with the harness's question/picker tool when one exists; otherwise a numbered list. Confirm the detected email with Yes / Type a different one, then run `gohive install --email <address>` with that answer.
+Run `npx --yes gohive@latest install` in the repository. When Executor is absent or declined, the first run reads Git email and returns a structured question without changing config. Ask with the harness's question/picker tool when one exists; otherwise a numbered list. Confirm the detected email with Yes / Type a different one, then run `gohive install --email <address>` with that answer.
 
 Claude Code session markers select only Claude Code. Codex session markers select only Codex. Without markers, the installer chooses detected clients. Use `--client claude|codex|all|executor` for an explicit choice.
 
@@ -12,7 +12,27 @@ The agent path opens no browser. A new owner receives a personal hive, a hashed 
 
 For an already verified owner, bootstrap sends a single-use connection email and returns no credential. Say “Click the link in your email to connect this machine.” Run `gohive status` after the click to finish configuration.
 
-Claude Code stores the Authorization header in its private user config. Codex uses a local header helper that reads `HIVE_AGENT_TOKEN` or `~/.hive/agent.json`, with a private static header for older clients. An unset bearer environment variable does not block startup. Executor's local proxy reads the same credential file. Capture hooks use that credential too.
+Claude Code stores the Authorization header in its private user config. Codex uses a local header helper that reads `HIVE_AGENT_TOKEN` or `~/.hive/agent.json`, with a private static header for older clients. An unset bearer environment variable does not block startup. Capture hooks use that credential too.
+
+## Executor
+
+Executor hosts apps and remote MCP servers. A Hive connection shares memory with every app and agent that uses that Executor. Agents discover and call tools through `skills`, `search`, `describe`, `call` and `execute`.
+
+Install and status detect the CLI on PATH, `~/.executor`, an XDG config directory, or `HIVE_EXECUTOR_TOOLS=1`. Pass that variable when Executor tools are visible. Install returns `offer_executor` once: “You use Executor. Hive can be a connection there too, so every app and agent you run through it shares the same memory. Set it up?” Use the harness picker with Yes / Not now. Yes runs `npx gohive install --client executor`; Not now runs `npx gohive install --skip-executor` and saves the choice in `~/.hive/executor.json`.
+
+Executor setup uses name Hive, slug hive, the remote URL `https://gohive.dev/api/mcp` (or `HIVE_URL` plus `/api/mcp`), and human OAuth. It asks no email, namespace or URL questions and creates no bootstrap credential or claim email. The CLI checks the saved connection inventory and remote endpoints first. A healthy match, including a different slug, returns “Hive is already connected in Executor”. A failed inventory check stops registration. Existing apps and accounts remain in place.
+
+Executor v1 exposes Quick Add through `executor call executor mcp addServer`; it has no `executor apps` command. The installer uses that interface and Executor's OAuth discovery/client/start tools. It reuses a matching app and an authorization-code client. Run `gohive install --client executor --dry-run` to check the guard and print the registration arguments without registering or starting OAuth.
+
+Without a usable CLI, the installer prints three steps:
+
+1. In Executor, choose Add app → Quick Add.
+2. Choose remote MCP server; name it Hive and use `https://gohive.dev/api/mcp`.
+3. Choose OAuth, then open its connection link and sign in as yourself.
+
+With session tools, the agent follows the three-line tools path on `/agent`: search/describe/call the inventory and check endpoints first; register or reuse the remote MCP integration; start OAuth and relay the connection link. Credentials move only through Executor's secure connection links. The person clicks once and signs in as themselves with person-wide consent, then runs `npx gohive status`.
+
+Executor supplies Hive's server instructions and tools after connection. The installer writes `~/.hive/EXECUTOR.md` and the local skill without hooks or a direct harness MCP server. Capture runs on-signal from selected projects. Ask the project question once if it has not been answered. Status prints Executor detection and its saved connection health; when only session tools are available, check the connection inventory through those tools.
 
 ## Claim and join
 

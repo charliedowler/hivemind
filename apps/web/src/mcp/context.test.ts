@@ -1,3 +1,4 @@
+import cliPackage from "../../../../packages/cli/package.json";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { registerHiveTools } from "./server";
@@ -112,7 +113,7 @@ describe("MCP model-facing wire contract", () => {
         clientInfo: { name: "fixture", version: "1" },
       });
       expect(response.result.instructions).toBe(hiveInstructions(agent));
-      expect(response.result.serverInfo._meta["dev.gohive/cli"]).toEqual({ latest: "0.2.1", minimum: "0.2.0" });
+      expect(response.result.serverInfo._meta["dev.gohive/cli"]).toEqual({ latest: cliPackage.version, minimum: "0.2.0" });
       expect(
         response.result.instructions.split(/\s+/).length,
       ).toBeLessThanOrEqual(165);

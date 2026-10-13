@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { installExecutorBearer, doctorExecutor, detectExecutor } from './executor.js';
+import { resolve } from 'node:path';
+import { installExecutor, doctorExecutor, detectExecutor, reportExecutorDetection, offerExecutor, declineExecutor, executorState } from './executor.js';
 import { install, uninstall, doctor, selectAgents, installedAgents, parseClients, updateInstall, type Agent } from './installer.js';
 import { harness } from './identity.js';
 import { bootstrap, bootstrapStatus, readAgentState, detectedEmail, emailQuestion, revokeInstalledAgent, prepareHumanLogin } from './bootstrap.js';
@@ -20,13 +19,16 @@ async function main() {
   let selectedAgents: Agent[] | undefined;
   let executorClient = false;
   let executorUrl: string | undefined;
-  let yes = false;
+  let skipExecutor = false;
+  let dryRun = false;
   let email: string | undefined;
   let phrase: string | undefined;
   while (args.length) {
     const flag = args.shift();
     if (flag === '--update' && command === 'install') continue;
-    if (flag === '--yes' || flag === '-y') yes = true;
+    if (flag === '--yes' || flag === '-y') continue;
+    else if (flag === '--skip-executor') skipExecutor = true;
+    else if (flag === '--dry-run') dryRun = true;
     else if (flag === '--home' || flag === '--backup-dir' || flag === '--agent' || flag === '--client' || flag === '--executor-url' || flag === '--email' || flag === '--join-url') {
       const value = args.shift();
       if (!value || value.startsWith('--')) throw new Error(`${flag} needs a value`);
@@ -41,6 +43,7 @@ async function main() {
   }
   home = resolve(home);
   mkdirSync(home, { recursive: true, mode: 0o700 });
+  if (dryRun && !(executorClient && command === 'install')) throw new Error('--dry-run is for install --client executor');
   if (updating) { updateInstall({ home, backupDir }); return; }
   if (command === 'status') {
     const updates = await import(new URL('../assets/hive/scripts/auto-update.mjs', import.meta.url).href);
@@ -50,21 +53,24 @@ async function main() {
   const agents = executorClient ? [] : command === 'install' ? selectAgents(home, process.env, selectedAgents) : selectedAgents || installedAgents(home) || selectAgents(home);
   if (executorClient && selectedAgents) throw new Error('Choose one client per --client install');
   const options = { home, agents, backupDir, terminalDetection: command === 'install' && !executorClient && !selectedAgents && !harness(process.env) };
-  const executorOptions = { home, endpoint: executorUrl };
+  const executorOptions = { home, endpoint: executorUrl, dryRun };
+  const executorDetection = detectExecutor(executorOptions);
+  if (['install', 'status'].includes(command)) reportExecutorDetection(executorDetection);
+  if (command === 'install' && !executorClient) {
+    if (skipExecutor) declineExecutor(home);
+    const offer = offerExecutor(executorOptions, executorDetection);
+    if (offer) { console.log(JSON.stringify(offer)); return; }
+  }
   if (executorClient) {
     if (command === 'install') {
-      if (!email && !readAgentState(home)) { console.log(JSON.stringify(emailQuestion(detectedEmail()))); return; }
-      install({ ...options, registerMcp: false, executor: true });
-      const state = await bootstrap({ home, agents, email: email || '', phrase, executor: true });
-      await bootstrapStatus(home, { announcement: true });
-      if (!state.credential) return;
-      await reportDoctor([{ agent: 'executor', healthy: doctorExecutor(executorOptions) }], home);
+      if (!dryRun) install({ ...options, registerMcp: false, executor: true });
+      console.log(JSON.stringify(installExecutor(executorOptions)));
     } else if (command === 'doctor') {
       const healthy = doctorExecutor(executorOptions);
       await reportDoctor([{ agent: 'executor', healthy }], home);
       if (!healthy) process.exitCode = 1;
     }
-    else if (command === 'status') { await bootstrapStatus(home); }
+    else if (command === 'status') { doctorExecutor(executorOptions); }
     else if (command === 'uninstall') { await revokeInstalledAgent(home); console.log('Remove the Hive integration in Executor only after checking who uses it. Local uninstall leaves organisation accounts and policies in place'); }
     else throw new Error('Use install, doctor or uninstall with --client executor');
     return;
@@ -75,9 +81,12 @@ async function main() {
     await bootstrap({ home, agents, email: email || '', phrase });
     await bootstrapStatus(home, { announcement: true });
   } else if (command === 'status') {
+    if (executorDetection.detected || executorState(home).setup) doctorExecutor(executorOptions);
     if (readAgentState(home)) await bootstrapStatus(home);
-    else if (!installedAgents(home)) console.log('Not installed. Ask me to set up Hive when you want to connect.');
-    else if (!status(home, phrase)) process.exitCode = 1;
+    else if (!executorState(home).setup || installedAgents(home)?.length) {
+      if (!installedAgents(home)) console.log('Not installed. Ask me to set up Hive when you want to connect.');
+      else if (!status(home, phrase)) process.exitCode = 1;
+    }
   } else if (command === 'doctor') {
     const results: DoctorResult[] = [];
     let healthy = doctor({ ...options, onDoctor: (agent, ready) => results.push({ agent, healthy: ready }) });
@@ -94,7 +103,7 @@ async function main() {
     if (!installedAgents(home)) install(options);
     await beginSignIn({ home, agents, identity: 'human', phrase, force: true });
   }
-  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--email <address>] [--join-url <Hive link>] [--client claude|codex|all|claude,codex|executor]\ngohive install --update\ngohive status\ngohive doctor\ngohive login\ngohive uninstall\n\nInstall asks which email to use, then creates an agent connection with no browser. Claim your account with the email link. Harness markers select only the current client. Without markers, install configures the detected clients. Use gohive login to sign in as a person with OAuth. Status checks for a silent background update of an existing install and never opens a browser. Uninstall revokes this machine’s agent credential.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
+  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--email <address>] [--join-url <Hive link>] [--client claude|codex|all|claude,codex|executor]\ngohive install --client executor [--dry-run]\ngohive install --update\ngohive status\ngohive doctor\ngohive login\ngohive uninstall\n\nInstall offers Executor once when detected. --skip-executor records Not now. Executor uses human OAuth through a connection link, without an email or bootstrap credential. Other clients ask which email to use, then create an agent connection with no browser. Claim your account with the email link. Harness markers select only the current client. Without markers, install configures the detected clients. Use gohive login to sign in as a person with OAuth. Status checks for a silent background update of an existing install and never opens a browser. Uninstall revokes this machine’s agent credential.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
   else throw new Error(`Unknown command: ${command}. Run gohive --help`);
 }
 

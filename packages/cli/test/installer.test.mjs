@@ -325,7 +325,7 @@ test('Claude installs a bounded Stop sweep and background compact sweeps and nar
 test('Executor installs the same trigger instructions without native agents or hooks', () => {
   const f = fixture();
   install({...f.options, agents: [], executor: true, registerMcp: false});
-  assert.ok(f.read('.hive/EXECUTOR.md').includes('Hive saves when something is learned'));
+  assert.ok(f.read('.hive/EXECUTOR.md').includes('Capture on-signal'));
   assert.ok(f.read('.hive/skills/hive/SKILL.md').includes('Capture immediately'));
   assert.equal(existsSync(join(f.home, '.claude/settings.json')), false);
   uninstall({...f.options, agents: []});

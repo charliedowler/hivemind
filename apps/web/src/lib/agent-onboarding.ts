@@ -5,7 +5,12 @@ export const signInGuidance = "Your agent starts a personal hive with your email
 
 export const agentInstructions = `# Set up Hive
 
-Run \`npx --yes gohive@latest install\` from the current repo.
+Run \`npx --yes gohive@latest install\` from the current repo; pass HIVE_EXECUTOR_TOOLS=1 when Executor tools are visible in this session.
+If install returns offer_executor, ask its exact question once with the harness picker: Yes / Not now. Yes runs install --client executor; Not now runs install --skip-executor and continues normal setup.
+Executor uses human OAuth, with no bootstrap credential or claim email. Relay its connection link: "Click it once to connect; then run npx gohive status." If already_connected, reuse it.
+For quick_add with session tools: search for connections.list, integrations.list and mcp.getServer; describe and call them to check every remote MCP endpoint against the Hive URL. A healthy matching connection means "Hive is already connected in Executor"; a failed check means stop setup.
+Otherwise reuse a matching app, or search for the add-app/Quick Add tool (mcp.addServer); describe and call it with name Hive, slug hive, remote URL https://gohive.dev/api/mcp (HIVE_URL + /api/mcp when set), and OAuth. Keep an occupied hive slug intact. This registers a remote MCP connection; never deploy code or create an Executor app or account for the person.
+Search, describe and call OAuth probe, clients.list and (if needed) clients.registerDynamic, then oauth.start with owner user and an authorization_code client; relay the returned connection link. Credentials stay in secure links. After connection, follow Hive's server instructions for project selection and capture without hooks; stop the bootstrap steps below.
 CLAUDECODE selects Claude Code; CODEX_* session markers (except CODEX_HOME) select Codex. Claude Code wins if both are present.
 Without markers, configure only detected clients. Use --client only when the person selects other clients.
 If the prompt includes a join link, add \`--join-url <joinUrl>\`.

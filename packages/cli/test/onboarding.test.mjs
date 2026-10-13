@@ -21,6 +21,7 @@ for (const scenario of ['human', 'token-error', 'declined']) test(`${scenario} i
   const home = mkdtempSync(join(tmpdir(), 'gohive-background-'));
   const fixtureBin=join(home,'fixture-bin');
   mkdirSync(fixtureBin);
+  writeFileSync(join(fixtureBin,'executor'),'#!/bin/sh\nexit 1\n',{mode:0o755});
   writeFileSync(join(fixtureBin,'claude'),`#!${process.execPath}\nimport fs from 'node:fs';\nimport path from 'node:path';\nif (process.argv.includes('add')) fs.writeFileSync(path.join(process.env.HOME,'.claude.json'),JSON.stringify({mcpServers:{hive:{type:'http',url:'https://gohive.dev/api/mcp'}}}));\n`,{mode:0o755});
   const fixtureEnv={...process.env,PATH:fixtureBin+':'+process.env.PATH,CI:'true',CLAUDECODE:'1'};
   let baseUrl, redirect, verifier, lastPhrase, releaseExchange;
@@ -65,7 +66,7 @@ for (const scenario of ['human', 'token-error', 'declined']) test(`${scenario} i
   assert.ok(logs.includes(instruction));
   assert.ok(!logs.some(line=>line.includes('as yourself')));
   assert.equal(new URL(state.url).pathname,'/authorize');
-  const env={...process.env,HOME:home,HIVE_HOME:home,CODEX_HOME:join(home,'.codex')};
+  const env={...fixtureEnv,HIVE_URL:baseUrl,HIVE_NO_BROWSER:'1',HOME:home,HIVE_HOME:home,CODEX_HOME:join(home,'.codex')};
   const pending=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(pending.stdout.includes('Open '));
   assert.ok(pending.stdout.includes(identity === 'human' ? 'Sign in with Google in the tab that just opened; run `npx gohive status` when done.' : 'Approve this sign-in as the agent'));

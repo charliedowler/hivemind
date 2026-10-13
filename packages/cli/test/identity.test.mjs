@@ -19,7 +19,7 @@ test('display names remove unsafe characters and fit the local 80-character limi
 });
 
 test('both installed instruction variants reuse accounts, selections and join links', () => {
-  for (const agent of ['claude', 'codex', 'executor']) {
+  for (const agent of ['claude', 'codex']) {
     const text = markInstructions('', agent);
     for (const term of ['skip installation and account creation', 'hive_join', 'Open <joinUrl> to join <team>', 'hive_share_projects', 'skip the project question', 'capture nothing', 'Never ask the human to sign up', 'hive_outcome', 'unhelpful when a cell misled you', 'include_history: true', 'never vote on cells merely retrieved']) assert.ok(text.includes(term), term);
   }
