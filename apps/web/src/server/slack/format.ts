@@ -1,24 +1,101 @@
-import type { AskResult } from "@hivemind/core";
+import type { AskCitation, AskResult } from "@hivemind/core";
 export function slackEscape(text: string) {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
-export function citationLink(citation: AskResult["citations"][number]) {
-  const url =
-    citation.permalink ??
-    `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${encodeURIComponent(citation.id)}`;
-  return `<${url}|${slackEscape(citation.title).replace(/\|/g, "/")} >`.replace(
-    " >",
-    ">",
+export function shortCitationTitle(title: string) {
+  const text = title.replace(/\s+/g, " ").trim();
+  if (text.length <= 80) return text;
+  const prefix = text.slice(0, 79);
+  const boundary = prefix.lastIndexOf(" ");
+  return boundary > 0 ? `${prefix.slice(0, boundary)}…` : "Hive cell";
+}
+export function citationLink(citation: AskCitation) {
+  const url = `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${encodeURIComponent(citation.id)}`;
+  return `<${url}|${slackEscape(shortCitationTitle(citation.title)).replace(/\|/g, "/")}>`;
+}
+function citationAliases(citations: AskCitation[]) {
+  const cells = new Map<string, AskCitation>();
+  const groups = new Map<string, AskCitation>();
+  for (const citation of citations) {
+    if (cells.has(citation.id)) continue;
+    cells.set(citation.id, citation);
+    const key = citation.permalink
+      ? `slack:${citation.permalink}`
+      : `cell:${citation.id}`;
+    const prior = groups.get(key);
+    if (
+      !prior ||
+      (citation.id.startsWith("lrn_") && !prior.id.startsWith("lrn_"))
+    )
+      groups.set(key, citation);
+  }
+  return new Map(
+    [...cells.values()].map((citation) => [
+      citation.id,
+      groups.get(
+        citation.permalink
+          ? `slack:${citation.permalink}`
+          : `cell:${citation.id}`,
+      )!,
+    ]),
   );
 }
 export function slackAnswer(result: AskResult) {
-  const links = new Map(result.citations.map((c) => [c.id, citationLink(c)]));
-  const text = slackEscape(result.answer).replace(
-    /\[((?:lrn|slk)_[a-z0-9]+)\]/g,
-    (_, id: string) => links.get(id) ?? "",
-  );
-  return `${text}\n\nSources:\n${result.citations.map((c) => citationLink(c)).join("\n") || "No sources yet."}\n\nConfidence: ${result.confidence}.\nGap: ${slackEscape(result.gaps ?? "No gap reported. Check the sources for context.")}`;
+  const aliases = citationAliases(result.citations);
+  const numbered = new Map<string, { number: number; citation: AskCitation }>();
+  const paragraphs = result.answer
+    .split(/\n\s*\n/)
+    .filter(
+      (paragraph) => !/^As of \d{4}-\d{2}-\d{2}\.$/.test(paragraph.trim()),
+    )
+    .map((paragraph) => {
+      const references = new Set<number>();
+      const plain = paragraph
+        .replace(
+          / ?\[((?:lrn|slk)_[a-zA-Z0-9_-]+)\]/g,
+          (_marker, id: string) => {
+            const citation = aliases.get(id);
+            if (!citation) return "";
+            if (!numbered.has(citation.id))
+              numbered.set(citation.id, {
+                number: numbered.size + 1,
+                citation,
+              });
+            references.add(numbered.get(citation.id)!.number);
+            return "";
+          },
+        )
+        .replace(/ +([.,!?])/g, "$1")
+        .trim();
+      if (!plain) return "";
+      const marker = references.size ? ` [${[...references].join(", ")}]` : "";
+      const text = slackEscape(plain);
+      return /[.!?]$/.test(text)
+        ? text.slice(0, -1) + marker + text.slice(-1)
+        : text + marker;
+    })
+    .filter(Boolean);
+  if (!numbered.size) {
+    for (const citation of aliases.values())
+      if (!numbered.has(citation.id))
+        numbered.set(citation.id, { number: numbered.size + 1, citation });
+  }
+  if (numbered.size)
+    paragraphs.push(
+      `Sources\n${[...numbered.values()]
+        .map(({ number, citation }) => {
+          const date = citation.date?.slice(0, 10);
+          return `${number}. ${citationLink(citation)}${date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? ` (${date})` : ""}`;
+        })
+        .join("\n")}`,
+    );
+  if (result.confidence === "medium")
+    paragraphs.push("I'm moderately confident.");
+  if (result.confidence === "low") paragraphs.push("My confidence is low.");
+  if (result.gaps?.trim())
+    paragraphs.push(`Gap: ${slackEscape(result.gaps.trim())}`);
+  return paragraphs.join("\n\n");
 }

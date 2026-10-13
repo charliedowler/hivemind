@@ -510,6 +510,16 @@ async function askHiveAction(
       frictionAnswer(friction),
       await answerLifecycleContext(ctx, cells.map(view)),
     );
+    const dates = new Map(
+      cells.map((cell) => [
+        String(cell.id),
+        new Date(cell.last_pushed_at).toISOString().slice(0, 10),
+      ]),
+    );
+    result.citations = result.citations.map((citation) => ({
+      ...citation,
+      date: dates.get(citation.id) ?? citation.date,
+    }));
     await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((c) => c.id)}, false)`;
     await recordEvent({
       name: "ask.performed",
@@ -585,11 +595,15 @@ async function askHiveAction(
   );
   result = {
     ...result,
-    citations: result.citations.map((c) =>
-      sources.has(c.id)
-        ? { ...c, source: "slack", permalink: sources.get(c.id) }
-        : c,
-    ),
+    citations: result.citations.map((c) => ({
+      ...c,
+      date:
+        hits.find((hit) => hit.id === c.id)?.lastPushedAt.slice(0, 10) ??
+        c.date,
+      ...(sources.has(c.id)
+        ? { source: "slack" as const, permalink: sources.get(c.id) }
+        : {}),
+    })),
   };
   await getSql()`INSERT INTO ask_log (id, team_id, member_id, question, answer, cited_ids, synthesized, classification) VALUES (${newId("ask")}, ${ctx.teamId}, ${ctx.memberId}, ${data.question}, ${result.answer}, ${result.citations.map((citation) => citation.id)}, ${result.synthesized}, ${relevance.classification ? getSql().json(classificationJson(relevance.classification)) : null})`;
   await recordEvent({

@@ -13,7 +13,7 @@ const answerSchema = z.object({
 
 const systemPrompt = `You answer a teammate's question from the team's own recorded learnings.
 Answer only from the supplied learnings. Lead with the direct answer. Use short sentences and no preamble.
-Every factual claim must cite a supplied id inline as [lrn_xxx] or [slk_xxx]. Slack evidence is a conversation, not a confirmed cell. Use a warm, plain voice, sentence case, no emoji and no exclamation marks. Give commands and code verbatim from the learnings.
+Use a concise paragraph for a simple question. Every factual claim must have a supplied citation id inline as [lrn_xxx] or [slk_xxx], but cite each distinct fact once. Do not repeat an answer or discuss duplicate recordings of the same evidence. Keep source details, dates, confidence and gaps out of the prose; they have separate fields. Include replacement history only when it explains the user's question about that cell. Never add unrelated history or identical-title replacement lines. Slack evidence is a conversation, not a confirmed cell. Use a warm, plain voice, sentence case, no emoji and no exclamation marks. Give commands and code verbatim from the learnings.
 When learnings conflict, prefer the newer and more upvoted learning and say that they conflict. Flag any learning with outdated votes.
 If the learnings do not answer the question, say so in the answer and put what is missing in gaps.
 Each citation's why is one short sentence explaining what that learning contributed.

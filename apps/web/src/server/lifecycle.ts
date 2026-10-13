@@ -280,22 +280,26 @@ export async function answerLifecycleContext(
 ) {
   const ids = hits.map((hit) => hit.id);
   const rows = ids.length
-    ? await getSql()`WITH RECURSIVE history AS (SELECT s.older_id, s.newer_id, s.decided_at, 1 AS depth FROM learning_supersessions s WHERE s.team_id = ${ctx.teamId} AND s.newer_id = ANY(${ids}::text[]) AND s.status = 'accepted' UNION ALL SELECT s.older_id, s.newer_id, s.decided_at, h.depth + 1 FROM learning_supersessions s JOIN history h ON s.newer_id = h.older_id WHERE s.team_id = ${ctx.teamId} AND s.status = 'accepted' AND h.depth < 16) SELECT DISTINCT h.*, l.title, n.title AS newer_title FROM history h JOIN learnings l ON l.id = h.older_id AND l.team_id = ${ctx.teamId} JOIN learnings n ON n.id = h.newer_id AND n.team_id = ${ctx.teamId} ORDER BY h.depth, h.older_id`
+    ? await getSql()`WITH RECURSIVE history AS (SELECT s.older_id, s.newer_id, s.decided_at, 1 AS depth FROM learning_supersessions s WHERE s.team_id = ${ctx.teamId} AND s.newer_id = ANY(${ids}::text[]) AND s.status = 'accepted' UNION ALL SELECT s.older_id, s.newer_id, s.decided_at, h.depth + 1 FROM learning_supersessions s JOIN history h ON s.newer_id = h.older_id WHERE s.team_id = ${ctx.teamId} AND s.status = 'accepted' AND h.depth < 16) SELECT DISTINCT h.*, l.title, n.title AS newer_title, l.last_pushed_at AS older_date, n.last_pushed_at AS newer_date FROM history h JOIN learnings l ON l.id = h.older_id AND l.team_id = ${ctx.teamId} JOIN learnings n ON n.id = h.newer_id AND n.team_id = ${ctx.teamId} ORDER BY h.depth, h.older_id`
     : [];
   const asOf = new Date().toISOString();
   const lines = [`As of ${asOf.slice(0, 10)}.`];
-  const citations = rows.flatMap((row) => [
-    {
-      id: String(row.older_id),
-      title: String(row.title),
-      why: "Historical cell replaced by a newer learning.",
-    },
-    {
-      id: String(row.newer_id),
-      title: String(row.newer_title),
-      why: "Replacement in this learning's history.",
-    },
-  ]);
+  const citations: import("@hivemind/core").AskCitation[] = rows.flatMap(
+    (row) => [
+      {
+        id: String(row.older_id),
+        title: String(row.title),
+        why: "Historical cell replaced by a newer learning.",
+        date: new Date(row.older_date).toISOString().slice(0, 10),
+      },
+      {
+        id: String(row.newer_id),
+        title: String(row.newer_title),
+        why: "Replacement in this learning's history.",
+        date: new Date(row.newer_date).toISOString().slice(0, 10),
+      },
+    ],
+  );
   for (const row of rows)
     lines.push(
       `Replaced [${row.older_id}] with [${row.newer_id}] on ${new Date(row.decided_at).toISOString().slice(0, 10)}.`,
@@ -330,15 +334,49 @@ export function appendLifecycleContext(
   result: import("@hivemind/core").AskResult,
   context: Awaited<ReturnType<typeof answerLifecycleContext>>,
 ) {
+  const primaryIds = new Set(result.citations.map((citation) => citation.id));
+  const titles = new Map(
+    context.citations.map((citation) => [
+      citation.id,
+      citation.title.trim().toLowerCase(),
+    ]),
+  );
+  const paragraphs = context.text.split("\n\n").filter((paragraph) => {
+    const replacement =
+      /^Replaced \[(lrn_[a-z0-9]+)\] with \[(lrn_[a-z0-9]+)\]/.exec(paragraph);
+    if (replacement)
+      return (
+        (primaryIds.has(replacement[1]) || primaryIds.has(replacement[2])) &&
+        titles.get(replacement[1]) !== titles.get(replacement[2])
+      );
+    const ids = [...paragraph.matchAll(/\[(lrn_[a-z0-9]+)\]/g)].map(
+      (match) => match[1],
+    );
+    return !ids.length || ids.some((id) => primaryIds.has(id));
+  });
+  const hasReplacement = paragraphs.some((paragraph) =>
+    paragraph.startsWith("Replaced "),
+  );
+  const relevantParagraphs = paragraphs.filter(
+    (paragraph) =>
+      !paragraph.startsWith("Earlier history is truncated") || hasReplacement,
+  );
+  const historyIds = new Set(
+    relevantParagraphs.flatMap((paragraph) =>
+      [...paragraph.matchAll(/\[(lrn_[a-z0-9]+)\]/g)].map((match) => match[1]),
+    ),
+  );
   return {
     ...result,
-    answer: `${result.answer}\n\n${context.text}`,
+    answer: `${result.answer}\n\n${relevantParagraphs.join("\n\n")}`,
     citations: [
       ...new Map(
-        [...result.citations, ...context.citations].map((citation) => [
-          citation.id,
-          citation,
-        ]),
+        [
+          ...result.citations,
+          ...context.citations.filter((citation) =>
+            historyIds.has(citation.id),
+          ),
+        ].map((citation) => [citation.id, citation]),
       ).values(),
     ],
   };

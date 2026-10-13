@@ -105,6 +105,7 @@ export type AskCitation = {
   why: string;
   source?: "slack";
   permalink?: string;
+  date?: string;
 };
 
 export type AskResult = {
