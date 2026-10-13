@@ -9,9 +9,15 @@ metadata:
 
 Bring back what a teammate's agent would otherwise rediscover. Selected projects are captured in the owner's personal hive. Organisation publication requires a separate human grant.
 
+## Updates
+
+At the first Hive use in each Codex or Executor session, run `npx --yes gohive@latest status` once. Claude Code checks from SessionStart. The check uses a daily cache and a two-second timeout; updates run quietly in the background and keep credentials, OAuth, clients and project selection. Follow a minimum-version notice and say only its exact success or failure line after the update finishes. Above minimum, say nothing. An OAuth migration notice is shown once and offers an optional switch to credentials.
+
+`HIVE_NO_AUTO_UPDATE=1` or `~/.hive/no-auto-update` disables automatic checks and updates. For an immediate file refresh without sign-in, use `npx --yes gohive@latest install --update`. Use `npx gohive@latest install` for requested setup or to switch an OAuth connection to credentials.
+
 ## When tools are not loaded
 
-If Hive MCP tools are absent, NEVER run the installer unless the person asked to set up Hive or this session is the onboarding prompt. Run `npx --yes gohive@latest status` once, never `--no-install`. If installed and signed in, say exactly one line: "Hive is set up but not loaded in this session; restart Codex (or run /mcp in Claude Code) to use it", then continue the task without Hive. If not installed, offer setup in one line and do nothing else. Never announce installation or print the join prompt outside an actual install. If latest resolves to a missing version, retry once with the version status printed, then give up quietly. Never override npm min-release-age without asking the person.
+If Hive MCP tools are absent, NEVER run the installer unless the person asked to set up Hive or this session is the onboarding prompt. Run `npx --yes gohive@latest status` once, never `--no-install`. If installed and signed in, say exactly one line: "Hive is set up but not loaded in this session; restart Codex (or run /mcp in Claude Code) to use it", then continue the task without Hive. If not installed, offer setup in one line and do nothing else. Status prints organisation invitation links and prompts; repeat them to the person only when asked about invitations. Never announce installation outside an actual install. If latest resolves to a missing version, retry once with the version status printed, then give up quietly. Never override npm min-release-age without asking the person.
 
 ## Setup and project selection
 
@@ -32,7 +38,7 @@ Pass the prompt's join phrase through bootstrap. Claim verifies the owner, compl
 
 After claim, read `hive_agent_status`. On a completed organisation join, ask once with the native picker: "Share your learnings with <Team>?" Options: Yes (everything from selected projects, now and in future), Choose projects, Not now. For Choose projects use the multi-select picker with returned project counts; nothing is pre-ticked. Record the exact humanInstruction in `hive_share_with`, with mode `all_selected` for Yes, `projects` and the picked patterns, or `not_now`. Originals stay personal. Joining alone never publishes.
 
-During actual setup only, call `hive_invite_link` and give the organisation's team prompt once. Never announce installation or print the join prompt during an unrelated task or routine status check. Read paused state without creating, rotating or resuming a phrase.
+During actual setup only, call `hive_invite_link` and give the organisation's team prompt once. Routine status returns the organisation invitation prompt. Repeat it to the person only when asked about invitations. Never announce installation during an unrelated task. Read paused state without creating, rotating or resuming a phrase.
 
 ## Consult the hive
 

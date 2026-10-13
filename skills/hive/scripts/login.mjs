@@ -18,7 +18,7 @@ async function json(url, init = {}) {
 }
 
 function completion(response, error = false) {
-  const url = new URL('https://gohive.dev/signed-in');
+  const url = new URL('/signed-in', endpoint());
   if (error) url.searchParams.set('error', '1');
   else if (['claude', 'codex'].includes(process.env.HIVE_SIGN_IN_CLIENT)) url.searchParams.set('client', process.env.HIVE_SIGN_IN_CLIENT);
   response.writeHead(302, { Location: url.href, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).end();

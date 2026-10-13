@@ -1,3 +1,4 @@
+import { teamInvitePrompt } from "@/lib/agent-onboarding";
 import type { HiveContext } from "@hivemind/core";
 import { getSql } from "@/server/db/client";
 import { listHiveContexts, memberContext } from "@/server/identity/enrollment";
@@ -36,12 +37,12 @@ async function currentHiveInvite(ctx: HiveContext): Promise<CurrentHiveInvite> {
   }
   const phrase = await memberJoinPhrase(ctx);
   const teamName = String(hive.name);
-  const joinUrl = phrase ? `https://gohive.dev/j/${phrase.phrase}` : null;
+  const joinUrl = phrase ? new URL(`/j/${phrase.phrase}`, process.env.PUBLIC_URL || "https://gohive.dev").href : null;
   return {
     teamName,
     joinUrl,
     invitePrompt: joinUrl
-      ? `Set me up on Hive and join the ${teamName} hive: read https://gohive.dev/agent and follow it, then join with ${joinUrl}`
+      ? teamInvitePrompt(teamName, joinUrl)
       : null,
     joinPaused: phrase?.paused ?? Boolean(hive.join_paused),
   };

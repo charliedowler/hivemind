@@ -7,6 +7,11 @@ let matchers;
 try { matchers = await import('./capture-matchers.mjs'); }
 catch { matchers = await import(pathToFileURL(new URL('../../../packages/core/src/capture-matchers.mjs', import.meta.url).pathname).href); }
 
+let privacy;
+try { privacy = await import('./capture-privacy.mjs'); }
+catch { privacy = await import(pathToFileURL(new URL('../../../packages/core/src/capture-privacy.mjs', import.meta.url).pathname).href); }
+export const gateCapturePrivacy = privacy.gateCapturePrivacy;
+
 export function captureContext(input = {}) {
   const cwd = input.cwd || process.cwd();
   let remote;

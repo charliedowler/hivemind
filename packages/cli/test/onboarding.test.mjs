@@ -81,7 +81,7 @@ for (const scenario of ['human', 'token-error', 'declined']) test(`${scenario} i
   const invalid = new URL(callback); invalid.searchParams.set('state', 'wrong-secret-state');
   const rejected = await fetch(invalid, { redirect: 'manual' });
   assert.equal(rejected.status, 302);
-  assert.equal(rejected.headers.get('location'), 'https://gohive.dev/signed-in?error=1');
+  assert.equal(rejected.headers.get('location'), `${baseUrl}/signed-in?error=1`);
   if (scenario === 'declined') { callback.searchParams.delete('code'); callback.searchParams.set('error', 'private-error-fixture'); }
   const callbackPending=fetch(callback, { redirect: 'manual' });
   if (scenario === 'human') {
@@ -96,19 +96,19 @@ for (const scenario of ['human', 'token-error', 'declined']) test(`${scenario} i
   assert.equal(callbackResult.status,302);
   assert.equal(callbackResult.headers.get('referrer-policy'), 'no-referrer');
   if (['token-error', 'declined'].includes(scenario)) {
-    assert.equal(callbackResult.headers.get('location'), 'https://gohive.dev/signed-in?error=1');
+    assert.equal(callbackResult.headers.get('location'), `${baseUrl}/signed-in?error=1`);
     for(let i=0;i<50 && signInState(home).phase!=='failed';i++) await new Promise(resolve=>setTimeout(resolve,20));
     assert.equal(signInState(home).phase, 'failed');
     return;
   }
-  assert.equal(callbackResult.headers.get('location'), 'https://gohive.dev/signed-in?client=claude');
+  assert.equal(callbackResult.headers.get('location'), `${baseUrl}/signed-in?client=claude`);
   assert.ok(JSON.parse(readFileSync(join(home,'.hive/oauth.json'),'utf8')).access_token);
   for(let i=0;i<50 && signInState(home).phase!=='connected';i++) await new Promise(resolve=>setTimeout(resolve,20));
   const complete=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(complete.stdout.includes("You're in Lightdash."));
   if (identity === 'human') assert.ok(complete.stdout.includes('run /mcp to reconnect Hive'));
-  assert.ok(!complete.stdout.includes('Team prompt fixture'));
-  assert.ok(!complete.stdout.includes('Team prompt fixture'));
+  assert.ok(complete.stdout.includes('Team prompt fixture'));
+  assert.ok(complete.stdout.includes('Team prompt fixture'));
   assert.equal(lastPhrase,'amber-honey-fox');
   assert.ok(verifier.length>=32);
   assert.equal(createHash('sha256').update(verifier).digest('base64url'),new URL(state.url).searchParams.get('code_challenge'));

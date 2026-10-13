@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,17 +54,18 @@ function scratchRepo() {
   return directory;
 }
 
-test('repository scope handles HTTPS, SSH and trailing slashes without the hostname', () => {
-  assert.equal(repository('git@github.com:team/widget.git'), 'team/widget');
-  assert.equal(repository('https://github.com/team/widget.git'), 'team/widget');
-  assert.equal(repository('ssh://git@github.com/team/widget'), 'team/widget');
-  assert.equal(repository('https://github.com/team/widget/'), 'team/widget');
+test('repository scope handles HTTPS, SSH and trailing slashes with canonical hosts', () => {
+  assert.equal(repository('git@github.com:team/widget.git'), 'github.com/team/widget');
+  assert.equal(repository('https://github.com/team/widget.git'), 'github.com/team/widget');
+  assert.equal(repository('ssh://git@github.com/team/widget'), 'github.com/team/widget');
+  assert.equal(repository('https://github.com/team/widget/'), 'github.com/team/widget');
+  assert.equal(repository('https://example.com/fixture/widget.git'), 'example.com/fixture/widget');
   assert.equal(repository('/tmp/repo'), undefined);
 });
 
 test('the summary keeps at most two short lines and stays silent for no cells', () => {
-  assert.equal(summary({ content: [{ type: 'text', text: 'No learnings in this time window.' }] }, 'team/widget'), undefined);
-  const context = summary({ content: [{ type: 'text', text: '- lrn_a: Fact one | author\n- lrn_b: Fact two | author\n- lrn_c: Fact three | author\n- lrn_d: Fact four | author' }] }, 'team/widget');
+  assert.equal(summary({ content: [{ type: 'text', text: 'No learnings in this time window.' }] }, 'github.com/team/widget'), undefined);
+  const context = summary({ content: [{ type: 'text', text: '- lrn_a: Fact one | author\n- lrn_b: Fact two | author\n- lrn_c: Fact three | author\n- lrn_d: Fact four | author' }] }, 'github.com/team/widget');
   assert.equal(context.split('\n').length, 2);
   assert.ok(context.includes('Fact three'));
   assert.ok(!context.includes('Fact four'));
@@ -78,7 +79,7 @@ test('SessionStart runs hive_recent once per session and repo, through real MCP 
   const first = JSON.parse(await run('session-start.mjs', input, env));
   assert.equal(first.hookSpecificOutput.hookEventName, 'SessionStart');
   assert.equal(first.hookSpecificOutput.additionalContext.split('\n').length, 2);
-  assert.deepEqual(hive.calls[2].params, { name: 'hive_recent', arguments: { repo: 'team/widget', since: '7d', limit: 3 } });
+  assert.deepEqual(hive.calls[2].params, { name: 'hive_recent', arguments: { repo: 'github.com/team/widget', since: '7d', limit: 3 } });
   assert.equal(await run('session-start.mjs', input, env), '');
   assert.equal(hive.calls.length, 3);
   assert.equal(hive.reports.length, 1);
@@ -101,7 +102,7 @@ test('empty hives and missing credentials leave SessionStart silent', async t =>
 
 test('the MCP client reads SSE responses', async t => {
   const hive = await mockHive(t, '- lrn_a: A fact', true);
-  const result = await callTool('hive_recent', { repo: 'team/widget' }, { baseUrl: hive.baseUrl, token: 'fixture' });
+  const result = await callTool('hive_recent', { repo: 'github.com/team/widget' }, { baseUrl: hive.baseUrl, token: 'fixture' });
   assert.equal(result.content[0].text, '- lrn_a: A fact');
 });
 
@@ -174,7 +175,7 @@ test('Stop fails closed when the capture gate is unavailable', async t => {
 });
 
 test('recent summaries preserve lifecycle and verification warnings without author data', () => {
-  const context = summary({ content: [{ type: 'text', text: '- lrn_a: Old guidance | superseded, superseded by lrn_b | private author via codex\n- lrn_b: Current guidance | fresh, verify before use | private author via codex' }] }, 'team/widget');
+  const context = summary({ content: [{ type: 'text', text: '- lrn_a: Old guidance | superseded, superseded by lrn_b | private author via codex\n- lrn_b: Current guidance | fresh, verify before use | private author via codex' }] }, 'github.com/team/widget');
   assert.ok(context.includes('Old guidance [superseded]'));
   assert.ok(context.includes('Current guidance [fresh, verify before use]'));
   assert.ok(!context.includes('private author'));
@@ -185,7 +186,7 @@ test('recent summaries preserve lifecycle and verification warnings without auth
 test('capture metadata keeps the canonical project and working directory', () => {
   const cwd = scratchRepo();
   const value = captureContext({ cwd, session_id: 'session', agent: 'codex', session_type: 'headless' });
-  assert.equal(value.repo, 'team/widget');
+  assert.equal(value.repo, 'github.com/team/widget');
   assert.equal(value.remote, 'github.com/team/widget');
   assert.equal(value.cwd, cwd);
   assert.equal(value.agent, 'codex');
@@ -217,7 +218,7 @@ test('local filtering excludes content rules and keeps non-drop actions server-s
     { enabled: true, action: 'drop', kind: 'content_category' },
     { enabled: true, action: 'redact', kind: 'keyword' },
     { enabled: false, action: 'drop', kind: 'repo_match' },
-  ]}, { repo: 'team/widget', title: 'Private', body: 'Personal admin' })).action, 'allow');
+  ]}, { repo: 'github.com/team/widget', title: 'Private', body: 'Personal admin' })).action, 'allow');
 });
 
 test('a local repo drop never sends transcript text to the capture endpoint', async t => {
@@ -264,12 +265,12 @@ for (const state of ['outage', 'empty', 'unknown', 'contradiction', 'unselected'
   });
 }
 
-async function captureHive(t, { policy = selectedPolicy, gate = 'capture' } = {}) {
+async function captureHive(t, { policy = selectedPolicy, gate = 'capture', rules = [] } = {}) {
   const gates = [], pushes = [], urls = [];
   const server = createServer(async (request, response) => {
     urls.push(request.url);
     const send = value => response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(value));
-    if (request.url === '/api/app/capture-rules/effective') { send({rules: [], policy}); return; }
+    if (request.url === '/api/app/capture-rules/effective') { send({rules, policy}); return; }
     let body = ''; for await (const chunk of request) body += chunk;
     const value = JSON.parse(body);
     if (request.url === '/api/app/capture') { gates.push(value); send({decision: gate}); return; }
@@ -376,4 +377,42 @@ test('PostToolUse never nudges an unselected project or an ambiguous result', as
   assert.equal(await run('stop.mjs', {...base, tool_response: {stdout: 'some output', stderr: ''}}, env), '');
   assert.equal(hive.gates.length, 0);
   assert.equal(hive.pushes.length, 0);
+});
+
+for (const [name, text, rules] of [
+  ['personal', 'Discovered that the contact email is person@example.test for the database config.', []],
+  ['credential-only', 'Discovered the password is mango-canyon-private.', []],
+  ['customer-rule', 'Fixed the database connection for Example Customer.', [{ id: 'rule_fixture', kind: 'keyword', enabled: true, action: 'drop', pattern: 'Example Customer', regex: false }]],
+]) test(`local privacy refusal prevents ${name} upload and transcript hash persistence`, async t => {
+  const hive = await captureHive(t, {rules});
+  const home = scratchRepo();
+  const file = learnedTranscript(home, text);
+  const env = { HOME: home, HIVE_HOME: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const input = {cwd: home, session_id: name, transcript_path: file, hook_event_name: 'Stop'};
+  assert.equal(await run('stop.mjs', input, env), '');
+  assert.equal(hive.gates.length, 0);
+  assert.equal(hive.pushes.length, 0);
+  assert.equal(existsSync(join(home, '.hive/capture-sessions')), false);
+  assert.equal(await run('stop.mjs', {...input, hook_event_name: 'PostToolUse', tool_name: 'mcp__hive__hive_push', tool_input: {observation: text}, tool_response: {id:'lrn_fixture'}}, env), '');
+  assert.equal(existsSync(join(home, '.hive/capture-sessions')), false);
+});
+
+test('local privacy redaction uses only the sanitized body for the model summary, push, evidence and dedupe', async t => {
+  const hive = await captureHive(t);
+  const home = scratchRepo();
+  const text = 'Fixed the database connection parser by escaping password="mango-canyon-private" in config values.';
+  const file = learnedTranscript(home, text);
+  const env = { HOME: home, HIVE_HOME: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const input = {cwd: home, session_id: 'redacted', transcript_path: file, hook_event_name: 'Stop'};
+  assert.equal(await run('stop.mjs', input, env), '');
+  assert.equal(hive.gates.length, 1);
+  assert.equal(hive.pushes.length, 1);
+  assert.match(hive.gates[0].text, /\[redacted\]/);
+  assert.equal(hive.gates[0].text, hive.pushes[0].observation);
+  assert.equal(hive.pushes[0].evidence.session_excerpt, hive.pushes[0].observation);
+  assert.ok(!JSON.stringify([...hive.gates, ...hive.pushes]).includes('mango-canyon-private'));
+  await run('stop.mjs', input, env);
+  assert.equal(hive.pushes.length, 1);
+  const state = readFileSync(join(home, '.hive/capture-sessions', readdirSync(join(home, '.hive/capture-sessions'))[0]), 'utf8');
+  assert.ok(!state.includes('mango-canyon-private'));
 });

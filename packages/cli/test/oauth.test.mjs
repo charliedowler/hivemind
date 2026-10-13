@@ -71,11 +71,11 @@ for (const [identity, inbox] of [['human', '']]) test(`${identity} ${inbox ? 'kn
     callback.search = new URLSearchParams({ state: 'wrong-state', code: 'fixture-code' }).toString();
     const rejected = await fetch(callback, { redirect: 'manual' });
     assert.equal(rejected.status, 302);
-    assert.equal(rejected.headers.get('location'), 'https://gohive.dev/signed-in?error=1');
+    assert.equal(rejected.headers.get('location'), `${baseUrl}/signed-in?error=1`);
     callback.searchParams.set('state', authorize.searchParams.get('state'));
     const completedCallback = await fetch(callback, { redirect: 'manual' });
     assert.equal(completedCallback.status, 302);
-    assert.equal(completedCallback.headers.get('location'), 'https://gohive.dev/signed-in');
+    assert.equal(completedCallback.headers.get('location'), `${baseUrl}/signed-in`);
   });
   await completed;
   assert.ok(signedIn);

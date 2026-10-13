@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { installExecutorBearer, doctorExecutor, detectExecutor } from './executor.js';
-import { install, uninstall, doctor, selectAgents, installedAgents, parseClients, type Agent } from './installer.js';
+import { install, uninstall, doctor, selectAgents, installedAgents, parseClients, updateInstall, type Agent } from './installer.js';
 import { harness } from './identity.js';
 import { bootstrap, bootstrapStatus, readAgentState, detectedEmail, emailQuestion, revokeInstalledAgent, prepareHumanLogin } from './bootstrap.js';
 import { beginSignIn, status, joinPhrase } from './onboarding.js';
@@ -13,7 +13,8 @@ async function main() {
   if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Hive needs Node 20 or later');
   const args = process.argv.slice(2);
   const command = args.shift() || 'help';
-  if (['install', 'login', 'status'].includes(command)) console.log(`gohive ${JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version}`);
+  const updating = command === 'install' && args.includes('--update');
+  if (!updating && ['install', 'login', 'status'].includes(command)) console.log(`gohive ${JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version}`);
   let home = process.env.HOME || homedir();
   let backupDir: string | undefined;
   let selectedAgents: Agent[] | undefined;
@@ -24,6 +25,7 @@ async function main() {
   let phrase: string | undefined;
   while (args.length) {
     const flag = args.shift();
+    if (flag === '--update' && command === 'install') continue;
     if (flag === '--yes' || flag === '-y') yes = true;
     else if (flag === '--home' || flag === '--backup-dir' || flag === '--agent' || flag === '--client' || flag === '--executor-url' || flag === '--email' || flag === '--join-url') {
       const value = args.shift();
@@ -39,6 +41,12 @@ async function main() {
   }
   home = resolve(home);
   mkdirSync(home, { recursive: true, mode: 0o700 });
+  if (updating) { updateInstall({ home, backupDir }); return; }
+  if (command === 'status') {
+    const updates = await import(new URL('../assets/hive/scripts/auto-update.mjs', import.meta.url).href);
+    const notice = await updates.checkForUpdate({ home });
+    if (notice) console.log(notice);
+  }
   const agents = executorClient ? [] : command === 'install' ? selectAgents(home, process.env, selectedAgents) : selectedAgents || installedAgents(home) || selectAgents(home);
   if (executorClient && selectedAgents) throw new Error('Choose one client per --client install');
   const options = { home, agents, backupDir, terminalDetection: command === 'install' && !executorClient && !selectedAgents && !harness(process.env) };
@@ -86,7 +94,7 @@ async function main() {
     if (!installedAgents(home)) install(options);
     await beginSignIn({ home, agents, identity: 'human', phrase, force: true });
   }
-  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--email <address>] [--join-url <Hive link>] [--client claude|codex|all|claude,codex|executor]\ngohive status\ngohive doctor\ngohive login\ngohive uninstall\n\nInstall asks which email to use, then creates an agent connection with no browser. Claim your account with the email link. Harness markers select only the current client. Without markers, install configures the detected clients. Use gohive login to sign in as a person with OAuth. Status never installs or opens a browser. Uninstall revokes this machine’s agent credential.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
+  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--email <address>] [--join-url <Hive link>] [--client claude|codex|all|claude,codex|executor]\ngohive install --update\ngohive status\ngohive doctor\ngohive login\ngohive uninstall\n\nInstall asks which email to use, then creates an agent connection with no browser. Claim your account with the email link. Harness markers select only the current client. Without markers, install configures the detected clients. Use gohive login to sign in as a person with OAuth. Status checks for a silent background update of an existing install and never opens a browser. Uninstall revokes this machine’s agent credential.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
   else throw new Error(`Unknown command: ${command}. Run gohive --help`);
 }
 

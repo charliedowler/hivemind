@@ -1,9 +1,12 @@
+import { checkForUpdate } from './auto-update.mjs';
 import { bearerToken, callTool, homeDirectory, endpoint } from './mcp.mjs';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readSignIn, updateSignIn } from './sign-in-state.mjs';
 const payload = result => result.structuredContent ?? JSON.parse(result.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') || '{}');
 async function main() {
+  const notice = await checkForUpdate();
+  if (notice) console.log(notice);
   const state = readSignIn();
   if (state.phase === 'exchanging') { console.log('Finishing sign-in. Run npx gohive status again in a few seconds.'); return; }
   if (state.phase === 'waiting' && Date.now() - state.started < 600000) {
@@ -32,7 +35,7 @@ async function main() {
   try { agents = JSON.parse(readFileSync(join(homeDirectory(), '.hive/install.json'), 'utf8')).agents; } catch {}
   if (state.identity === 'human' && agents?.includes('claude')) console.log('If Hive tools are not loaded in Claude Code, run /mcp to reconnect Hive.');
   if (state.phase === 'native-waiting' && state.url) console.log(`Open ${state.url}`);
-  if (process.env.HIVE_INSTALL_ANNOUNCEMENT === '1') try {
+  try {
     const result = payload(await callTool('hive_invite_link', {}, { token, signal: AbortSignal.timeout(2500) }));
     const links = result.invitations ?? result.links ?? (result.joinUrl ? [result] : []);
     for (const invitation of links) {

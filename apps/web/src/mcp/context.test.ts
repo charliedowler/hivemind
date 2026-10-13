@@ -112,9 +112,10 @@ describe("MCP model-facing wire contract", () => {
         clientInfo: { name: "fixture", version: "1" },
       });
       expect(response.result.instructions).toBe(hiveInstructions(agent));
+      expect(response.result.serverInfo._meta["dev.gohive/cli"]).toEqual({ latest: "0.2.1", minimum: "0.2.0" });
       expect(
         response.result.instructions.split(/\s+/).length,
-      ).toBeLessThanOrEqual(120);
+      ).toBeLessThanOrEqual(165);
       expect(response.result.capabilities).toMatchObject({
         tools: {},
         prompts: {},

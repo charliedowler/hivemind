@@ -27,7 +27,7 @@ export function writeCodexServer(home: string, endpoint: string, credential?: st
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
   const helper = [process.execPath, join(home, '.codex/skills/hive/scripts/agent-headers.mjs'), home].map(quote).join(' ');
   const auth = credential ? `\nhttp_headers_helper = ${JSON.stringify(helper)}\nhttp_headers = { Authorization = ${JSON.stringify(`Bearer ${credential}`)} }` : '';
-  privateWrite(path, `${kept}${kept ? '\n\n' : ''}[mcp_servers.hive]\nurl = ${JSON.stringify(endpoint)}${auth}\n`);
+  privateWrite(path, `${kept}${kept ? '\n\n' : ''}[mcp_servers.hive]\nurl = ${JSON.stringify(endpoint)}\nenabled = true${auth}\n`);
 }
 export function writeClaudeServer(home: string, endpoint: string, credential?: string) {
   const path = join(home, '.claude.json');

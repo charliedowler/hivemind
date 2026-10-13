@@ -13,7 +13,7 @@ export function signInState(home: string): SignInState | undefined {
 export function joinPhrase(value?: string): string | undefined {
   if (!value) return;
   let phrase = value.trim();
-  try { const url = new URL(phrase); if (url.origin !== 'https://gohive.dev') throw new Error(); phrase = url.pathname.match(/^\/j\/([a-z]+-[a-z]+-[a-z]+)\/?$/)?.[1] || ''; } catch { if (phrase.includes('://')) throw new Error('Use a Hive join link from gohive.dev'); }
+  try { const url = new URL(phrase); if (url.username || url.password || !['https://gohive.dev', new URL(process.env.HIVE_URL || 'https://gohive.dev').origin].includes(url.origin)) throw new Error(); phrase = url.pathname.match(/^\/j\/([a-z]+-[a-z]+-[a-z]+)\/?$/)?.[1] || ''; } catch { if (phrase.includes('://')) throw new Error('Use a Hive join link from gohive.dev'); }
   if (!/^[a-z]+-[a-z]+-[a-z]+$/.test(phrase)) throw new Error('Use the three-word Hive phrase or its /j/ link');
   return phrase;
 }

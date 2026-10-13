@@ -307,11 +307,13 @@ test('a failed agent sign-in does not prevent hook sign-in or a useful doctor re
 });
 
 
-test('Claude installs non-blocking sweeps and narrow tool hooks and owns their removal', () => {
+test('Claude installs a bounded Stop sweep and background compact sweeps and narrow tool hooks and owns their removal', () => {
   const f = fixture();
   install(f.options);
   const settings = JSON.parse(f.read('.claude/settings.json'));
-  for (const event of ['Stop', 'PreCompact', 'SubagentStop']) assert.equal(settings.hooks[event][0].hooks[0].async, true);
+  assert.equal(settings.hooks.Stop[0].hooks[0].async, undefined);
+  assert.equal(settings.hooks.Stop[0].hooks[0].timeout, 8);
+  for (const event of ['PreCompact', 'SubagentStop']) assert.equal(settings.hooks[event][0].hooks[0].async, true);
   assert.equal(settings.hooks.PostToolUse[0].matcher, 'Bash|mcp__.*__hive_push');
   assert.equal(settings.hooks.PostToolUseFailure[0].matcher, 'Bash');
   const again = install(f.options);

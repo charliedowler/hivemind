@@ -1,3 +1,4 @@
+import { cliVersion } from "@/lib/cli-version";
 import { apiKeyId, memberRole } from "@/server/analytics/events";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { registerHiveTools } from "@/mcp/server";
@@ -8,7 +9,7 @@ import { HiveError } from "@/server/errors";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const handler = createMcpHandler(registerHiveTools, { serverInfo: { name: "hive", version: "0.1.0" } });
+const handler = createMcpHandler(registerHiveTools, { serverInfo: { name: "hive", version: cliVersion.latest } });
 
 async function route(request: Request): Promise<Response> {
   try {

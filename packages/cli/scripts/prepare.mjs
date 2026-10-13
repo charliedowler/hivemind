@@ -5,5 +5,8 @@ const target = fileURLToPath(new URL('../assets/hive/', import.meta.url));
 mkdirSync(target, { recursive: true });
 cpSync(source, target, { recursive: true });
 
-const matcher = fileURLToPath(new URL('../../core/src/capture-matchers.mjs', import.meta.url));
-if (existsSync(matcher)) cpSync(matcher, target + '/scripts/capture-matchers.mjs');
+for (const script of ['capture-matchers.mjs', 'capture-privacy.mjs']) {
+  const source = fileURLToPath(new URL(`../../core/src/${script}`, import.meta.url));
+  if (!existsSync(source)) throw new Error(`Missing shared Hive runtime: ${script}`);
+  cpSync(source, `${target}/scripts/${script}`);
+}

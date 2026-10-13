@@ -26,6 +26,7 @@ for(const client of ['claude','codex'])test(`${client} gets a bearer with --emai
     const chunks=[];for await(const c of req)chunks.push(c);const body=Buffer.concat(chunks).toString();
     const send=value=>res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(value));
     if(req.url==='/api/agents/bootstrap'){const data=JSON.parse(body);assert.equal(data.email,'person@example.test');assert.equal(data.joinPhrase,'amber-honey-fox');bootstraps++;return send({status:'issued',credential,agentId:'agent_fixture',claimPending:true});}
+    if(req.url==='/api/cli/version') { assert.equal(req.headers.authorization, undefined); return send({ latest:'0.2.1', minimum:'0.2.0' }); }
     assert.equal(req.headers.authorization,`Bearer ${credential}`);
     if(req.url==='/api/agents/status')return send({claimPending:true,organisations:[],joinPending:'amber-honey-fox',shareOffers:[]});
     if(req.url==='/api/agents/revoke'){revoked=true;return send({revoked:true});}res.writeHead(404).end();
@@ -35,7 +36,7 @@ for(const client of ['claude','codex'])test(`${client} gets a bearer with --emai
   assert.ok(installed.stdout.includes(`Installing Hive for ${client==='claude'?'Claude Code':'Codex'}`));assert.ok(!installed.stdout.includes('Open http'));assert.ok(!installed.stdout.includes(credential));
   assert.equal(bootstraps,1);assert.equal(statSync(join(home,'.hive/agent.json')).mode&0o777,0o600);
   if(client==='claude')assert.equal(JSON.parse(readFileSync(join(home,'.claude.json'),'utf8')).mcpServers.hive.headers.Authorization,`Bearer ${credential}`);
-  else{const config=readFileSync(join(home,'.codex/config.toml'),'utf8');assert.ok(config.includes('http_headers_helper = '));assert.ok(!config.includes('bearer_token_env_var'));assert.ok(config.includes(`Bearer ${credential}`));const helper=await exec(process.execPath,[join(home,'.codex/skills/hive/scripts/agent-headers.mjs'),home],{env:{...env,HIVE_AGENT_TOKEN:credential}});assert.equal(JSON.parse(helper.stdout).Authorization,`Bearer ${credential}`);}
+  else{const config=readFileSync(join(home,'.codex/config.toml'),'utf8');assert.ok(config.includes('http_headers_helper = '));assert.ok(config.includes('enabled = true'));assert.ok(!config.includes('[plugins.'));assert.ok(!config.includes('[apps.'));assert.ok(!config.includes('bearer_token_env_var'));assert.ok(config.includes(`Bearer ${credential}`));const helper=await exec(process.execPath,[join(home,'.codex/skills/hive/scripts/agent-headers.mjs'),home],{env:{...env,HIVE_AGENT_TOKEN:credential}});assert.equal(JSON.parse(helper.stdout).Authorization,`Bearer ${credential}`);}
   const status=await exec(process.execPath,[bin,'status','--home',home],{env});assert.ok(status.stdout.includes('Installed. Signed in. Hive is ready.'));assert.ok(!status.stdout.includes('Installing Hive'));assert.ok(!status.stdout.includes('Set me up on Hive'));
   await exec(process.execPath,[bin,'uninstall','--home',home],{env});assert.equal(revoked,true);assert.equal(existsSync(join(home,'.hive/agent.json')),false);
 });
@@ -59,7 +60,7 @@ test('a human login removes the agent bearer and a pending uninstall cancels its
 });
 test('missing tools never trigger installation during routine work and all onboarding questions use pickers',()=>{
  const skill=readFileSync(new URL('../../../skills/hive/SKILL.md',import.meta.url),'utf8');
- for(const text of ["Ask with the harness's question/picker tool when one exists; otherwise a numbered list.",'AskUserQuestion','multiSelect','request_user_input','github.com/<org>/*','npx --yes gohive@latest status','NEVER run the installer unless','Hive is set up but not loaded in this session; restart Codex (or run /mcp in Claude Code) to use it','retry once with the version status printed','Never announce installation or print the join prompt outside an actual install'])assert.ok(skill.includes(text),text);
+ for(const text of ["Ask with the harness's question/picker tool when one exists; otherwise a numbered list.",'AskUserQuestion','multiSelect','request_user_input','github.com/<org>/*','npx --yes gohive@latest status','NEVER run the installer unless','Hive is set up but not loaded in this session; restart Codex (or run /mcp in Claude Code) to use it','retry once with the version status printed','Never announce installation outside an actual install'])assert.ok(skill.includes(text),text);
  for(const client of ['claude','codex','executor']){const instructions=markInstructions('',client);assert.ok(instructions.includes('NEVER run the installer unless'));assert.ok(instructions.includes("Ask with the harness's question/picker tool when one exists; otherwise a numbered list."));assert.ok(instructions.includes('npx --yes gohive@latest status'));}
  assert.ok(!skill.includes('npx --no-install'));
 });

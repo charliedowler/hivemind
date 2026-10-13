@@ -1,3 +1,4 @@
+import { cliVersionInstructions } from "@/lib/cli-version";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { hiveRecentInput } from "@hivemind/core";
 import { recentLearnings, teamOverview } from "@/server/hive";
@@ -33,7 +34,7 @@ export function registerHiveResources(server: McpServer) {
             {
               uri: uri.href,
               mimeType: "text/markdown",
-              text: `# ${overview.teamName}\n\nMembers: ${overview.memberCount}\nCells: ${overview.learningCount}\n\n## Selected projects\n\n${projects}\n\nChat capture: disabled; captures without selected project context are refused.\n\n## Invite teammates\n\n\`\`\`json\n${JSON.stringify(invite, null, 2)}\n\`\`\`\n`,
+              text: `# ${overview.teamName}\n\nMembers: ${overview.memberCount}\nCells: ${overview.learningCount}\n\n## Installer updates\n\n${cliVersionInstructions}\n\n## Selected projects\n\n${projects}\n\nChat capture: disabled; captures without selected project context are refused.\n\n## Invite teammates\n\n\`\`\`json\n${JSON.stringify(invite, null, 2)}\n\`\`\`\n`,
             },
           ],
         };

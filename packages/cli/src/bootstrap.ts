@@ -70,13 +70,13 @@ export async function bootstrapStatus(home: string, { announcement = false, log 
   for (const item of status.joinRequests || []) log(`Join requested. Waiting for an admin of ${item.teamName}.${item.joinUrl ? ` ${item.joinUrl}` : ''}`);
   if (status.joinError) log(status.joinError);
   if (announcement) for (const offer of status.shareOffers || []) log(JSON.stringify({ status: 'share_offer', question: `Share your learnings with ${offer.teamName}?`, options: ['Yes (everything from your selected projects, now and in future)', 'Choose projects', 'Not now'], ...offer }));
-  if (announcement && !status.claimPending) {
+  if (!status.claimPending) try {
     const script = await import(new URL('../assets/hive/scripts/mcp.mjs', import.meta.url).href);
     const result = await script.callTool('hive_invite_link', {}, { baseUrl: state.baseUrl, token: state.credential, signal: AbortSignal.timeout(5000) });
-    const text = result.content?.filter((item: any) => item.type === 'text').map((item: any) => item.text).join('\n');
+    const text = result?.content?.filter((item: any) => item.type === 'text').map((item: any) => item.text).join('\n');
     const invitations = JSON.parse(text || '{}');
-    for (const invitation of invitations.invitations || (invitations.joinUrl ? [invitations] : [])) if (!invitation.joinPaused && invitation.invitePrompt) log(invitation.invitePrompt);
-  }
+    for (const invitation of invitations.invitations || (invitations.joinUrl ? [invitations] : [])) if (!invitation.joinPaused && invitation.invitePrompt) { if (invitation.joinUrl) log(invitation.joinUrl); log(invitation.invitePrompt); }
+  } catch {}
   return true;
 }
 export async function revokeInstalledAgent(home: string) {

@@ -371,6 +371,9 @@ export function InstallPage({
           with Google, Slack or email instead. Your existing settings are backed
           up. Run <code>npx --yes gohive@latest doctor</code> to check the connection.
         </p>
+        <p className="small muted">
+          Hive updates itself once a day; run <code>npx gohive@latest install</code> to update now.
+        </p>
         <p>
           <a href={skillUrl}>Read the Hive skill</a> to see when your agent
           searches, saves and cites team learnings.

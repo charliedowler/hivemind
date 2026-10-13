@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+const installedVersion = () => { try { return JSON.parse(readFileSync(join(homeDirectory(), '.hive/install.json'), 'utf8')).installedVersion || '0.1.0'; } catch { return '0.1.0'; } };
+
 export const hiveUrl = 'https://gohive.dev';
 export const homeDirectory = () => process.env.HIVE_HOME || process.env.HOME || homedir();
 export const endpoint = () => process.env.HIVE_URL || hiveUrl;
@@ -74,7 +76,7 @@ async function readRpc(response, expectedId) {
 }
 
 export async function callTool(name, args, { baseUrl = endpoint(), token, signal = AbortSignal.timeout(2000) } = {}) {
-  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: `Bearer ${token}`, 'User-Agent': 'gohive-hooks/0.1.0', 'MCP-Protocol-Version': '2025-03-26' };
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: `Bearer ${token}`, 'User-Agent': `gohive-hooks/${installedVersion()}`, 'MCP-Protocol-Version': '2025-03-26' };
   let session;
   async function rpc(method, params, id) {
     const response = await fetch(`${baseUrl}/api/mcp`, {
@@ -87,7 +89,7 @@ export async function callTool(name, args, { baseUrl = endpoint(), token, signal
     if (result?.error) throw new Error('Hive could not complete the MCP call');
     return result?.result;
   }
-  const initialized = await rpc('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'gohive-hooks', version: '0.1.0' } }, 1);
+  const initialized = await rpc('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'gohive-hooks', version: installedVersion() } }, 1);
   if (initialized?.protocolVersion) headers['MCP-Protocol-Version'] = initialized.protocolVersion;
   await rpc('notifications/initialized', {}, undefined);
   try {

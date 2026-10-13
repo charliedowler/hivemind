@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { bearerToken, callTool, endpoint, homeDirectory } from "./mcp.mjs";
-import { captureContext, effectiveCaptureRules, localCaptureDecision } from "./capture-rules.mjs";
+import { captureContext, effectiveCaptureRules, localCaptureDecision, gateCapturePrivacy } from "./capture-rules.mjs";
 
 const normalise = value => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const hash = value => crypto.createHash("sha256").update(value).digest("hex");
@@ -73,7 +73,18 @@ export async function captureSession(input) {
   const facts = sessionFacts(transcript);
   if (!facts.text) return;
   const context = captureContext(input);
-  const statePaths = sessionState(input, context);
+  const token = await bearerToken(homeDirectory(), endpoint(), AbortSignal.timeout(1000));
+  if (!token) return;
+  const rules = await effectiveCaptureRules({ token });
+  const privacy = gateCapturePrivacy({ title: "", body: facts.candidates.join("\n\n"), context }, { rules: rules?.rules });
+  if (privacy.action === "refuse") return;
+  const sanitizedContext = privacy.input.context;
+  const sanitizedCandidates = privacy.input.body.split(/\n\s*\n/).filter(Boolean);
+  const sanitizedSaved = facts.saved.flatMap(body => {
+    const saved = gateCapturePrivacy({ title: "", body }, { rules: rules?.rules });
+    return saved.action === "refuse" ? [] : [saved.input.body];
+  });
+  const statePaths = sessionState(input, sanitizedContext);
   let lock;
   try {
     if (fs.existsSync(statePaths.lock) && Date.now() - fs.statSync(statePaths.lock).mtimeMs > 30000) fs.unlinkSync(statePaths.lock);
@@ -81,24 +92,21 @@ export async function captureSession(input) {
   } catch { return; }
   try {
     const state = load(statePaths.file);
-    state.saved = [...new Set([...state.saved, ...facts.saved.map(value => hash(normalise(value)))])];
-    const candidates = facts.candidates.filter(text => !state.saved.includes(hash(normalise(text))) && !state.swept.includes(hash(normalise(text)))).slice(-2);
+    state.saved = [...new Set([...state.saved, ...sanitizedSaved.map(value => hash(normalise(value)))])];
+    const candidates = sanitizedCandidates.filter(text => !state.saved.includes(hash(normalise(text))) && !state.swept.includes(hash(normalise(text)))).slice(-2);
     if (!candidates.length) { persist(statePaths.file, state); return; }
-    const token = await bearerToken(homeDirectory(), endpoint(), AbortSignal.timeout(1000));
-    if (!token) return;
-    const rules = await effectiveCaptureRules({ token });
-    const decision = await localCaptureDecision(rules, { ...context, title: "", body: candidates.join("\n\n") });
+    const decision = await localCaptureDecision(rules, { ...sanitizedContext, title: "", body: candidates.join("\n\n") });
     if (decision.dropped || decision.action === "drop") return;
     const response = await fetch(`${endpoint()}/api/app/capture`, {
       method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...context, changes: facts.changes, errors: facts.errors, observations: candidates.length, text: candidates.join("\n\n").slice(-6000) }),
+      body: JSON.stringify({ ...sanitizedContext, changes: facts.changes, errors: facts.errors, observations: candidates.length, text: candidates.join("\n\n").slice(-6000) }),
       signal: AbortSignal.timeout(2000),
     });
     if (!response.ok) return;
     const gate = await response.json();
     if (gate.decision !== "capture") return;
     for (const observation of candidates) {
-      const result = await callTool("hive_push", { observation, evidence: { session_excerpt: observation }, context }, { token, signal: AbortSignal.timeout(3000) });
+      const result = await callTool("hive_push", { observation, evidence: { session_excerpt: observation }, context: sanitizedContext }, { token, signal: AbortSignal.timeout(3000) });
       if (savedReceipt(result)) state.saved.push(hash(normalise(observation)));
       persist(statePaths.file, state);
     }
@@ -129,11 +137,15 @@ export async function postToolNudge(input) {
   if (nudge) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "A test or build failed and now passes. If this established a non-obvious fix, capture the cause, fix and evidence now with hive_push. Check the selected project and Hive skill first. Skip anything already saved. Do not ask a question or delay the answer." } }) + "\n");
 }
 
-export function rememberPush(input) {
+export async function rememberPush(input) {
   if (!input.session_id || !pushTool(input.tool_name) || typeof input.tool_input?.observation !== "string" || !savedReceipt(input.tool_response)) return;
+  const token = await bearerToken(homeDirectory(), endpoint(), AbortSignal.timeout(1000));
+  const rules = token ? await effectiveCaptureRules({ token }) : null;
+  const privacy = gateCapturePrivacy({ title: "", body: input.tool_input.observation }, { rules: rules?.rules });
+  if (privacy.action === "refuse") return;
   const paths = sessionState(input, captureContext(input));
   if (fs.existsSync(paths.lock)) return;
   const state = load(paths.file);
-  state.saved = [...new Set([...state.saved, hash(normalise(input.tool_input.observation))])];
+  state.saved = [...new Set([...state.saved, hash(normalise(privacy.input.body))])];
   persist(paths.file, state);
 }

@@ -31,6 +31,8 @@ jobs:
         run: npm install --global npm@11
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter gohive typecheck && pnpm --filter gohive test
+      - name: Check advertised versions
+        run: node -e 'const p=require("./packages/cli/package.json"),v=require("./apps/web/src/lib/cli-version.json"); if(v.latest!==p.version) throw Error("Advertised latest must match the installer release");'
       - name: Check the release version
         id: release
         shell: bash
