@@ -42,6 +42,11 @@ describe("Hive Slack gate", () => {
       "stay_silent",
     ),
   );
+  it("fails closed on incomplete thread context even with an answerable confirmed cell", () => {
+    expect(
+      decideSlack({ ...facts, contextComplete: false }, signals).decision,
+    ).toBe("stay_silent");
+  });
   it("requires confirmed evidence for an unsolicited answer", () => {
     expect(
       decideSlack({ ...facts, confirmedMatch: false }, signals).decision,

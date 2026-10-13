@@ -6,3 +6,4 @@ export * from "./normalize";
 export * from "./capture-rules";
 export * from "./digest";
 export * from "./digest-schedule";
+export * from "./human-time";

@@ -83,6 +83,27 @@ function channelQuestion(question: string | undefined) {
 const requestInput = z.strictObject({text: z.string().trim().min(1).max(4000)});
 const listInput = z.strictObject({});
 
+export function isCaptureUndoInstruction(text: string) {
+  const request = text.replace(/^(?:<@[A-Z0-9]+>\s*)+/, "").trim();
+  return /^(?:(?:please|can you|could you)\s+)?(?:undo(?:\s+(?:that|this|it|(?:the\s+)?(?:last|latest)\s+(?:rule|change|action)))?|cancel\s+that)[.!?]*$/i.test(request);
+}
+
+export async function undoLatestCaptureIfSelected(ctx: SlackToolContext): Promise<SlackToolResult | null> {
+  const member = await actor(ctx);
+  const latest = await getSql()`SELECT kind, member_id FROM (
+    SELECT 'capture' AS kind, id, member_id, created_at FROM capture_rule_instructions
+    WHERE team_id = ${ctx.teamId} AND source = 'slack' AND channel_id = ${ctx.channelId} AND thread_ts = ${ctx.threadTs} AND outcome = 'saved'
+    UNION ALL
+    SELECT 'slack' AS kind, id, member_id, created_at FROM slack_tool_actions
+    WHERE team_id = ${ctx.teamId} AND channel_id = ${ctx.channelId} AND thread_ts = ${ctx.threadTs}
+  ) actions ORDER BY created_at DESC, id DESC LIMIT 1`;
+  if (latest[0]?.kind !== "capture") return null;
+  if (latest[0].member_id !== ctx.memberId)
+    return reply("Only the person who set this capture rule can undo it here.");
+  const result = await undoCaptureRuleInstruction(member, { source: "slack", channelId: ctx.channelId, threadTs: ctx.threadTs });
+  return reply(`Removed your latest capture rule in this conversation.${captureCounts(result.counts, true)}`);
+}
+
 export const captureRuleTools: SlackTool[] = [
   {
     name: "hive_set_capture_rule",
@@ -92,6 +113,8 @@ export const captureRuleTools: SlackTool[] = [
       const input = requestInput.parse(args);
       const member = await actor(ctx);
       const location = {source: "slack" as const, channelId: ctx.channelId, threadTs: ctx.threadTs};
+      if (input.text.toLowerCase() === "undo" && !isCaptureUndoInstruction(ctx.instructionText ?? input.text))
+        return reply("Which capture rule should Hive change?");
       const result = input.text.toLowerCase() === "undo"
         ? await undoCaptureRuleInstruction(member, location)
         : await setCaptureRuleFromText(member, input.text, location);

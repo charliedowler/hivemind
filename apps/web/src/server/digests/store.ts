@@ -67,7 +67,12 @@ export async function saveSchedule(
   id?: string,
   transaction?: postgres.TransactionSql,
 ) {
-  await requireAdmin(ctx);
+  if (transaction) {
+    const members =
+      await transaction`SELECT role FROM members WHERE id=${ctx.memberId} AND team_id=${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+    if (members[0]?.role !== "admin")
+      throw new HiveError("Only a team admin can do this.", 403);
+  } else await requireAdmin(ctx);
   const data = digestScheduleInput.parse(input);
   if (channel.id !== data.channelId)
     throw new HiveError("Choose a channel in your Slack connection.", 400);

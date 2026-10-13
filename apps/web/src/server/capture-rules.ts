@@ -1,3 +1,4 @@
+import type postgres from "postgres";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import {
@@ -78,8 +79,8 @@ export async function effectiveRules(ctx: HiveContext): Promise<CaptureRule[]> {
   return rows.map(ruleView);
 }
 
-export async function createCaptureRule(ctx: HiveContext, input: CaptureRuleInput): Promise<CaptureRule> {
-  return getSql().begin(tx => insertCaptureRule(tx, ctx, input));
+export async function createCaptureRule(ctx: HiveContext, input: CaptureRuleInput, transaction?: postgres.TransactionSql): Promise<CaptureRule> {
+  return transaction ? insertCaptureRule(transaction, ctx, input) : getSql().begin(tx => insertCaptureRule(tx, ctx, input));
 }
 
 export async function insertCaptureRule(tx: Parameters<typeof lockLearningWrites>[0], ctx: HiveContext, input: CaptureRuleInput): Promise<CaptureRule> {

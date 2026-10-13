@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { captureRuleInputSchema, type CaptureRule } from "@hivemind/core";
-import { captureRuleTools } from "./capture-rules";
+import { captureRuleTools, isCaptureUndoInstruction, undoLatestCaptureIfSelected } from "./capture-rules";
 import { dispatchSlackAction, slackTools, type SlackToolContext } from "./index";
 import { respondToSlack } from "../respond";
 
@@ -81,6 +81,30 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Slack direct capture instructions", () => {
+  it.each(["undo", "Please undo that", "can you undo the last rule?", "<@U123> undo", "cancel that"])("recognises an explicit undo instruction: %s", text => {
+    expect(isCaptureUndoInstruction(text)).toBe(true);
+  });
+  it.each(["What does undo do?", "Maybe undo that", "How do I undo?", "Someone said undo", "Do not undo"])("does not undo a question or tentative statement: %s", text => {
+    expect(isCaptureUndoInstruction(text)).toBe(false);
+  });
+  it("routes generic undo to the latest capture instruction for a non-admin member", async () => {
+    sql.mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]).mockResolvedValueOnce([{kind: "capture", member_id: ctx.memberId}]);
+    const tool = slackTools.find(tool => tool.name === "undo_last_action")!;
+    const result = await tool.handler({...ctx, instructionText: "undo"}, {});
+    expect(undo).toHaveBeenCalledExactlyOnceWith(member, location);
+    expect(result.text).toContain("Restored 2");
+    expect(set).not.toHaveBeenCalled();
+  });
+  it("retains a newer schedule action for the generic undo service", async () => {
+    sql.mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]).mockResolvedValueOnce([{kind: "slack", member_id: ctx.memberId}]);
+    expect(await undoLatestCaptureIfSelected(ctx)).toBeNull();
+    expect(undo).not.toHaveBeenCalled();
+  });
+  it("does not undo another member's latest capture instruction", async () => {
+    sql.mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]).mockResolvedValueOnce([{kind: "capture", member_id: "other_member"}]);
+    expect((await undoLatestCaptureIfSelected(ctx))?.text).toContain("Only the person");
+    expect(undo).not.toHaveBeenCalled();
+  });
   it("registers one set tool and one unchanged list tool with strict schemas", () => {
     expect(slackTools.filter(tool => tool.name === setTool.name)).toEqual([setTool]);
     expect(slackTools.filter(tool => tool.name === listTool.name)).toEqual([listTool]);

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import {
   digestScheduleInput,
@@ -56,7 +57,7 @@ export async function proposeScheduleFromText(
     time: "09:00",
     timezone: defaults.timezone,
   });
-  const schema = z.toJSONSchema(digestScheduleInput);
+  const schema = zodOutputFormat(digestScheduleInput).schema;
   const client = new Anthropic({ timeout: 30_000, maxRetries: 0 });
   const response = await client.messages.create({
     model: "claude-sonnet-5-5",
@@ -66,13 +67,13 @@ export async function proposeScheduleFromText(
     tools: [
       {
         name: "propose_digest",
+        strict: true,
         description: "Propose a Slack digest schedule for admin confirmation.",
         input_schema: schema as Anthropic.Tool.InputSchema,
       },
     ],
     tool_choice: {
-      type: "tool",
-      name: "propose_digest",
+      type: "auto",
       disable_parallel_tool_use: true,
     },
   });

@@ -16,6 +16,7 @@ import {
   type DigestTransport,
 } from "./runner";
 import { proposeScheduleFromText, confirmDigestProposal } from "./proposal";
+import { digestTools } from "@/slack/tools/digests";
 import type { HiveContext } from "@hivemind/core";
 const model = vi.hoisted(() => vi.fn());
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -144,8 +145,11 @@ describe.skipIf(!enabled)(
         gatherDigest(a.teamId, new Date(Date.now() - 86400000), tx),
       );
       expect(initial.learnings.map((r) => r.id)).toEqual([cell]);
-      const before = new Date();
-      await new Promise((r) => setTimeout(r, 5));
+      await getSql()`UPDATE learnings SET created_at=now()-interval '2 days' WHERE id=${cell}`;
+      await getSql()`UPDATE learning_versions SET created_at=now()-interval '2 days' WHERE learning_id=${cell} AND revision=1`;
+      const before = (
+        await getSql()`SELECT now()-interval '1 minute' AS boundary`
+      )[0]!.boundary as Date;
       await getSql()`UPDATE learnings SET lifecycle='confirmed' WHERE id=${cell}`;
       const confirmed = await getSql().begin((tx) =>
         gatherDigest(a.teamId, before, tx),
@@ -237,7 +241,7 @@ describe.skipIf(!enabled)(
       expect(model).toHaveBeenCalledTimes(1);
       expect(model.mock.calls[0]![0]).toMatchObject({
         model: "claude-sonnet-5-5",
-        tool_choice: { name: "propose_digest" },
+        tool_choice: { type: "auto" },
       });
       await expect(
         confirmDigestProposal(
@@ -271,6 +275,24 @@ describe.skipIf(!enabled)(
           timezone: input.timezone,
         }),
       ).rejects.toMatchObject({ status: 403 });
+      expect(model).toHaveBeenCalledTimes(1);
+      expect(model.mock.calls[0]![0].tools[0]).toMatchObject({ strict: true });
+      expect(
+        model.mock.calls[0]![0].tools[0].input_schema.properties.weekday,
+      ).not.toHaveProperty("minimum");
+      const result = await digestTools
+        .find((t) => t.name === "hive_schedule_digest")!
+        .handler(
+          {
+            teamId: member.teamId,
+            memberId: member.memberId,
+            isAdmin: true,
+            channelId: input.channelId,
+            threadTs: "1800000000.1",
+          },
+          { text: "every day at 9" },
+        );
+      expect(result.text).toBe("A team admin is needed to change Hive from Slack.");
       expect(model).toHaveBeenCalledTimes(1);
     });
   },
