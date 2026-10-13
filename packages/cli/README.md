@@ -30,9 +30,9 @@ Bump `version` in `packages/cli/package.json` and commit the change to `main`:
 pnpm --filter gohive version:patch
 ```
 
-The `Publish gohive` workflow checks the CLI and publishes new versions with npm trusted publishing (OIDC) and provenance. No npm token or manual publish is needed. It skips versions that already exist. You can also run the workflow manually from `main`.
+The `Publish gohive` workflow checks the CLI and publishes new versions with npm trusted publishing (OIDC). No npm token or manual publish is needed. It skips versions that already exist. You can also run the workflow manually from `main`.
 
-npm provenance requires a public source repository. Publishing with provenance remains blocked while this repository is private.
+Provenance attestations are off because npm only issues them for public source repositories; turn them on if the repository becomes public.
 
 ## Executor
 
