@@ -117,7 +117,7 @@ export async function listConflicts(
   history = false,
 ): Promise<LearningConflict[]> {
   const rows =
-    await getSql()`SELECT s.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, a.body AS older_body, a.revision AS current_older_revision, b.title AS newer_title, b.body AS newer_body, b.revision AS current_newer_revision, am.name AS older_author, bm.name AS newer_author, (SELECT count(*)::int FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId}) AS votes, EXISTS (SELECT 1 FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId} AND v.member_id = ${ctx.memberId}) AS voted, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS can_admin FROM learning_supersessions s JOIN learnings a ON a.id = s.older_id AND a.team_id = s.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = s.team_id JOIN members am ON am.id = a.member_id AND am.team_id = a.team_id JOIN members bm ON bm.id = b.member_id AND bm.team_id = b.team_id WHERE s.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${history} OR s.status = 'candidate') ORDER BY s.created_at DESC LIMIT 100`;
+    await getSql()`SELECT s.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, a.body AS older_body, a.revision AS current_older_revision, b.title AS newer_title, b.body AS newer_body, b.revision AS current_newer_revision, am.name AS older_author, bm.name AS newer_author, (SELECT count(*)::int FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId}) AS votes, EXISTS (SELECT 1 FROM learning_conflict_votes v WHERE v.edge_id = s.id AND v.team_id = ${ctx.teamId} AND v.member_id = ${ctx.memberId}) AS voted, EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional) AS can_admin FROM learning_supersessions s JOIN learnings a ON a.id = s.older_id AND a.team_id = s.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = s.team_id JOIN members am ON am.id = a.member_id JOIN members bm ON bm.id = b.member_id WHERE s.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${history} OR s.status = 'candidate') ORDER BY s.created_at DESC LIMIT 100`;
   return rows.map((row) => ({
     id: row.id,
     older: {
@@ -165,7 +165,7 @@ async function resolveConflictAction(
     getSql().begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
       const members =
-        await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
+        await tx`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
       if (!members.length) throw new HiveNotFoundError("Member not found.");
       const admin = members[0].role === "admin";
       const edges =
@@ -185,7 +185,7 @@ async function resolveConflictAction(
       }
       await tx`INSERT INTO learning_conflict_votes (edge_id, team_id, member_id) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}) ON CONFLICT DO NOTHING`;
       const votes =
-        await tx`SELECT count(*)::int AS count FROM learning_conflict_votes v JOIN members m ON m.id = v.member_id AND m.team_id = v.team_id WHERE v.edge_id = ${id} AND v.team_id = ${ctx.teamId} AND m.removed_at IS NULL`;
+        await tx`SELECT count(*)::int AS count FROM learning_conflict_votes v JOIN members m ON m.id = v.member_id JOIN hive_memberships h ON h.member_id = v.member_id AND h.team_id = v.team_id WHERE v.edge_id = ${id} AND v.team_id = ${ctx.teamId} AND m.disabled_at IS NULL AND h.removed_at IS NULL`;
       if (admin || votes[0].count >= 2) {
         await acceptSupersession(
           tx,
@@ -209,7 +209,7 @@ export async function learningVersions(
   id: string,
 ): Promise<LearningVersion[]> {
   const rows =
-    await getSql()`SELECT v.*, m.name AS author FROM learning_versions v JOIN learnings l ON l.id = v.learning_id AND l.team_id = v.team_id JOIN members m ON m.id = v.member_id AND m.team_id = v.team_id WHERE v.learning_id = ${id} AND v.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (l.member_id = ${ctx.memberId} OR (coalesce((v.content->>'capture_flagged')::boolean, false) = false AND coalesce((v.diff->'capture_flagged'->>'before')::boolean, false) = false)) ORDER BY v.revision DESC LIMIT 100`;
+    await getSql()`SELECT v.*, m.name AS author FROM learning_versions v JOIN learnings l ON l.id = v.learning_id AND l.team_id = v.team_id JOIN members m ON m.id = v.member_id WHERE v.learning_id = ${id} AND v.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (l.member_id = ${ctx.memberId} OR (coalesce((v.content->>'capture_flagged')::boolean, false) = false AND coalesce((v.diff->'capture_flagged'->>'before')::boolean, false) = false)) ORDER BY v.revision DESC LIMIT 100`;
   if (!rows.length) throw new HiveNotFoundError();
   const targets = [...new Set(rows.flatMap((row) => [
     row.content?.superseded_by,
@@ -257,7 +257,7 @@ async function editLearningAction(
 ) {
   const data = learningEditInput.parse(input);
   const candidates =
-    await getSql()`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+    await getSql()`SELECT l.*, EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
   const candidate = candidates[0];
   if (!candidate) throw new HiveNotFoundError();
   if (candidate.member_id !== ctx.memberId && !candidate.admin)
@@ -304,7 +304,7 @@ async function editLearningAction(
     getSql().begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
       const rows =
-        await tx`SELECT l.*, EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = ${ctx.teamId} AND m.role = 'admin' AND m.removed_at IS NULL) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} FOR UPDATE`;
+        await tx`SELECT l.*, EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional) AS admin FROM learnings l WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} FOR UPDATE`;
       const row = rows[0];
       if (!row) throw new HiveNotFoundError();
       if (row.member_id !== ctx.memberId && !row.admin)

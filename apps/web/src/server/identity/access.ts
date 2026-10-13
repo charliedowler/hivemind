@@ -11,18 +11,19 @@ import { getSql } from "../db/client";
 import { hashToken, newToken } from "../db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "../errors";
 import { emailDomain, isPublicDomain } from "./email-domain";
+import { agentIdIssuer } from "./owner-bindings";
 import { requireHuman } from "./agent-enrollment";
 export async function requireAdmin(ctx: HiveContext): Promise<void> {
   await requireHuman(ctx.memberId);
   const rows =
-    await getSql()`SELECT id FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND role = 'admin' AND removed_at IS NULL`;
+    await getSql()`SELECT h.member_id FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows.length)
     throw new HiveError("Only a team admin can do this.", 403);
 }
 export async function account(ctx: HiveContext) {
   const sql = getSql();
   const [members, keys] = await Promise.all([
-    sql`SELECT name, email, email_verified, role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`,
+    sql`SELECT m.name, m.email, m.email_verified, h.role FROM members m JOIN hive_memberships h ON h.member_id = m.id WHERE m.id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`,
     sql`SELECT id, prefix, label, created_at, last_used_at, revoked_at FROM api_keys WHERE team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} ORDER BY created_at DESC`,
   ]);
   if (!members[0]) throw new HiveNotFoundError("Member not found.");
@@ -46,7 +47,7 @@ export async function account(ctx: HiveContext) {
 export async function revokeKey(ctx: HiveContext, id: string): Promise<void> {
   await requireHuman(ctx.memberId);
   const rows =
-    await getSql()`UPDATE api_keys SET revoked_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} AND (member_id = ${ctx.memberId} OR EXISTS (SELECT 1 FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND role = 'admin' AND removed_at IS NULL)) RETURNING id`;
+    await getSql()`UPDATE api_keys SET revoked_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} AND (member_id = ${ctx.memberId} OR EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional)) RETURNING id`;
   if (!rows.length) throw new HiveNotFoundError("Key not found in your team.");
   await accessEvent(ctx, "key_revoked", { keyId: id }, id);
 }
@@ -62,7 +63,7 @@ export async function allowDomain(ctx: HiveContext): Promise<void> {
   await requireAdmin(ctx);
   const sql = getSql();
   const rows =
-    await sql`SELECT email FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND email_verified = true AND removed_at IS NULL`;
+    await sql`SELECT m.email FROM members m JOIN hive_memberships h ON h.member_id = m.id WHERE m.id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND m.email_verified AND h.removed_at IS NULL AND m.disabled_at IS NULL`;
   const domain = rows[0] && emailDomain(rows[0].email);
   if (!domain || isPublicDomain(domain))
     throw new HiveInputError(
@@ -86,12 +87,18 @@ export async function removeMember(
   if (id === ctx.memberId)
     throw new HiveInputError("You cannot remove your own membership.");
   await getSql().begin(async (tx) => {
-    const rows =
-      await tx`UPDATE members SET removed_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING id`;
-    if (!rows.length)
-      throw new HiveNotFoundError("Member not found in your team.");
-    await tx`UPDATE api_keys SET revoked_at = now() WHERE member_id = ${id} AND team_id = ${ctx.teamId}`;
-    await tx`DELETE FROM web_sessions WHERE member_id = ${id} AND team_id = ${ctx.teamId}`;
+    await tx`SELECT id FROM members WHERE id IN (${ctx.memberId}, ${id}) ORDER BY id FOR UPDATE`;
+    const admin = await tx`SELECT h.member_id FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.actor_type = 'human' AND NOT m.provisional AND m.disabled_at IS NULL FOR UPDATE OF h`;
+    if (!admin.length) throw new HiveError("Only a team admin can do this.", 403);
+    const teams = await tx`SELECT personal_owner_member_id FROM teams WHERE id = ${ctx.teamId}`;
+    if (teams[0]?.personal_owner_member_id === id) throw new HiveInputError("A personal hive keeps its owner.");
+    const rows = await tx`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${id} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING member_id`;
+    if (!rows.length) throw new HiveNotFoundError("Member not found in your team.");
+    const agents = await tx`UPDATE hive_memberships h SET removed_at = now() WHERE h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND h.member_id IN (SELECT a.user_id FROM auth_accounts a JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE a.provider_id = 'agentid' AND b.owner_member_id = ${id}) RETURNING member_id`;
+    const removed = [id, ...agents.map(row => String(row.member_id))];
+    await tx`UPDATE members SET removed_at = now() WHERE id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
+    await tx`UPDATE api_keys SET revoked_at = now() WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
+    await tx`DELETE FROM web_sessions WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
   });
   await accessEvent(
     ctx,
@@ -131,4 +138,12 @@ export async function moderateLearning(
     ),
   );
   scheduleKnowledge(ctx);
+}
+
+export async function revokeJoinCapability(ctx: HiveContext, capability: string): Promise<void> {
+  await requireHuman(ctx.memberId);
+  await getSql().begin(async tx => {
+    await tx`SELECT id FROM members WHERE id = ${ctx.memberId} FOR UPDATE`;
+    await tx`UPDATE hive_join_capabilities SET revoked_at = now() WHERE token_hash = ${hashToken(capability)} AND owner_member_id = ${ctx.memberId}`;
+  });
 }

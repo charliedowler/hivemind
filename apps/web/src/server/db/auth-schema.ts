@@ -8,6 +8,7 @@ export const authAccounts = pgTable("auth_accounts", {
   userId: text("user_id").notNull().references(() => members.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
+  ownerIssuer: text("owner_issuer"),
   ownerSub: text("owner_sub"),
   ownerName: text("owner_name"),
   ownerEmail: text("owner_email"),

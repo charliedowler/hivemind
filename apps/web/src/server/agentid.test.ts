@@ -71,7 +71,7 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     return { callback, location, cookie: sessionCookie };
   }
   function profile(label: string, ownerEmail?: string) {
-    return { sub: `${label}-${suffix}`, email: `${label}-${suffix}@agentmail.to`, email_verified: true, emailVerified: true, actor_type: "agent", name: label, ...(ownerEmail ? { owner_sub: `owner-${suffix}`, owner_name: "Owner fixture", owner_email: ownerEmail, owner_email_verified: true } : {}) };
+    return { sub: `${label}-${suffix}`, email: `${label}-${suffix}@agentmail.to`, email_verified: true, emailVerified: true, actor_type: "agent", name: label, ...(ownerEmail ? { owner_sub: `owner-${ownerEmail}-${suffix}`, owner_name: "Owner fixture", owner_email: ownerEmail, owner_email_verified: true } : {}) };
   }
   beforeAll(async () => {
     vi.stubEnv("AGENTID_CLIENT_ID", "agentid-fixture");
@@ -165,21 +165,18 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     memberIds.push(rows[0].id);
     expect(rows[0]).toMatchObject({ team_id: otherTeam, role: "member" });
   });
-  it("rejects other teams and ignores removed or unverified owners", async () => {
-    await getSql()`UPDATE members SET removed_at = now() WHERE id = ${ownerId}`;
+  it("rejects other teams and fails closed for disabled or unverified owners", async () => {
+    await getSql()`UPDATE members SET disabled_at = now() WHERE id = ${ownerId}`;
     const result = await signIn(profile("choices", `owner-${suffix}@company.test`));
-    expect(result.location).toBe("/app/join");
-    const rows = await getSql()`SELECT id, team_id FROM members WHERE email = ${`choices-${suffix}@agentmail.to`}`;
-    const id = rows[0].id; memberIds.push(id);
-    expect(rows[0].team_id).toBeNull();
-    expect(await ownerTeams(id)).toHaveLength(0);
-    await expect(enrollAgent(id, undefined, "team_not_owned")).rejects.toThrow(/not a member/);
-    await getSql()`UPDATE members SET removed_at = NULL WHERE id = ${ownerId}`;
-    expect(await ownerTeams(id)).toHaveLength(1);
+    expect(result.location).toContain("unable_to_create_user");
+    expect(await ownerTeams(agentId)).toHaveLength(0);
+    await expect(enrollAgent(agentId, undefined, "team_not_owned")).rejects.toThrow(/not a member/);
+    await getSql()`UPDATE members SET disabled_at = NULL WHERE id = ${ownerId}`;
+    expect(await ownerTeams(agentId)).toHaveLength(1);
     await getSql()`UPDATE members SET email_verified = false WHERE id = ${ownerId}`;
-    expect(await ownerTeams(id)).toHaveLength(0);
+    expect(await ownerTeams(agentId)).toHaveLength(0);
     await getSql()`UPDATE members SET email_verified = true WHERE id = ${ownerId}`;
-    expect((await enrollAgent(id, undefined, ownerTeam))?.teamId).toBe(ownerTeam);
+    expect((await enrollAgent(agentId, undefined, ownerTeam))?.teamId).toBe(ownerTeam);
   });
   it("rejects unverified owner claims and blocks agent management and domain joins", async () => {
     const nonAgent = await signIn({ ...profile("wrong-actor", `owner-${suffix}@company.test`), actor_type: "human" });
@@ -193,23 +190,25 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     await expect(getSql()`UPDATE members SET role = 'admin' WHERE id = ${agentId}`).rejects.toMatchObject({ code: "23514" });
     await expect(storeAgentOwner({ id: "wrong", userId: agentId, providerId: "agentid", accountId: "wrong", accessToken: "fixture" })).rejects.toThrow();
   });
-  it("creates a team as a member and sends the owner a separate admin invite", async () => {
+  it("provisions a personal hive and refuses agent-created organisations", async () => {
     const result = await signIn(profile("creator", `new-owner-${suffix}@company.test`));
     expect(result.location).toBe("/app/join");
-    const rows = await getSql()`SELECT id FROM members WHERE email = ${`creator-${suffix}@agentmail.to`}`;
+    const rows = await getSql()`SELECT id, team_id FROM members WHERE email = ${`creator-${suffix}@agentmail.to`}`;
     const id = rows[0].id; memberIds.push(id);
+    const human = (await getSql()`SELECT id, email_verified, provisional FROM members WHERE email = ${`new-owner-${suffix}@company.test`}`)[0];
+    memberIds.push(human.id);
+    expect(human).toMatchObject({ email_verified: false, provisional: true });
+    expect((await getSql()`SELECT personal_owner_member_id FROM teams WHERE id = ${rows[0].team_id}`)[0].personal_owner_member_id).toBe(human.id);
     await expect(enrollMember(id, { intent: "domain" })).rejects.toThrow(/Agents join/);
-    const ctx = (await enrollMember(id, { intent: "create", teamName: "Agent created team" }))!;
-    teamIds.push(ctx.teamId);
-    expect((await getSql()`SELECT role FROM members WHERE id = ${id}`)[0].role).toBe("member");
-    expect(await agentEnrollmentNotice(id)).toContain("Your owner was invited");
-    const invite = sentInvites.at(-1)!;
-    expect(invite.to).toEqual([`new-owner-${suffix}@company.test`]);
-    const url = String(invite.text).match(/http:\/\/localhost:3000\/app\/login\?invite=\S+/)![0];
-    const human = newId("mem"); memberIds.push(human);
-    await getSql()`INSERT INTO members (id, name, email, email_verified) VALUES (${human}, 'New owner', ${`new-owner-${suffix}@company.test`}, true)`;
-    expect((await enrollMember(human, { intent: "invite", inviteCode: url }))?.teamId).toBe(ctx.teamId);
-    expect((await getSql()`SELECT role, actor_type FROM members WHERE id = ${human}`)[0]).toMatchObject({ role: "admin", actor_type: "human" });
+    await expect(enrollMember(id, { intent: "create", teamName: "Agent created team" })).rejects.toThrow(/human/);
+    expect(sentInvites).toHaveLength(0);
+    expect((await getSql()`SELECT role FROM hive_memberships WHERE member_id = ${id}`)[0].role).toBe("member");
+    expect(await agentEnrollmentNotice(id)).toContain("Owner fixture");
+  });
+  it("fails closed when the same verified owner subject changes its email", async () => {
+    const result = await signIn({ ...profile("changed-owner", `changed-${suffix}@company.test`), owner_sub: `owner-owner-${suffix}@company.test-${suffix}` });
+    expect(result.location).toContain("unable_to_create_user");
+    expect((await getSql()`SELECT email, email_verified FROM members WHERE id = ${ownerId}`)[0]).toMatchObject({ email: `owner-${suffix}@company.test`, email_verified: true });
   });
   it("uses the agent session through MCP consent, PKCE and a hive_search tool call", async () => {
     const registration = await request("/api/auth/oauth2/register", { client_name: "Agent forager", application_type: "native", redirect_uris: [`${baseUrl}/callback`], token_endpoint_auth_method: "none", grant_types: ["authorization_code"], response_types: ["code"], scope: "hive" });

@@ -176,7 +176,10 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     await getSql()`INSERT INTO members (id, name, email, email_verified) VALUES (${publicMember}, 'Invite fixture', ${`${suffix}@gmail.com`}, true)`;
     await expect(enrollMember(publicMember, { intent: "domain" })).rejects.toThrow(/invite/i);
     expect((await enrollMember(publicMember, { intent: "invite", inviteCode: `${baseUrl}/app/login?invite=${invite}` }))?.teamId).toBe(teamB);
-    expect((await enrollMember(publicMember, { intent: "create", teamName: "Cannot change hive" }))?.teamId).toBe(teamB);
+    const second = await enrollMember(publicMember, { intent: "create", teamName: "Another hive" });
+    teamIds.push(second!.teamId);
+    expect(second?.teamId).not.toBe(teamB);
+    expect((await getSql()`SELECT team_id FROM hive_memberships WHERE member_id = ${publicMember} AND removed_at IS NULL`)).toHaveLength(3);
   });
   it("upgrades real legacy rows without replacing their identities, roles, keys or session hashes", async () => {
     const sql = getSql();

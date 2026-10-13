@@ -8,6 +8,9 @@ import {
   real,
   boolean,
   primaryKey,
+  uniqueIndex,
+  foreignKey,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 const createdAt = () =>
@@ -20,8 +23,12 @@ export const teams = pgTable("teams", {
   inviteExpiresAt: timestamp("invite_expires_at", {
     withTimezone: true,
   }).notNull(),
+  personalOwnerMemberId: text("personal_owner_member_id").references((): AnyPgColumn => members.id, { onDelete: "cascade" }),
+  joinPaused: boolean("join_paused").notNull().default(true),
+  joinDomainPolicy: text("join_domain_policy").notNull().default("verified_domain"),
+  joinGeneration: integer("join_generation").notNull().default(0),
   createdAt: createdAt(),
-});
+}, table => [uniqueIndex("teams_personal_owner_idx").on(table.personalOwnerMemberId)]);
 
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
@@ -32,12 +39,52 @@ export const members = pgTable("members", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   image: text("image"),
   hiveRegistration: text("hive_registration"),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  provisional: boolean("provisional").notNull().default(false),
   actorType: text("actor_type").notNull().default("human"),
   email: text("email").unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   role: text("role").notNull().default("member"),
   removedAt: timestamp("removed_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+});
+
+export const hiveMemberships = pgTable("hive_memberships", {
+  memberId: text("member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+  teamId: text("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"),
+  ownerMemberId: text("owner_member_id").references(() => members.id, { onDelete: "cascade" }),
+  joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+}, table => [primaryKey({ columns: [table.memberId, table.teamId] }), uniqueIndex("hive_memberships_team_member_idx").on(table.teamId, table.memberId)]);
+
+export const agentOwnerBindings = pgTable("agent_owner_bindings", {
+  issuer: text("issuer").notNull(),
+  ownerSub: text("owner_sub").notNull(),
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+  verifiedContactEmail: text("verified_contact_email").notNull(),
+  verifiedContactName: text("verified_contact_name"),
+  createdAt: createdAt(),
+}, table => [primaryKey({ columns: [table.issuer, table.ownerSub] })]);
+
+export const hiveJoinPhrases = pgTable("hive_join_phrases", {
+  phrase: text("phrase").primaryKey(),
+  teamId: text("team_id").notNull().references(() => teams.id, { onDelete: "restrict" }),
+  generation: integer("generation").notNull(),
+  createdBy: text("created_by").notNull().references(() => members.id),
+  createdAt: createdAt(),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+}, table => [uniqueIndex("hive_join_phrases_team_generation_idx").on(table.teamId, table.generation)]);
+
+export const hiveJoinCapabilities = pgTable("hive_join_capabilities", {
+  tokenHash: text("token_hash").primaryKey(),
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+  agentMemberId: text("agent_member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+  teamId: text("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  generation: integer("generation").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
 });
 
 export const apiKeys = pgTable("api_keys", {
@@ -70,9 +117,10 @@ export const webSessions = pgTable("web_sessions", {
   userAgent: text("user_agent"),
   createdAt: createdAt(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-});
+}, table => [foreignKey({ columns: [table.memberId, table.teamId], foreignColumns: [hiveMemberships.memberId, hiveMemberships.teamId] })]);
 
 export const learnings = pgTable("learnings", {
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id),
   id: text("id").primaryKey(),
   teamId: text("team_id")
     .notNull()

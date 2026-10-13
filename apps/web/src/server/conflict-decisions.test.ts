@@ -315,7 +315,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       });
       await expect(
         reverseDecision(a, record.id, "Unsafe reversal."),
-      ).rejects.toThrow("changes");
+      ).rejects.toThrow("changed");
       expect((await POST(new Request("https://hive.test/api/app/conflicts", { method: "POST", body: JSON.stringify({ id: record.id, action: "reverse" }) }))).status).toBe(409);
     });
     it("records Slack reversal and its inverse atomically without replaying the mutation", async () => {
@@ -328,7 +328,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(result.text).toBe("Cell change reversed.");
       expect((await getLearning(a, old.id))?.lifecycle).toBe("fresh");
       expect(await runReversibleAction(context, "hive_reverse_decision", async () => { throw new Error("A replay must not mutate"); })).toEqual(result);
-      expect(await undoLastAction(context)).toEqual({ react: "white_check_mark", text: "Cell change reapplied." });
+      expect(await undoLastAction(context)).toEqual({ react: "white_check_mark", text: "Decision reapplied." });
       expect((await getLearning(a, old.id))?.lifecycle).toBe("superseded");
       expect((await undoLastAction(context)).text).toContain("already undone");
     });

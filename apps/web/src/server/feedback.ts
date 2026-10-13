@@ -274,7 +274,7 @@ export async function feedbackHistory(
 ): Promise<FeedbackHistoryEntry[]> {
   await scopedCell(ctx, id);
   const rows =
-    await getSql()`SELECT r.*, m.name AS actor, EXISTS (SELECT 1 FROM feedback f WHERE f.receipt_id = r.id AND f.team_id = r.team_id AND f.member_id = r.member_id AND f.learning_id = r.learning_id) AS current FROM feedback_receipts r JOIN learnings l ON l.id = r.learning_id AND l.team_id = r.team_id JOIN members m ON m.id = r.member_id AND m.team_id = r.team_id WHERE r.learning_id = ${id} AND r.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT r.capture_flagged OR r.member_id = ${ctx.memberId}) ORDER BY r.created_at DESC, r.id DESC LIMIT 100`;
+    await getSql()`SELECT r.*, m.name AS actor, EXISTS (SELECT 1 FROM feedback f WHERE f.receipt_id = r.id AND f.team_id = r.team_id AND f.member_id = r.member_id AND f.learning_id = r.learning_id) AS current FROM feedback_receipts r JOIN learnings l ON l.id = r.learning_id AND l.team_id = r.team_id JOIN members m ON m.id = r.member_id WHERE r.learning_id = ${id} AND r.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT r.capture_flagged OR r.member_id = ${ctx.memberId}) ORDER BY r.created_at DESC, r.id DESC LIMIT 100`;
   return rows.map((row) => ({
     receipt: row.id,
     actor: row.actor,

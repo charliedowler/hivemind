@@ -30,7 +30,7 @@ export async function conflictCell(
   id: string,
 ): Promise<ConflictCell | null> {
   const rows =
-    await getSql()`SELECT l.*, m.name AS author FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+    await getSql()`SELECT l.*, m.name AS author FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
   if (!rows.length) return null;
   const row = rows[0];
   const evidence = row.capture_redacted
@@ -292,7 +292,7 @@ export async function updateDecisionReason(
   reason: string,
 ) {
   const rows =
-    await getSql()`UPDATE conflict_decisions d SET reason = ${reason} FROM learning_supersessions s, learnings a, learnings b WHERE d.id = ${id} AND d.team_id = ${ctx.teamId} AND d.pushed_by = ${ctx.memberId} AND d.model = 'admin' AND d.decision = 'reversed' AND s.id = d.edge_id AND s.team_id = d.team_id AND a.id = s.older_id AND a.team_id = d.team_id AND b.id = s.newer_id AND b.team_id = d.team_id AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND EXISTS (SELECT 1 FROM members m WHERE m.id = ${ctx.memberId} AND m.team_id = d.team_id AND m.role = 'admin' AND m.removed_at IS NULL) RETURNING d.id`;
+    await getSql()`UPDATE conflict_decisions d SET reason = ${reason} FROM learning_supersessions s, learnings a, learnings b WHERE d.id = ${id} AND d.team_id = ${ctx.teamId} AND d.pushed_by = ${ctx.memberId} AND d.model = 'admin' AND d.decision = 'reversed' AND s.id = d.edge_id AND s.team_id = d.team_id AND a.id = s.older_id AND a.team_id = d.team_id AND b.id = s.newer_id AND b.team_id = d.team_id AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = d.team_id AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional) RETURNING d.id`;
   if (!rows.length)
     throw new HiveNotFoundError("Reversal not found or not editable.");
   return { id, reason };
@@ -309,7 +309,7 @@ export async function listDecisions(
   } = {},
 ) {
   const rows =
-    await getSql()`SELECT d.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, b.title AS newer_title, a.lifecycle AS older_lifecycle, b.lifecycle AS newer_lifecycle, a.repo, m.name AS author, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AS can_edit_reason, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AND d.model <> 'legacy' AND d.decision <> 'undecided' AND jsonb_array_length(d.before_state) = 2 AND jsonb_array_length(d.after_state) = 2 AND NOT EXISTS (SELECT 1 FROM conflict_decisions undo WHERE undo.reverses_id = d.id AND undo.team_id = d.team_id) AS can_reverse, s.older_id, s.newer_id FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings a ON a.id = s.older_id AND a.team_id = d.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = d.team_id JOIN members m ON m.id = d.pushed_by AND m.team_id = d.team_id WHERE d.team_id = ${ctx.teamId} AND (${filters.id ?? null}::text IS NULL OR d.id = ${filters.id ?? null}) AND (${filters.cellId ?? null}::text IS NULL OR s.older_id = ${filters.cellId ?? null} OR s.newer_id = ${filters.cellId ?? null}) AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${filters.decision ?? null}::text IS NULL OR d.decision = ${filters.decision ?? null}) AND (${filters.repo ?? null}::text IS NULL OR a.repo = ${filters.repo ?? null}) AND (${filters.search ?? ""} = '' OR concat_ws(' ', a.title, b.title, CASE WHEN a.capture_redacted OR b.capture_redacted THEN '' ELSE d.reason END, m.name) ILIKE ${"%" + (filters.search ?? "").replace(/[\\%_]/g, "\\$&") + "%"}) ORDER BY d.created_at DESC, d.id DESC LIMIT 100`;
+    await getSql()`SELECT d.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, b.title AS newer_title, a.lifecycle AS older_lifecycle, b.lifecycle AS newer_lifecycle, a.repo, m.name AS author, EXISTS (SELECT 1 FROM hive_memberships h JOIN members admin ON admin.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = d.team_id AND h.role = 'admin' AND h.removed_at IS NULL AND admin.disabled_at IS NULL AND NOT admin.provisional) AS can_edit_reason, EXISTS (SELECT 1 FROM hive_memberships h JOIN members admin ON admin.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = d.team_id AND h.role = 'admin' AND h.removed_at IS NULL AND admin.disabled_at IS NULL AND NOT admin.provisional) AND d.model <> 'legacy' AND d.decision <> 'undecided' AND jsonb_array_length(d.before_state) = 2 AND jsonb_array_length(d.after_state) = 2 AND NOT EXISTS (SELECT 1 FROM conflict_decisions undo WHERE undo.reverses_id = d.id AND undo.team_id = d.team_id) AS can_reverse, s.older_id, s.newer_id FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings a ON a.id = s.older_id AND a.team_id = d.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = d.team_id JOIN members m ON m.id = d.pushed_by WHERE d.team_id = ${ctx.teamId} AND (${filters.id ?? null}::text IS NULL OR d.id = ${filters.id ?? null}) AND (${filters.cellId ?? null}::text IS NULL OR s.older_id = ${filters.cellId ?? null} OR s.newer_id = ${filters.cellId ?? null}) AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${filters.decision ?? null}::text IS NULL OR d.decision = ${filters.decision ?? null}) AND (${filters.repo ?? null}::text IS NULL OR a.repo = ${filters.repo ?? null}) AND (${filters.search ?? ""} = '' OR concat_ws(' ', a.title, b.title, CASE WHEN a.capture_redacted OR b.capture_redacted THEN '' ELSE d.reason END, m.name) ILIKE ${"%" + (filters.search ?? "").replace(/[\\%_]/g, "\\$&") + "%"}) ORDER BY d.created_at DESC, d.id DESC LIMIT 100`;
   return rows.map((row) => ({
     id: String(row.id),
     edgeId: String(row.edge_id),
@@ -346,7 +346,7 @@ export async function reverseDecision(
   const change = async (tx: LearningTransaction) => {
     await lockLearningWrites(tx, ctx);
     const admin =
-      await tx`SELECT id FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND role = 'admin' AND removed_at IS NULL`;
+      await tx`SELECT h.member_id AS id FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
     if (!admin.length)
       throw new HiveError("A team admin is needed to reverse a decision.", 403);
     const decisions =

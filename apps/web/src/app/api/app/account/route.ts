@@ -16,7 +16,7 @@ export async function PATCH(request: Request) {
           .max(80, "Keep your name to 80 characters or fewer."),
       })
       .parse(await readJson(request));
-    await getSql()`UPDATE members SET name = ${name} WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
+    await getSql()`UPDATE members SET name = ${name} WHERE id = ${ctx.memberId} AND disabled_at IS NULL AND NOT provisional AND EXISTS (SELECT 1 FROM hive_memberships WHERE member_id = members.id AND team_id = ${ctx.teamId} AND removed_at IS NULL)`;
     return Response.json({ ok: true });
   });
 }

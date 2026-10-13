@@ -233,7 +233,7 @@ export async function ensureKnowledge(
         manifest: state.manifest as Manifest,
       };
     const rows =
-      await sql`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.capture_flagged = false ORDER BY l.id LIMIT 10001`;
+      await sql`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.team_id = ${ctx.teamId} AND l.capture_flagged = false ORDER BY l.id LIMIT 10001`;
     if (rows.length > 10000)
       throw new HiveUnavailableError(
         "This hive needs a streamed rebuild before it can publish more than 10000 cells.",
@@ -310,7 +310,7 @@ export function browseKnowledge(ctx: HiveContext, path = "") {
 async function contextKnowledge(ctx: HiveContext) {
   const { revision } = await ensureKnowledge(ctx);
   const rows =
-    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} ORDER BY l.id LIMIT 10001`;
+    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} ORDER BY l.id LIMIT 10001`;
   if (rows.length > 10000)
     throw new HiveUnavailableError(
       "This hive needs a streamed rebuild before it can read more than 10000 cells.",
@@ -436,7 +436,7 @@ export async function downloadKnowledge(token: string): Promise<Buffer> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token))
     throw new HiveNotFoundError("Archive not found or expired.");
   const rows =
-    await getSql()`SELECT s.object_key FROM knowledge_snapshots s JOIN members m ON m.id = s.member_id AND m.team_id = s.team_id WHERE s.token_hash = ${digest(token)} AND s.expires_at > now() AND m.removed_at IS NULL`;
+    await getSql()`SELECT s.object_key FROM knowledge_snapshots s JOIN members m ON m.id = s.member_id JOIN hive_memberships h ON h.member_id = s.member_id AND h.team_id = s.team_id WHERE s.token_hash = ${digest(token)} AND s.expires_at > now() AND m.disabled_at IS NULL AND h.removed_at IS NULL`;
   if (!rows.length)
     throw new HiveNotFoundError("Archive not found or expired.");
   return readPrivateObject(rows[0].object_key);

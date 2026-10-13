@@ -241,7 +241,7 @@ async function pushLearningAction(
     sql.begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
       if (captureKey) {
-        const replay = await tx`SELECT l.*, m.name AS author_name, p.id AS push_id FROM learning_pushes p JOIN learnings l ON l.id = p.learning_id AND l.team_id = p.team_id JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE p.team_id = ${ctx.teamId} AND p.member_id = ${ctx.memberId} AND p.capture_key = ${captureKey} AND ${learningVisibleSql(ctx)}`;
+        const replay = await tx`SELECT l.*, m.name AS author_name, p.id AS push_id FROM learning_pushes p JOIN learnings l ON l.id = p.learning_id AND l.team_id = p.team_id JOIN members m ON m.id = l.member_id WHERE p.team_id = ${ctx.teamId} AND p.member_id = ${ctx.memberId} AND p.capture_key = ${captureKey} AND ${learningVisibleSql(ctx)}`;
         if (replay[0]) {
           const learning = view(replay[0], ctx);
           return {id: learning.id, pushId: replay[0].push_id as string, merged: true, replayed: true, pushCount: learning.pushCount, redactions: 0, learning};
@@ -363,7 +363,7 @@ async function pushLearningAction(
         }
       }
       const rows =
-        await tx`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+        await tx`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
       const learning = view(rows[0], ctx);
       return {
         id,
@@ -459,9 +459,9 @@ async function searchLearningsAction(
   const excludeFlagged = options.excludeFlagged ?? ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
   const filter = sql`l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND (${!options.publicOnly} OR l.source <> 'slack' OR EXISTS(SELECT 1 FROM slack_channels sc WHERE sc.team_id=l.team_id AND sc.private=false AND sc.bot_member=true AND l.session_ref LIKE '%' || '/archives/' || sc.channel_id || '/%'))`;
   const ftsRows =
-    await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
+    await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
-    ? await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
+    ? await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM learnings l JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
     : [];
   const candidates = new Map<
     string,
@@ -485,7 +485,7 @@ async function searchLearningsAction(
       prefixUsed = true;
       const prefix = words.map((word) => `${word}:*`).join(" & ");
       const rows =
-        await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
+        await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM learnings l JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
       for (const row of rows)
         candidates.set(row.id, {
           ...view(row, ctx),
@@ -552,7 +552,7 @@ async function askHiveAction(
       : null;
   if (friction && friction.count) {
     const cells =
-      await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
+      await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
     const result = appendLifecycleContext(
       frictionAnswer(friction),
       await answerLifecycleContext(ctx, cells.map(row => view(row, ctx))),
@@ -701,7 +701,7 @@ async function recentLearningsAction(
   const repo = normalizeRepo(data.repo);
   const excludeFlagged = ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
   const rows =
-    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
+    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
   await recordEvent({
     name: "recent.performed",
     properties: { resultCount: rows.length, kind: data.kind },
@@ -717,36 +717,36 @@ export async function getLearning(
 ): Promise<LearningView | null> {
   if (id.startsWith("slk_")) return getSlackMessage(ctx, id);
   const rows =
-    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
+    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)}`;
   return rows[0] ? view(rows[0], ctx) : null;
 }
 
 export async function listMembers(ctx: HiveContext): Promise<MemberView[]> {
   const rows =
-    await getSql()`SELECT m.*, count(l.id)::int AS learning_count FROM members m LEFT JOIN learnings l ON l.member_id = m.id AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} WHERE m.team_id = ${ctx.teamId} AND m.removed_at IS NULL GROUP BY m.id ORDER BY m.created_at`;
+    await getSql()`SELECT m.*, h.role AS membership_role, h.joined_at, count(l.id)::int AS learning_count FROM members m JOIN hive_memberships h ON h.member_id = m.id LEFT JOIN learnings l ON l.member_id = m.id AND l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} WHERE h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL GROUP BY m.id, h.role, h.joined_at ORDER BY h.joined_at`;
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
-    joinedAt: row.created_at.toISOString(),
+    joinedAt: row.joined_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
     learningCount: Number(row.learning_count),
     email: row.email,
     emailVerified: row.email_verified,
-    role: row.role,
+    role: row.membership_role,
   }));
 }
 
 export async function teamOverview(ctx: HiveContext): Promise<TeamOverview> {
   const sql = getSql();
   const rows =
-    await sql`SELECT name, invite_expires_at, (SELECT count(*)::int FROM learnings WHERE team_id = ${ctx.teamId} AND (NOT capture_flagged OR member_id = ${ctx.memberId})) AS learning_count, (SELECT count(*)::int FROM members WHERE team_id = ${ctx.teamId} AND removed_at IS NULL) AS member_count FROM teams WHERE id = ${ctx.teamId}`;
+    await sql`SELECT name, invite_expires_at, (SELECT count(*)::int FROM learnings WHERE team_id = ${ctx.teamId} AND (NOT capture_flagged OR member_id = ${ctx.memberId})) AS learning_count, (SELECT count(*)::int FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL) AS member_count FROM teams WHERE id = ${ctx.teamId}`;
   if (!rows[0]) throw new HiveNotFoundError("Team not found.");
   const repos =
     await sql`SELECT DISTINCT repo FROM learnings WHERE team_id = ${ctx.teamId} AND (NOT capture_flagged OR member_id = ${ctx.memberId}) AND repo IS NOT NULL ORDER BY repo`;
   return {
     teamName: rows[0].name,
     role: (
-      await sql`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`
+      await sql`SELECT role FROM hive_memberships WHERE member_id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`
     )[0].role,
     domains: (
       await sql`SELECT domain FROM team_domains WHERE team_id = ${ctx.teamId} ORDER BY domain`

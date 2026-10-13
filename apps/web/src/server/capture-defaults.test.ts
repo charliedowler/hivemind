@@ -29,7 +29,7 @@ describe.skipIf(!enabled)("default capture exclusions", () => {
     const rules = await listCaptureRules(ctx);
     expect(rules).toHaveLength(3);
     for (const item of captureDefaults) expect(rules).toContainEqual(expect.objectContaining({id: defaultCaptureRuleId(ctx.teamId, item.category), scope: "team", kind: "content_category", category: item.category, action: "drop", enabled: true, createdBy: ctx.memberId}));
-    await enrollMember(ctx.memberId, {intent: "create", teamName: "Ignored duplicate"});
+    await enrollMember(ctx.memberId);
     expect(await listCaptureRules(ctx)).toHaveLength(3);
   });
   it("backfills existing teams once and preserves an owner's disabled choice on replay", async () => {

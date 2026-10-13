@@ -16,6 +16,28 @@ export type HiveContext = {
   memberName: string;
 };
 
+export type HiveMembership = {
+  memberId: string;
+  teamId: string;
+  role: "member" | "admin";
+  ownerMemberId: string | null;
+  joinedAt: string;
+  removedAt: string | null;
+};
+
+export type AgentOwnerBinding = {
+  issuer: string;
+  ownerSub: string;
+  ownerMemberId: string;
+  verifiedContactEmail: string;
+};
+
+export type HiveJoinPhrase = {
+  phrase: string;
+  generation: number;
+  paused: boolean;
+};
+
 export type VoteCounts = { up: number; down: number; outdated: number };
 
 export type JevAnswer =

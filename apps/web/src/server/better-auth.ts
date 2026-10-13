@@ -41,21 +41,31 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
     user: {
       validateUserInfo: async ({ user, source }) => {
         const provider = source.oauth?.providerId;
-        const rows = await getSql()`SELECT m.id, m.actor_type FROM members m WHERE m.id = ${user.id ?? ""} OR lower(m.email) = ${(user.email ?? "").toLowerCase()}`;
+        const rows = await getSql()`SELECT m.id, m.actor_type, m.provisional, m.email_verified FROM members m WHERE m.id = ${user.id ?? ""} OR lower(m.email) = ${(user.email ?? "").toLowerCase()}`;
         if (provider === "agentid") {
           const claims = agentClaims.safeParse(source.oauth?.profile);
           if (!claims.success) return { error: "invalid_agent_identity", errorDescription: "AgentID must verify this agent." };
-          if (process.env.AGENTID_CLIENT_SECRET && (!claims.data.owner_email || claims.data.owner_email_verified !== true)) return { error: "owner_not_verified", errorDescription: "AgentID must verify the owner email." };
+          if (process.env.AGENTID_CLIENT_SECRET && (!claims.data.owner_sub || !claims.data.owner_email || claims.data.owner_email_verified !== true)) return { error: "owner_not_verified", errorDescription: "AgentID must verify the owner email." };
           if (rows.length) {
             const accounts = await getSql()`SELECT user_id FROM auth_accounts WHERE provider_id = 'agentid' AND account_id = ${claims.data.sub}`;
             if (!accounts[0] || rows.some(row => row.id !== accounts[0].user_id || row.actor_type !== "agent")) return { error: "agent_account_conflict", errorDescription: "This inbox belongs to a different identity. Use a separate agent inbox." };
           }
-        } else if (rows.some(row => row.actor_type === "agent")) return { error: "agentid_required", errorDescription: "Sign in as an agent with AgentID." };
+        } else {
+          if (rows.some(row => row.actor_type === "agent")) return { error: "agentid_required", errorDescription: "Sign in as an agent with AgentID." };
+          if (source.action === "link-account" && rows.some(row => !row.email_verified && !row.provisional)) return { error: "account_not_linked", errorDescription: "Verify the existing human account before linking another sign-in." };
+          if (rows.some(row => row.provisional)) {
+            const passwords = await getSql()`SELECT id FROM auth_accounts WHERE user_id IN ${getSql()(rows.map(row => String(row.id)))} AND password IS NOT NULL`;
+            if (passwords.length) return { error: "account_not_linked", errorDescription: "Sign in with the existing human account." };
+          }
+          if (rows.some(row => row.provisional) && (!user.emailVerified || !source.oauth || !["google", "slack"].includes(provider ?? ""))) return { error: "human_proof_required", errorDescription: "Verify this email with a human sign-in provider." };
+        }
       },
       additionalFields: {
         actorType: { type: "string", required: false, defaultValue: "human", input: false, returned: false },
         teamId: { type: "string", required: false, input: false, returned: false },
         role: { type: "string", required: false, defaultValue: "member", input: false, returned: false },
+        provisional: { type: "boolean", required: false, defaultValue: false, input: false, returned: false },
+        disabledAt: { type: "date", required: false, input: false, returned: false },
         removedAt: { type: "date", required: false, input: false, returned: false },
         hiveRegistration: { type: "string", required: false, returned: false },
       },
@@ -72,7 +82,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
     emailAndPassword: { enabled: true, requireEmailVerification: true, revokeSessionsOnPasswordReset: true },
     emailVerification: { sendOnSignUp: true, autoSignInAfterVerification: false },
     socialProviders,
-    account: { accountLinking: { enabled: true, trustedProviders: [], allowDifferentEmails: false } },
+    account: { accountLinking: { enabled: true, trustedProviders: [], allowDifferentEmails: false, requireLocalEmailVerified: false } },
     rateLimit: { enabled: true, storage: "database", window: 60, max: 60 },
     disabledPaths: ["/token", "/sign-in/email-otp", "/update-user", "/delete-user", "/change-email"],
     hooks: {
@@ -131,15 +141,15 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
         update: { after: async (account) => {
           if (account.providerId === "agentid") {
             const state = await getOAuthState<{ hiveRegistration?: unknown }>();
-            if (state?.hiveRegistration) await getSql()`UPDATE members SET hive_registration = ${registrationForStorage(state.hiveRegistration)} WHERE id = ${account.userId} AND team_id IS NULL AND actor_type = 'agent'`;
+            if (state?.hiveRegistration) await getSql()`UPDATE members SET hive_registration = ${registrationForStorage(state.hiveRegistration)} WHERE id = ${account.userId} AND actor_type = 'agent'`;
           }
           await storeAgentOwner(account);
         } },
       },
       session: { create: { before: async (session) => {
-        const rows = await getSql()`SELECT team_id, removed_at FROM members WHERE id = ${session.userId}`;
-        if (!rows[0] || rows[0].removed_at) throw new APIError("FORBIDDEN", { message: "This membership is no longer active." });
-        return { data: { ...session, tokenHash: hashToken(session.token), teamId: rows[0].team_id } };
+        const rows = await getSql()`SELECT disabled_at, provisional FROM members WHERE id = ${session.userId}`;
+        if (!rows[0] || rows[0].disabled_at || rows[0].provisional) throw new APIError("FORBIDDEN", { message: "This membership is no longer active." });
+        return { data: { ...session, tokenHash: hashToken(session.token), teamId: (await memberContext(session.userId))?.teamId ?? null } };
       }, after: async (session) => { await authAccess({ memberId: session.userId }, "login", session.id); } },
         delete: { after: async (session, ctx) => {
           if (ctx?.path === "/sign-out") await authAccess({ memberId: session.userId }, "logout", session.id);

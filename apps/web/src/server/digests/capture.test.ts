@@ -30,7 +30,7 @@ it.skipIf(!url)(
             "slack_digest_receipts",
           ])
             await tx`CREATE TABLE ${tx(table)} (LIKE ${tx("public." + table)} INCLUDING ALL)`;
-          await tx`ALTER TABLE learnings DROP COLUMN IF EXISTS capture_flagged`;
+          await tx`ALTER TABLE learnings DROP COLUMN IF EXISTS owner_member_id, DROP COLUMN IF EXISTS capture_flagged`;
           const team = newId("team"),
             member = newId("mem");
           await tx`INSERT INTO members(id,team_id,name)VALUES(${member},${team},'Fixture contributor')`;

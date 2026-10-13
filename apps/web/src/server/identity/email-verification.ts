@@ -14,6 +14,8 @@ import { HiveError, HiveInputError } from "../errors";
 import { deliverCode, emailConfigured } from "./email";
 import { hashCode, verifyCode } from "./passwords";
 import { emailDomain, isPublicDomain } from "./email-domain";
+import { claimProvisionalHuman, followOwnerMemberships } from "./owner-bindings";
+import { ownerInviteRole } from "./agent-enrollment";
 import { rateLimit } from "./rate-limit";
 export const emailRequest = z.object({
   email: z
@@ -151,7 +153,7 @@ export async function completeEmailCode(
       if (conflict.length)
         return { error: "This email already belongs to a member." };
       const updated =
-        await tx`UPDATE members SET email = ${row.email}, email_verified = true WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING id`;
+        await tx`UPDATE members SET email = ${row.email}, email_verified = true WHERE id = ${ctx.memberId} AND disabled_at IS NULL AND actor_type = 'human' AND NOT provisional AND EXISTS (SELECT 1 FROM hive_memberships WHERE member_id = members.id AND team_id = ${ctx.teamId} AND removed_at IS NULL) RETURNING id`;
       if (!updated.length) return { error: "Member not found." };
       await tx`UPDATE email_verifications SET consumed_at = now() WHERE id = ${row.id} AND token_hash = ${hashToken(token)}`;
       return {
@@ -165,8 +167,8 @@ export async function completeEmailCode(
       };
     }
     const existing =
-      await tx`SELECT id FROM members WHERE email = ${row.email}`;
-    if (existing.length)
+      await tx`SELECT * FROM members WHERE email = ${row.email} FOR UPDATE`;
+    if (existing.length && (!existing[0].provisional || existing[0].actor_type !== "human" || existing[0].disabled_at))
       return {
         error:
           "This email already belongs to a member. Sign in or set your password with an email code.",
@@ -180,8 +182,8 @@ export async function completeEmailCode(
     } else {
       const teams =
         payload.intent === "join"
-          ? await tx`SELECT id, name FROM teams WHERE invite_code = ${payload.inviteCode!} AND invite_expires_at > now() FOR UPDATE`
-          : await tx`SELECT t.id, t.name FROM teams t JOIN team_domains d ON d.team_id = t.id WHERE d.domain = ${emailDomain(row.email)} FOR UPDATE OF t`;
+          ? await tx`SELECT id, name FROM teams WHERE invite_code = ${payload.inviteCode!} AND invite_expires_at > now() AND personal_owner_member_id IS NULL FOR UPDATE`
+          : await tx`SELECT t.id, t.name FROM teams t JOIN team_domains d ON d.team_id = t.id WHERE d.domain = ${emailDomain(row.email)} AND t.personal_owner_member_id IS NULL FOR UPDATE OF t`;
       if (!teams.length)
         return {
           error:
@@ -190,9 +192,23 @@ export async function completeEmailCode(
       teamId = teams[0].id;
       teamName = teams[0].name;
     }
-    const memberId = newId("mem"),
+    const memberId = existing[0]?.id ?? newId("mem"),
       apiKey = `hm_${newToken()}`;
-    await tx`INSERT INTO members (id, team_id, name, email, email_verified, role) VALUES (${memberId}, ${teamId}, ${payload.memberName}, ${row.email}, true, ${payload.intent === "teams" ? "admin" : "member"})`;
+    if (!existing[0]) await tx`INSERT INTO members (id, name, email, email_verified) VALUES (${memberId}, ${payload.memberName}, ${row.email}, true)`;
+    const role = payload.intent === "teams" ? "admin" : payload.intent === "join" ? await ownerInviteRole(tx, memberId, row.email, teamId, payload.inviteCode!) : "member";
+    if (existing[0]) {
+      await tx`UPDATE members SET email_verified = true WHERE id = ${memberId} AND provisional AND actor_type = 'human'`;
+      await claimProvisionalHuman(tx, memberId);
+      await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId}, ${role}) ON CONFLICT DO NOTHING`;
+      const active = await tx`SELECT role FROM hive_memberships WHERE member_id = ${memberId} AND team_id = ${teamId} AND removed_at IS NULL`;
+      if (!active.length) throw new HiveInputError("This membership was removed. Ask your admin.");
+      await tx`UPDATE members SET team_id = ${teamId}, role = ${active[0].role}, removed_at = NULL WHERE id = ${memberId}`;
+    } else {
+      await tx`UPDATE members SET team_id = ${teamId}, role = ${role} WHERE id = ${memberId}`;
+    }
+    await tx`SELECT hive_ensure_personal_hive(${memberId})`;
+    if (payload.intent === "teams") await tx`SELECT hive_create_default_capture_rules(${teamId}, ${memberId})`;
+    await followOwnerMemberships(tx, memberId);
     const keyId = newId("key");
     await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${keyId}, ${teamId}, ${memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
     await tx`UPDATE email_verifications SET consumed_at = now() WHERE id = ${row.id} AND token_hash = ${hashToken(token)}`;
@@ -205,7 +221,7 @@ export async function completeEmailCode(
         verifiedEmail: row.email as string,
         keyId,
         role:
-          payload.intent === "teams" ? ("admin" as const) : ("member" as const),
+          role,
       },
     };
   });

@@ -1,5 +1,5 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
-import { members, webSessions } from "./schema";
+import { pgTable, text, timestamp, boolean, integer, jsonb, uniqueIndex, index, foreignKey } from "drizzle-orm/pg-core";
+import { hiveMemberships, members, webSessions } from "./schema";
 
 export const jwks = pgTable("auth_jwks", {
   id: text("id").primaryKey(),
@@ -95,7 +95,7 @@ export const oauthRefreshToken = pgTable("auth_oauth_refresh_token", {
   authTime: timestamp("auth_time", { withTimezone: true }),
   confirmation: jsonb("confirmation"),
   scopes: text("scopes").array().notNull(),
-}, (table) => [index("auth_oauth_refresh_token_client_id_idx").on(table.clientId), index("auth_oauth_refresh_token_session_id_idx").on(table.sessionId), index("auth_oauth_refresh_token_user_id_idx").on(table.userId), index("auth_oauth_refresh_token_authorization_code_id_idx").on(table.authorizationCodeId)]);
+}, (table) => [foreignKey({ columns: [table.userId, table.referenceId], foreignColumns: [hiveMemberships.memberId, hiveMemberships.teamId] }).onDelete("cascade"), index("auth_oauth_refresh_token_client_id_idx").on(table.clientId), index("auth_oauth_refresh_token_session_id_idx").on(table.sessionId), index("auth_oauth_refresh_token_user_id_idx").on(table.userId), index("auth_oauth_refresh_token_authorization_code_id_idx").on(table.authorizationCodeId)]);
 
 export const oauthAccessToken = pgTable("auth_oauth_access_token", {
   id: text("id").primaryKey(),
@@ -113,7 +113,7 @@ export const oauthAccessToken = pgTable("auth_oauth_access_token", {
   revoked: timestamp("revoked", { withTimezone: true }),
   confirmation: jsonb("confirmation"),
   scopes: text("scopes").array().notNull(),
-}, (table) => [index("auth_oauth_access_token_client_id_idx").on(table.clientId), index("auth_oauth_access_token_session_id_idx").on(table.sessionId), index("auth_oauth_access_token_user_id_idx").on(table.userId), index("auth_oauth_access_token_authorization_code_id_idx").on(table.authorizationCodeId), index("auth_oauth_access_token_refresh_id_idx").on(table.refreshId)]);
+}, (table) => [foreignKey({ columns: [table.userId, table.referenceId], foreignColumns: [hiveMemberships.memberId, hiveMemberships.teamId] }).onDelete("cascade"), index("auth_oauth_access_token_client_id_idx").on(table.clientId), index("auth_oauth_access_token_session_id_idx").on(table.sessionId), index("auth_oauth_access_token_user_id_idx").on(table.userId), index("auth_oauth_access_token_authorization_code_id_idx").on(table.authorizationCodeId), index("auth_oauth_access_token_refresh_id_idx").on(table.refreshId)]);
 
 export const oauthConsent = pgTable("auth_oauth_consent", {
   id: text("id").primaryKey(),
@@ -125,7 +125,7 @@ export const oauthConsent = pgTable("auth_oauth_consent", {
   scopes: text("scopes").array().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-}, (table) => [index("auth_oauth_consent_client_id_idx").on(table.clientId), index("auth_oauth_consent_user_id_idx").on(table.userId)]);
+}, (table) => [foreignKey({ columns: [table.userId, table.referenceId], foreignColumns: [hiveMemberships.memberId, hiveMemberships.teamId] }).onDelete("cascade"), index("auth_oauth_consent_client_id_idx").on(table.clientId), index("auth_oauth_consent_user_id_idx").on(table.userId)]);
 
 export const oauthClientAssertion = pgTable("auth_oauth_client_assertion", {
   id: text("id").primaryKey(),
