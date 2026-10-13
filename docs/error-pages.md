@@ -20,7 +20,7 @@ Both products currently use light page palettes. The shell uses the existing sem
 
 ## Hive `/auth`
 
-`/auth?state=...` is not a callback alias. No route or caller in this repository uses it. The active sign-in callback is under `/api/auth/callback/*`, and MCP discovery points to `/api/auth/oauth2/*`; `/oauth2/*` is the compatibility alias. `/auth` stays a branded 404. Guessing an alias from an untrusted state parameter would discard the actual callback protocol.
+`/auth?state=...` is not a callback alias. The exact URL was a mocked Executor response in `packages/cli/test/executor.test.mjs`. That fixture now uses an `.example.test` host. No deployed route or production caller uses `/auth`. The active sign-in callback is under `/api/auth/callback/*`, and MCP discovery points to `/api/auth/oauth2/*`; `/oauth2/*` is the compatibility alias. `/auth` stays a branded 404. Guessing an alias from an untrusted state parameter would discard the actual callback protocol.
 
 ## Verification
 
