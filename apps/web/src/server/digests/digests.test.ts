@@ -447,5 +447,56 @@ describe.skipIf(!enabled)(
         )?.undoId,
       ).toBeUndefined();
     });
+    it("acts on a complete suggestion and retains a reaction-only receipt", async () => {
+      vi.stubEnv("TYPESAFE_API_KEY", "");
+      const scheduleInput = {
+        ...input,
+        weekday: (new Date().getUTCDay() + 1) % 7,
+      };
+      model.mockResolvedValue({
+        stop_reason: "tool_use",
+        content: [
+          {
+            type: "tool_use",
+            name: "propose_digest",
+            input: {
+              action: "set",
+              schedule: scheduleInput,
+              targetScheduleId: null,
+              clearInstruction: false,
+              actionableSuggestion: true,
+              defaultedDetails: false,
+              enoughDetail: true,
+              timeSpecified: true,
+              missing: null,
+            },
+          },
+        ],
+      });
+      const ctx = {
+        teamId: a.teamId,
+        memberId: a.memberId,
+        isAdmin: true,
+        channelId: input.channelId,
+        threadTs: "1800000095.1",
+        messageTs: "1800000095.2",
+        requestText:
+          "Maybe we should schedule a digest here tomorrow at 9am London time.",
+      };
+      const first = await digestInstruction(
+        ctx,
+        ctx.requestText,
+        input.timezone,
+      );
+      expect(first).toEqual({ text: "", react: "+1" });
+      expect(
+        await digestInstruction(ctx, ctx.requestText, input.timezone),
+      ).toEqual(first);
+      const rows =
+        await getSql()`SELECT schedule_id FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`;
+      expect(
+        (await getSchedule(a.teamId, String(rows[0].schedule_id))).enabled,
+      ).toBe(true);
+    });
   },
 );

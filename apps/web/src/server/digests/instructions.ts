@@ -41,9 +41,12 @@ export async function digestInstruction(
   if (!ctx.messageTs)
     throw new HiveError("Ask Hive in a new message to change a schedule.", 400);
   const prior = (
-    await getSql()`SELECT reply FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${ctx.messageTs!}`
+    await getSql()`SELECT reply,reaction FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${ctx.messageTs!}`
   )[0];
-  if (prior) return { text: String(prior.reply) };
+  if (prior)
+    return prior.reaction
+      ? { text: "", react: String(prior.reaction) }
+      : { text: String(prior.reply) };
   const role = (
     await getSql()`SELECT role FROM members WHERE team_id=${ctx.teamId} AND id=${ctx.memberId} AND removed_at IS NULL`
   )[0];
@@ -77,6 +80,7 @@ export async function digestInstruction(
       isAdmin: ctx.isAdmin,
       enough: proposal.enoughDetail,
       clear: proposal.clearInstruction,
+      suggestion: proposal.actionableSuggestion,
     },
     judged.signals,
   );
@@ -126,9 +130,14 @@ export async function applyDigestInstruction(
     if (admin?.role !== "admin")
       throw new HiveError("Only hive admins can change digest schedules.", 403);
     const duplicate = (
-      await tx`SELECT reply FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${ctx.messageTs!}`
+      await tx`SELECT reply,reaction FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${ctx.messageTs!}`
     )[0];
-    if (duplicate) return { reply: String(duplicate.reply), schedule: null };
+    if (duplicate)
+      return {
+        reply: String(duplicate.reply),
+        reaction: duplicate.reaction ? String(duplicate.reaction) : null,
+        schedule: null,
+      };
     let target = proposal.targetScheduleId;
     let reversed: Record<string, unknown> | undefined;
     if (action === "undo") {
@@ -194,13 +203,22 @@ export async function applyDigestInstruction(
         : action === "disable"
           ? `Stopped. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}).`
           : `Set. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}). ${saved.enabled ? `${old ? "Next update" : "First update"} ${next}.` : "The schedule is paused."}`;
-    await tx`INSERT INTO slack_digest_instructions(id,team_id,member_id,channel_id,thread_ts,message_ts,action,schedule_id,before_schedule,after_revision,reply) VALUES(${newId("dgi")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},${action},${saved.id},${old ? tx.json(digestScheduleInput.parse(scheduleView(old))) : null},${revision},${reply})`;
+    const reaction =
+      action === "set" &&
+      !proposal.defaultedDetails &&
+      saved.enabled &&
+      new Date(saved.nextDueAt).getTime() - Date.now() <= 48 * 3600000
+        ? "+1"
+        : null;
+    await tx`INSERT INTO slack_digest_instructions(id,team_id,member_id,channel_id,thread_ts,message_ts,action,schedule_id,before_schedule,after_revision,reply,reaction) VALUES(${newId("dgi")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},${action},${saved.id},${old ? tx.json(digestScheduleInput.parse(scheduleView(old))) : null},${revision},${reply},${reaction})`;
     if (reversed)
       await tx`UPDATE slack_digest_instructions SET reversed_at=now() WHERE id=${String(reversed.id)} AND team_id=${ctx.teamId}`;
-    return { reply, schedule: saved };
+    return { reply, reaction, schedule: saved };
   });
   if (result.schedule) await scheduleEvent(result.schedule, ctx.memberId);
-  return { text: result.reply };
+  return result.reaction
+    ? { text: "", react: result.reaction }
+    : { text: result.reply };
 }
 
 export async function isDigestFollowup(
@@ -233,6 +251,8 @@ export async function undoDigestFromWeb(ctx: HiveContext, id: string) {
       schedule: null,
       targetScheduleId: null,
       clearInstruction: true,
+      actionableSuggestion: false,
+      defaultedDetails: false,
       enoughDetail: true,
       timeSpecified: false,
       missing: null,

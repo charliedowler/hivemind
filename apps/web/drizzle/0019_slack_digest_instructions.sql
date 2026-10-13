@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS slack_digest_instructions (
  before_schedule jsonb,
  after_revision integer NOT NULL,
  reply text NOT NULL,
+ reaction text CHECK (reaction IS NULL OR reaction='+1'),
  created_at timestamptz NOT NULL DEFAULT now(),
  reversed_at timestamptz,
  UNIQUE(team_id,channel_id,message_ts),

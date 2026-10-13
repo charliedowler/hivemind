@@ -7,6 +7,9 @@ it("acts on decisive signals and uses model judgement only when unavailable", ()
   );
   expect(decide(facts, null)).toBe("act");
   expect(decide({ ...facts, clear: false }, null)).toBe("clarify");
+  expect(decide({ ...facts, clear: false, suggestion: true }, null)).toBe(
+    "act",
+  );
   expect(decide(facts, { instruction: 0.3, enough: 1, allowed: 1 })).toBe(
     "clarify",
   );
