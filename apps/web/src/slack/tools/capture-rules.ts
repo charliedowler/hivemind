@@ -58,12 +58,16 @@ function reply(copy: string): SlackToolResult {
   return {text, blocks: chunks.map(text => ({type: "section", text: {type: "mrkdwn", text, verbatim: true}}))};
 }
 
-function captureCounts(counts: CaptureRuleInstructionCounts | undefined, undone: boolean) {
+function captureCounts(counts: CaptureRuleInstructionCounts | undefined, undone: boolean, action?: CaptureRuleInput["action"]) {
   if (!counts) return "";
-  const summary = undone
-    ? `Restored ${counts.restored} existing captures and kept ${counts.retained} with later edits or other rules.`
-    : `Checked ${counts.scanned} existing captures: ${counts.matched} matched, ${counts.applied} updated and ${counts.skipped} skipped because they changed.`;
-  return ` ${summary}${counts.pending ? " More existing captures still need to be processed." : ""}${counts.stopped ? " The scan stopped because the rule or permissions changed. Review the rule to continue." : ""}`;
+  const changed = undone
+    ? `${counts.restored} earlier memories were restored.${counts.retained ? ` ${counts.retained} memories keep later changes or other rules.` : ""}`
+    : `${counts.applied} earlier memories were ${action === "drop" ? "removed" : action === "redact" ? "redacted" : "kept private"}.${counts.skipped ? ` ${counts.skipped} changed memories were skipped.` : ""}`;
+  return ` ${changed}${counts.pending ? " More earlier memories are still being checked." : ""}${counts.stopped ? " The scan stopped because the rule or permissions changed." : ""}`;
+}
+
+function cleanAcknowledgement(counts: CaptureRuleInstructionCounts | undefined, undone = false) {
+  return Boolean(counts && !counts.pending && !counts.stopped && (undone ? counts.restored === 0 && counts.retained === 0 : counts.applied === 0 && counts.skipped === 0));
 }
 
 function channelQuestion(question: string | undefined) {
@@ -88,20 +92,25 @@ export function isCaptureUndoInstruction(text: string) {
   return /^(?:(?:please|can you|could you)\s+)?(?:undo(?:\s+(?:that|this|it|(?:the\s+)?(?:last|latest)\s+(?:rule|change|action)))?|cancel\s+that)[.!?]*$/i.test(request);
 }
 
-export async function undoLatestCaptureIfSelected(ctx: SlackToolContext): Promise<SlackToolResult | null> {
-  const member = await actor(ctx);
-  const latest = await getSql()`SELECT kind, member_id FROM (
-    SELECT 'capture' AS kind, id, member_id, created_at FROM capture_rule_instructions
-    WHERE team_id = ${ctx.teamId} AND source = 'slack' AND channel_id = ${ctx.channelId} AND thread_ts = ${ctx.threadTs} AND outcome = 'saved'
-    UNION ALL
-    SELECT 'slack' AS kind, id, member_id, created_at FROM slack_tool_actions
-    WHERE team_id = ${ctx.teamId} AND channel_id = ${ctx.channelId} AND thread_ts = ${ctx.threadTs}
-  ) actions ORDER BY created_at DESC, id DESC LIMIT 1`;
-  if (latest[0]?.kind !== "capture") return null;
-  if (latest[0].member_id !== ctx.memberId)
-    return reply("Only the person who set this capture rule can undo it here.");
-  const result = await undoCaptureRuleInstruction(member, { source: "slack", channelId: ctx.channelId, threadTs: ctx.threadTs });
-  return reply(`Removed your latest capture rule in this conversation.${captureCounts(result.counts, true)}`);
+type CaptureActionPointer = { member_id: string; inverse: unknown };
+
+export const captureUndoHandlers: Record<string, (ctx: SlackToolContext, pointer: CaptureActionPointer) => Promise<SlackToolResult>> = {
+  async hive_set_capture_rule(ctx, pointer) {
+    const member = await actor(ctx);
+    if (pointer.member_id !== ctx.memberId)
+      return reply("Only the person who set this capture rule can undo it here.");
+    const payload = z.object({ kind: z.literal("capture_instruction"), reversible: z.literal(true), payload: z.object({ instructionId: z.string().regex(/^cinstr_[a-z2-7]{12}$/) }) }).parse(pointer.inverse);
+    const result = await undoCaptureRuleInstruction(member, { source: "slack", channelId: ctx.channelId, threadTs: ctx.threadTs }, payload.payload.instructionId);
+    const summary = "Removed your latest capture rule in this conversation.";
+    if (cleanAcknowledgement(result.counts, true)) return { react: "white_check_mark", text: summary };
+    return reply(`${summary}${captureCounts(result.counts, true)}`);
+  },
+};
+
+export async function dispatchCaptureUndo(ctx: SlackToolContext): Promise<SlackToolResult | null> {
+  const [pointer] = await getSql()`SELECT tool_name, member_id, inverse FROM slack_tool_actions WHERE team_id = ${ctx.teamId} AND channel_id = ${ctx.channelId} AND thread_ts = ${ctx.threadTs} ORDER BY created_at DESC, id DESC LIMIT 1`;
+  const handler = pointer && Object.hasOwn(captureUndoHandlers, pointer.tool_name) ? captureUndoHandlers[pointer.tool_name] : null;
+  return handler ? handler(ctx, pointer as CaptureActionPointer) : null;
 }
 
 export const captureRuleTools: SlackTool[] = [
@@ -117,7 +126,7 @@ export const captureRuleTools: SlackTool[] = [
         return reply("Which capture rule should Hive change?");
       const result = input.text.toLowerCase() === "undo"
         ? await undoCaptureRuleInstruction(member, location)
-        : await setCaptureRuleFromText(member, input.text, location);
+        : await setCaptureRuleFromText(member, input.text, {...location, messageTs: ctx.messageTs});
       if (result.status === "question") {
         return reply(ctx.channelId.startsWith("D")
           ? result.question ?? "Which content should the rule match, and should it exclude, redact or keep that content private?"
@@ -127,12 +136,14 @@ export const captureRuleTools: SlackTool[] = [
         const summary = ctx.channelId.startsWith("D")
           ? result.restatement
           : "Removed your latest capture rule instruction in this conversation.";
+        if (cleanAcknowledgement(result.counts, true)) return { react: "white_check_mark", text: escapedCopy(summary) };
         return reply(`${summary}${captureCounts(result.counts, true)}`);
       }
       const summary = ctx.channelId.startsWith("D")
         ? result.restatement
         : result.rule ? ruleSummary(result.rule) : "Saved your capture rule.";
-      return reply(`Done. ${summary}${captureCounts(result.counts, false)}`);
+      if (cleanAcknowledgement(result.counts)) return { react: "white_check_mark", text: escapedCopy(summary) };
+      return reply(`${summary}${captureCounts(result.counts, false, result.rule?.action)}`);
     },
   },
   {

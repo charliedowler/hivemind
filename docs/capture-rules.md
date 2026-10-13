@@ -41,7 +41,9 @@ Large scans continue in bounded batches. Replies distinguish completed updates f
 
 ## Slack
 
-Ask Hive to set a capture rule in a thread or a direct message. A clear instruction saves directly without a button. Reply undo in the same thread or direct-message conversation within one hour. Undo checks the current caller, team and conversation context.
+Ask Hive to set a capture rule in a thread or a direct message. A clear instruction saves directly without a button. A clean save with no earlier memories changed receives a white check reaction and no post. Hive posts one line when it has a changed-memory count, unfinished work or a required-detail question. Replies contain readable times and no control hints. Undo remains a plain-language command in the same conversation within one hour.
+
+A generic Slack action row points to the capture instruction and commits in the same transaction. Plain-thread undo dispatches by tool name to the capture service. The private capture audit controls the caller, scope, one-hour window and revision-safe reversal. A repeated Slack event uses the existing pointer rather than creating another rule.
 
 Channel replies describe the action, match type and scope without quoting private names, paths or patterns. Direct messages can show the exact escaped restatement. Ask which capture rules apply to you to use `hive_list_capture_rules`. It lists enabled team rules and your own enabled rules, and excludes other members' personal rules.
 

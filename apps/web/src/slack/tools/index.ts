@@ -6,7 +6,7 @@ import { undoLastAction } from "@/server/slack/actions";
 export { decideDecisiveness } from "@/server/slack/decisiveness";
 export { runReversibleAction } from "@/server/slack/actions";
 import { digestTools } from "./digests";
-import { captureRuleTools, isCaptureUndoInstruction, undoLatestCaptureIfSelected } from "./capture-rules";
+import { captureRuleTools, isCaptureUndoInstruction, dispatchCaptureUndo } from "./capture-rules";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { HiveError } from "@/server/errors";
@@ -64,7 +64,7 @@ export const slackTools: SlackTool[] = [
       empty.parse(args);
       if (isCaptureUndoInstruction(ctx.instructionText ?? "")) {
         try {
-          const capture = await undoLatestCaptureIfSelected(ctx);
+          const capture = await dispatchCaptureUndo(ctx);
           if (capture) return capture;
         } catch (error) {
           if (error instanceof HiveError) return { text: error.message };

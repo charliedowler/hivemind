@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { captureRuleInputSchema, type CaptureRule } from "@hivemind/core";
-import { captureRuleTools, isCaptureUndoInstruction, undoLatestCaptureIfSelected } from "./capture-rules";
+import { captureRuleTools, isCaptureUndoInstruction, dispatchCaptureUndo } from "./capture-rules";
 import { dispatchSlackAction, slackTools, type SlackToolContext } from "./index";
 import { respondToSlack } from "../respond";
 
@@ -37,6 +37,7 @@ const ctx: SlackToolContext = {
   isAdmin: false,
   channelId: "C_FIXTURE",
   threadTs: "1800000000.001",
+  messageTs: "1800000000.001",
 };
 const member = { teamId: ctx.teamId, memberId: ctx.memberId, memberName: "Member fixture", teamName: "Team fixture" };
 const location = { source: "slack", channelId: ctx.channelId, threadTs: ctx.threadTs };
@@ -62,7 +63,7 @@ function rule(fields: Record<string, unknown> = {}): CaptureRule {
   };
 }
 
-const counts = { scanned: 12, matched: 3, applied: 2, skipped: 1, restored: 0, retained: 0, pending: false };
+const counts = { scanned: 12, matched: 3, applied: 2, skipped: 1, restored: 0, retained: 0, pending: false, stopped: false };
 function saved(fields: Record<string, unknown> = {}) {
   return {
     status: "saved",
@@ -91,21 +92,21 @@ describe("Slack direct capture instructions", () => {
     expect(isCaptureUndoInstruction(text)).toBe(false);
   });
   it("routes generic undo to the latest capture instruction for a non-admin member", async () => {
-    sql.mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]).mockResolvedValueOnce([{kind: "capture", member_id: ctx.memberId}]);
+    sql.mockResolvedValueOnce([{tool_name: "hive_set_capture_rule", member_id: ctx.memberId, inverse: {kind: "capture_instruction", reversible: true, payload: {instructionId: "cinstr_aaaaaaaaaaaa"}}}]).mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]);
     const tool = slackTools.find(tool => tool.name === "undo_last_action")!;
     const result = await tool.handler({...ctx, instructionText: "undo"}, {});
-    expect(undo).toHaveBeenCalledExactlyOnceWith(member, location);
-    expect(result.text).toContain("Restored 2");
+    expect(undo).toHaveBeenCalledExactlyOnceWith(member, location, "cinstr_aaaaaaaaaaaa");
+    expect(result.text).toContain("2 earlier memories were restored");
     expect(set).not.toHaveBeenCalled();
   });
   it("retains a newer schedule action for the generic undo service", async () => {
-    sql.mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]).mockResolvedValueOnce([{kind: "slack", member_id: ctx.memberId}]);
-    expect(await undoLatestCaptureIfSelected(ctx)).toBeNull();
+    sql.mockResolvedValueOnce([{tool_name: "hive_schedule_digest", member_id: ctx.memberId}]);
+    expect(await dispatchCaptureUndo(ctx)).toBeNull();
     expect(undo).not.toHaveBeenCalled();
   });
   it("does not undo another member's latest capture instruction", async () => {
-    sql.mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]).mockResolvedValueOnce([{kind: "capture", member_id: "other_member"}]);
-    expect((await undoLatestCaptureIfSelected(ctx))?.text).toContain("Only the person");
+    sql.mockResolvedValueOnce([{tool_name: "hive_set_capture_rule", member_id: "other_member", inverse: {}}]).mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]);
+    expect((await dispatchCaptureUndo(ctx))?.text).toContain("Only the person");
     expect(undo).not.toHaveBeenCalled();
   });
   it("registers one set tool and one unchanged list tool with strict schemas", () => {
@@ -123,15 +124,29 @@ describe("Slack direct capture instructions", () => {
 
   it("saves directly once with server provenance and no buttons or confirmation action", async () => {
     const result = await setTool.handler(ctx, {text: "  Exclude my private documents  "});
-    expect(set).toHaveBeenCalledExactlyOnceWith(member, "Exclude my private documents", location);
+    expect(set).toHaveBeenCalledExactlyOnceWith(member, "Exclude my private documents", {...location, messageTs: ctx.messageTs});
     expect(undo).not.toHaveBeenCalled();
     expect(createRule).not.toHaveBeenCalled();
-    expect(result.text).toBe("Done. Hive now skips memories from matching paths for you. Checked 12 existing captures: 3 matched, 2 updated and 1 skipped because they changed.");
+    expect(result.text).toBe("Hive now skips memories from matching paths for you. 2 earlier memories were removed. 1 changed memories were skipped.");
     expect(result.blocks?.every(block => block.type === "section")).toBe(true);
     expect(JSON.stringify(result.blocks)).not.toMatch(/button|actions|confirm|proposal/);
     expect(setTool.handleAction).toBeUndefined();
     await expect(dispatchSlackAction(ctx, "tool:hive_set_capture_rule:confirm", "old-reference")).rejects.toThrow("unavailable");
     expect(set).toHaveBeenCalledTimes(1);
+  });
+  it("reacts when a clean save changes no earlier memories", async () => {
+    set.mockResolvedValue(saved({ counts: { ...counts, matched: 0, applied: 0, skipped: 0 } }));
+    const result = await setTool.handler(ctx, { text: "Exclude private captures" });
+    expect(result.react).toBe("white_check_mark");
+    expect(result.blocks).toBeUndefined();
+    expect(result.silent).toBeUndefined();
+    expect(result.text).not.toMatch(/Done\.|Reply undo|No change made/);
+  });
+  it.each(["pending", "stopped", "skipped"])("keeps an informative reply when a zero-change scan is %s", async outcome => {
+    set.mockResolvedValue(saved({ counts: { ...counts, applied: 0, skipped: outcome === "skipped" ? 1 : 0, pending: outcome === "pending", stopped: outcome === "stopped" } }));
+    const result = await setTool.handler(ctx, { text: "Exclude private captures" });
+    expect(result.react).toBeUndefined();
+    expect(result.text).toBeTruthy();
   });
 
   it("routes a full instruction through the registry without a second create or model reply", async () => {
@@ -140,7 +155,7 @@ describe("Slack direct capture instructions", () => {
     const result = await respondToSlack(ctx, "Exclude my private documents", ctx.threadTs, []);
     expect(result.text).not.toContain("Reply undo to remove it.");
     expect(route).toHaveBeenCalledTimes(1);
-    expect(set).toHaveBeenCalledExactlyOnceWith(member, "Exclude my private documents", location);
+    expect(set).toHaveBeenCalledExactlyOnceWith(member, "Exclude my private documents", {...location, messageTs: ctx.messageTs});
     expect(createRule).not.toHaveBeenCalled();
     expect(route.mock.calls[0][0].tools.find((tool: {name: string}) => tool.name === setTool.name)).toMatchObject({input_schema: setTool.input_schema});
   });
@@ -163,7 +178,7 @@ describe("Slack direct capture instructions", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "synthetic");
     route.mockResolvedValue({stop_reason: "tool_use", content: [{type: "tool_use", name: setTool.name, input: {text}}]});
     await respondToSlack(ctx, answer, "1800000000.002", [{question: instruction, answer: "Should this apply to you or the whole team?"}]);
-    expect(set).toHaveBeenCalledExactlyOnceWith(member, text, location);
+    expect(set).toHaveBeenCalledExactlyOnceWith(member, text, {...location, messageTs: "1800000000.002"});
     expect(route).toHaveBeenCalledTimes(1);
     const routingContext = JSON.parse(route.mock.calls[0][0].messages[0].content);
     expect(routingContext.history).toEqual([{question: instruction, answer: "Should this apply to you or the whole team?"}]);
@@ -176,7 +191,7 @@ describe("Slack direct capture instructions", () => {
     expect(undo).toHaveBeenCalledExactlyOnceWith(member, location);
     expect(set).not.toHaveBeenCalled();
     expect(createRule).not.toHaveBeenCalled();
-    expect(result.text).toBe("Removed your latest capture rule instruction in this conversation. Restored 2 existing captures and kept 1 with later edits or other rules.");
+    expect(result.text).toBe("Removed your latest capture rule instruction in this conversation. 2 earlier memories were restored. 1 memories keep later changes or other rules.");
     expect(result.text).not.toContain("/private");
     expect(result.text).not.toContain("Reply undo");
     expect(result.blocks?.every(block => block.type === "section")).toBe(true);
@@ -215,7 +230,7 @@ describe("Slack direct capture instructions", () => {
     set.mockResolvedValue({status: "question", rule: rule(), restatement: "This is incomplete. Which paths?", question: "Should this apply to you or the whole team?"});
     const result = await setTool.handler({...ctx, channelId: "D_FIXTURE"}, {text: "Exclude those documents"});
     expect(result.text).toBe("Should this apply to you or the whole team?");
-    expect(result.text.match(/\?/g)).toHaveLength(1);
+    expect(String(result.text).match(/\?/g)).toHaveLength(1);
     expect(result.text).not.toMatch(/undo|saved|incomplete/i);
     expect(set).toHaveBeenCalledTimes(1);
     expect(createRule).not.toHaveBeenCalled();
@@ -224,7 +239,7 @@ describe("Slack direct capture instructions", () => {
   it("asks one static question in channels without echoing private details", async () => {
     set.mockResolvedValue({status: "question", restatement: "/private/owner/documents", question: "Should private-owner or secret-owner match /private/owner/documents?"});
     const result = await setTool.handler(ctx, {text: "Exclude /private/owner/documents"});
-    expect(result.text.match(/\?/g)).toHaveLength(1);
+    expect(String(result.text).match(/\?/g)).toHaveLength(1);
     expect(result.text).toBe("Which repository owners should Hive keep captures from?");
     expect(result.text).not.toMatch(/private-owner|secret-owner|\/private\/owner\/documents|Reply undo/);
     expect(result.blocks?.every(block => block.type === "section")).toBe(true);
@@ -250,8 +265,8 @@ describe("Slack direct capture instructions", () => {
     set.mockResolvedValue(saved({rule: rule({action, scope: "team"}), counts: {...counts, pending: true}}));
     const result = await setTool.handler(ctx, {text: "Apply this for the whole team"});
     expect(result.text).toContain("for the whole team");
-    expect(result.text).toContain("12 existing captures: 3 matched, 2 updated and 1 skipped");
-    expect(result.text).toContain("More existing captures still need to be processed.");
+    expect(result.text).toContain("2 earlier memories were");
+    expect(result.text).toContain("More earlier memories are still being checked.");
     expect(result.text).not.toMatch(/all existing captures|complete|finished/i);
     expect(set.mock.calls[0][0]).not.toHaveProperty("isAdmin");
   });
@@ -261,7 +276,7 @@ describe("Slack direct capture instructions", () => {
     set.mockResolvedValue(saved({restatement, counts: undefined}));
     const result = await setTool.handler({...ctx, channelId: "D_FIXTURE"}, {text: "Exclude my private captures"});
     expect(result.text).toContain("I will exclude &lt;private&gt; &amp; @\u200bhere &lt;@\u200bU123&gt;");
-    expect(result.text.match(/I will exclude/g)).toHaveLength(1);
+    expect(String(result.text).match(/I will exclude/g)).toHaveLength(1);
     expect(result.text).not.toContain("Reply undo to remove it.");
     expect(result.text).not.toMatch(/Anthropic|OpenAI|Claude|Jev|TypeSafe|Gemini|GPT-6\.1|:bee:|🐝|🇵🇹|!/i);
     expect(result.blocks?.[0]).toMatchObject({type: "section", text: {type: "mrkdwn", verbatim: true, text: result.text}});

@@ -4,7 +4,7 @@ import {createTeam, joinTeam} from "./auth";
 import {getSql} from "./db/client";
 import {newId} from "./db/ids";
 import * as captureRules from "./capture-rules";
-import {decideCaptureRuleInstruction, runCaptureRuleInstructionJob, runPendingCaptureRuleInstructions, setCaptureRuleFromText, undoCaptureRuleInstruction} from "./capture-rule-instructions";
+import {decideCaptureRuleInstruction, runCaptureRuleInstructionJob, runPendingCaptureRuleInstructions, setCaptureRuleFromText, undoCaptureRuleInstruction, type CaptureRuleInstructionContext} from "./capture-rule-instructions";
 import {originFor, withOrigin, type EventRow} from "./analytics/events";
 
 const models = vi.hoisted(() => ({create: vi.fn(), systemOne: vi.fn(), jevOptions: vi.fn(), proposalOptions: vi.fn(), after: vi.fn()}));
@@ -20,7 +20,7 @@ const answers = (values = [1, 1, 1]) => Object.fromEntries(Object.keys(judgement
 const input = (extra: Record<string, unknown> = {}) => captureRuleInputSchema.parse({name: "Private marker", kind: "keyword", pattern: "private-marker", action: "drop", scope: "member", source: "mcp", naturalText: "Model provenance", ...extra});
 const proposal = (rule: unknown = input(), extra: Record<string, unknown> = {}) => ({model: "claude-sonnet-5-5", usage: {}, content: [{type: "tool_use", name: "propose_rule", id: "fixture", input: {rule, restatement: "Exclude captures with private-marker.", question: null, judgement, ...extra}}]});
 const web = {source: "web" as const};
-const slack = {source: "slack" as const, channelId: "C_CAPTURE", threadTs: "1800000000.001"};
+const slack = {source: "slack" as const, channelId: "C_CAPTURE", threadTs: "1800000000.001", messageTs: "1800000000.003"};
 
 describe("capture instruction pure decision", () => {
   it.each([[answers(), "save"], [answers([0, 1, 1]), "question"], [answers([1, 0, 1]), "question"], [answers([1, 1, 0]), "question"], [answers([0.5, 1, 1]), "fallback"], [answers([1, 0.89, 1]), "fallback"], [null, "fallback"], [answers([NaN, 1, 1]), "fallback"]])("decides from validated independent probabilities", (value, expected) => {
@@ -32,8 +32,10 @@ const enabled = process.env.DATABASE_URL?.startsWith("postgres://hivemind:hivemi
 describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () => {
   let admin: HiveContext, member: HiveContext, other: HiveContext, elsewhere: HiveContext;
   const teams: string[] = [];
-  const save = (ctx = member, context = web) => setCaptureRuleFromText(ctx, "Do not save private-marker", context);
+  const save = (ctx = member, context: CaptureRuleInstructionContext = web) => setCaptureRuleFromText(ctx, "Do not save private-marker", context);
   const audits = () => getSql()`SELECT * FROM capture_rule_instructions WHERE team_id = ${member.teamId} ORDER BY created_at, id`;
+  const actions = () => getSql()`SELECT * FROM slack_tool_actions WHERE team_id = ${member.teamId} ORDER BY created_at, id`;
+  const slackUndo = {source: slack.source, channelId: slack.channelId, threadTs: slack.threadTs};
   const cell = async (ctx = member, extra: Record<string, unknown> = {}) => {
     const id = newId("lrn");
     const data = {id, team_id: ctx.teamId, member_id: ctx.memberId, title: "Private marker fixture", body: "A finding with private-marker.", kind: "learning", source: "manual", confidence: 1, ...extra};
@@ -65,13 +67,13 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     models.systemOne.mockResolvedValue({model: "jev-1.13.0", answers: answers()});
     models.after.mockImplementation(() => {throw new Error("No request context in test");});
     await getSql()`UPDATE members SET removed_at = NULL, role = CASE WHEN id = ${admin.memberId} THEN 'admin' ELSE 'member' END WHERE team_id = ${admin.teamId}`;
-    for (const table of ["capture_rule_applications", "capture_rule_previews", "capture_rule_instructions", "capture_rules", "learning_evidence", "learning_pushes", "learnings"])
+    for (const table of ["slack_tool_actions", "capture_rule_applications", "capture_rule_previews", "capture_rule_instructions", "capture_rules", "learning_evidence", "learning_pushes", "learnings"])
       await getSql()`DELETE FROM ${getSql()(table)} WHERE team_id = ANY(${teams}::text[])`;
   });
   afterEach(() => {vi.unstubAllEnvs(); vi.restoreAllMocks();});
   afterAll(async () => {
     const sql = getSql();
-    for (const table of ["capture_rule_applications", "capture_rule_previews", "capture_rule_instructions", "capture_rules", "learning_evidence", "learning_pushes", "learnings", "api_keys", "web_sessions", "members", "teams"]) {
+    for (const table of ["slack_tool_actions", "capture_rule_applications", "capture_rule_previews", "capture_rule_instructions", "capture_rules", "learning_evidence", "learning_pushes", "learnings", "api_keys", "web_sessions", "members", "teams"]) {
       if (table === "teams") await sql`DELETE FROM teams WHERE id = ANY(${teams}::text[])`;
       else await sql`DELETE FROM ${sql(table)} WHERE team_id = ANY(${teams}::text[])`;
     }
@@ -97,6 +99,149 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     expect(decision.properties).toMatchObject({captureInstructionId: audit.id, ruleId: result.rule!.id, instructionClear: true, instructionSpecific: true, instructionScopeAllowed: true, instructionSource: "web", instructionDecision: "save"});
     expect(JSON.stringify(rows)).not.toContain("private-marker");
     expect((await getSql()`SELECT to_regclass('capture_rule_proposals') AS name`)[0].name).toBeNull();
+  });
+
+  it("saves a bound generic Slack pointer with the private audit and server source provenance", async () => {
+    await cell();
+    const saved = await save(member, slack);
+    const [audit] = await audits();
+    const [pointer] = await actions();
+    expect(audit).toMatchObject({source: "slack", channel_id: slack.channelId, thread_ts: slack.threadTs, decision: {messageTs: slack.messageTs}, rule_id: saved.rule!.id});
+    expect(saved.rule).toMatchObject({source: "slack", naturalText: "Do not save private-marker"});
+    expect(pointer).toMatchObject({team_id: member.teamId, member_id: member.memberId, channel_id: slack.channelId, thread_ts: slack.threadTs, message_ts: slack.messageTs, tool_name: "hive_set_capture_rule", inverse: {kind: "capture_instruction", reversible: true, payload: {instructionId: audit.id}}, reply: "Saved your capture rule.", undone_at: null});
+    expect(pointer.created_at).toEqual(audit.created_at);
+    expect(pointer.expires_at).toEqual(audit.undo_until);
+    expect(new Date(pointer.expires_at).getTime() - new Date(pointer.created_at).getTime()).toBeGreaterThan(3590000);
+    expect(JSON.stringify(pointer)).not.toMatch(/private-marker|crule_|natural_text|restatement/);
+    expect(pointer.reply).not.toMatch(/Done|undo/i);
+    const columns = await getSql()`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'slack_tool_actions'`;
+    expect(columns.map(column => column.column_name)).not.toContain("payload");
+    expect(columns.map(column => column.column_name)).not.toContain("reversible");
+  });
+
+  it("rolls back the actual SQL rule and audit when the generic pointer unique insert fails", async () => {
+    const id = await cell();
+    const insert = captureRules.insertCaptureRule;
+    vi.spyOn(captureRules, "insertCaptureRule").mockImplementationOnce(async (tx, ctx, rule) => {
+      const saved = await insert(tx, ctx, rule);
+      await tx`INSERT INTO slack_tool_actions (id, team_id, member_id, channel_id, thread_ts, message_ts, tool_name, inverse, reply) VALUES (${newId("sact")}, ${ctx.teamId}, ${ctx.memberId}, ${slack.channelId}, ${slack.threadTs}, ${slack.messageTs}, 'fixture_collision', '{}'::jsonb, 'Fixture')`;
+      return saved;
+    });
+    await expect(save(member, slack)).rejects.toMatchObject({code: "23505", table_name: "slack_tool_actions"});
+    expect(await captureRules.effectiveRules(member)).toHaveLength(0);
+    expect(await audits()).toHaveLength(0);
+    expect(await actions()).toHaveLength(0);
+    expect((await read(id)).lifecycle).toBe("fresh");
+    expect(await getSql()`SELECT id FROM capture_rule_applications WHERE team_id = ${member.teamId}`).toHaveLength(0);
+    expect((await save(member, slack)).status).toBe("saved");
+  });
+
+  it("replays the saved snapshot and committed counts without another model call or audit", async () => {
+    await cell();
+    const saved = await save(member, slack);
+    await captureRules.updateCaptureRule(member, saved.rule!.id, input({pattern: "later-marker"}));
+    const replay = await setCaptureRuleFromText(member, "An edited delivery must not create another rule", slack);
+    expect(replay).toEqual(saved);
+    expect(await audits()).toHaveLength(1);
+    expect(await actions()).toHaveLength(1);
+    expect(await captureRules.effectiveRules(member)).toHaveLength(1);
+    expect(models.systemOne).toHaveBeenCalledTimes(1);
+    expect(models.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes overlapping deliveries before model work and writes only one rule, audit and pointer", async () => {
+    await cell();
+    const results = await Promise.all([save(member, slack), save(member, slack), save(member, slack), save(member, slack)]);
+    expect(results.every(result => result.rule!.id === results[0].rule!.id)).toBe(true);
+    expect(results.every(result => result.counts!.applied === 1)).toBe(true);
+    expect(await audits()).toHaveLength(1);
+    expect(await actions()).toHaveLength(1);
+    expect(await captureRules.effectiveRules(member)).toHaveLength(1);
+    expect(models.systemOne).toHaveBeenCalledTimes(1);
+    expect(models.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("deduplicates a Slack question audit without inventing a reversible action", async () => {
+    models.create.mockResolvedValue(proposal(null, {question: "Which repositories?", judgement: {...judgement, requiredDetails: false}}));
+    const question = await save(member, slack);
+    expect(question.status).toBe("question");
+    expect(await save(member, slack)).toEqual(question);
+    expect(await audits()).toHaveLength(1);
+    expect(await actions()).toHaveLength(0);
+    expect(models.systemOne).toHaveBeenCalledTimes(1);
+    expect(models.create).toHaveBeenCalledTimes(1);
+    await expect(save(other, slack)).rejects.toMatchObject({status: 409});
+    await expect(save(member, {...slack, threadTs: "1800000000.099"})).rejects.toMatchObject({status: 409});
+    expect(await audits()).toHaveLength(1);
+    expect(models.create).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["actor", "thread", "tool", "pointer", "source", "receipt"])("refuses a saved Slack replay with a conflicting %s before model work", async mismatch => {
+    await save(member, slack);
+    if (mismatch === "tool") await getSql()`UPDATE slack_tool_actions SET tool_name = 'hive_pause_digest' WHERE team_id = ${member.teamId}`;
+    if (mismatch === "pointer") await getSql()`UPDATE slack_tool_actions SET inverse = '{"kind":"capture_instruction","reversible":true,"payload":{"instructionId":"cinstr_missing"}}'::jsonb WHERE team_id = ${member.teamId}`;
+    if (mismatch === "source") {
+      await save();
+      const webAudit = (await audits()).find(audit => audit.source === "web")!;
+      await getSql()`UPDATE slack_tool_actions SET inverse = ${getSql().json({kind: "capture_instruction", reversible: true, payload: {instructionId: webAudit.id}})} WHERE team_id = ${member.teamId}`;
+    }
+    if (mismatch === "receipt") await getSql()`UPDATE capture_rule_instructions SET decision = decision || '{"messageTs":"1800000000.999"}'::jsonb WHERE team_id = ${member.teamId}`;
+    const before = await audits();
+    const callCount = models.create.mock.calls.length;
+    const person = mismatch === "actor" ? other : member;
+    const context = mismatch === "thread" ? {...slack, threadTs: "1800000000.099"} : slack;
+    await expect(save(person, context)).rejects.toMatchObject({status: mismatch === "actor" ? 403 : 409});
+    expect(await audits()).toEqual(before);
+    expect(models.create).toHaveBeenCalledTimes(callCount);
+    expect(models.systemOne).toHaveBeenCalledTimes(callCount);
+  });
+
+  it("rechecks a conflicting generic action created while model work is in flight without capture writes", async () => {
+    models.create.mockImplementationOnce(async () => {
+      await getSql()`INSERT INTO slack_tool_actions (id, team_id, member_id, channel_id, thread_ts, message_ts, tool_name, inverse, reply) VALUES (${newId("sact")}, ${member.teamId}, ${other.memberId}, ${slack.channelId}, ${slack.threadTs}, ${slack.messageTs}, 'hive_pause_digest', '{}'::jsonb, 'Fixture')`;
+      return proposal();
+    });
+    await expect(save(member, slack)).rejects.toMatchObject({status: 403});
+    expect(await audits()).toHaveLength(0);
+    expect(await captureRules.effectiveRules(member)).toHaveLength(0);
+    expect(await actions()).toHaveLength(1);
+  });
+
+  it("returns a concurrently committed authorized receipt from the transaction recheck without duplicate writes", async () => {
+    models.create.mockImplementationOnce(async () => {
+      await getSql().begin(async tx => {
+        const rule = await captureRules.insertCaptureRule(tx, member, input({source: "slack", action: "flag"}));
+        const id = newId("cinstr");
+        const [audit] = await tx`INSERT INTO capture_rule_instructions (id, team_id, member_id, source, channel_id, thread_ts, decision, outcome, rule_id, rule_revision, rule_snapshot, restatement, natural_text, undo_until) VALUES (${id}, ${member.teamId}, ${member.memberId}, 'slack', ${slack.channelId}, ${slack.threadTs}, ${tx.json({...judgement, messageTs: slack.messageTs})}, 'saved', ${rule.id}, 1, ${tx.json(rule)}, 'Keep matching captures private.', 'Concurrent receipt fixture', clock_timestamp() + interval '1 hour') RETURNING *`;
+        await tx`INSERT INTO slack_tool_actions (id, team_id, member_id, channel_id, thread_ts, message_ts, tool_name, inverse, reply, expires_at) VALUES (${newId("sact")}, ${member.teamId}, ${member.memberId}, ${slack.channelId}, ${slack.threadTs}, ${slack.messageTs}, 'hive_set_capture_rule', ${tx.json({kind: "capture_instruction", reversible: true, payload: {instructionId: id}})}, 'Saved your capture rule.', ${audit.undo_until})`;
+      });
+      return proposal();
+    });
+    const result = await save(member, slack);
+    expect(result).toMatchObject({status: "saved", rule: {action: "flag"}, restatement: "Keep matching captures private.", counts: {scanned: 0, applied: 0, pending: false}});
+    expect(await audits()).toHaveLength(1);
+    expect(await actions()).toHaveLength(1);
+    expect(await captureRules.effectiveRules(member)).toHaveLength(1);
+    expect(models.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rechecks current membership and current team-admin scope before exposing a replay", async () => {
+    models.create.mockResolvedValue(proposal(input({scope: "team"})));
+    await save(admin, slack);
+    await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+    await expect(save(admin, slack)).rejects.toMatchObject({status: 403});
+    await getSql()`UPDATE members SET role = 'admin', removed_at = now() WHERE id = ${admin.memberId}`;
+    await expect(save(admin, slack)).rejects.toMatchObject({status: 404});
+    expect(models.create).toHaveBeenCalledTimes(1);
+    expect(await audits()).toHaveLength(1);
+    expect(await actions()).toHaveLength(1);
+  });
+
+  it("does not create generic actions for web or MCP instructions", async () => {
+    await save();
+    await save(member, {source: "mcp"});
+    expect(await actions()).toHaveLength(0);
+    expect((await audits()).map(audit => audit.source)).toEqual(["web", "mcp"]);
   });
 
   it.each(["Maybe stop saving private-marker", "Should Hive exclude private-marker?"])("does not save tentative or question text even if the proposal model says yes: %s", async text => {
@@ -373,6 +518,83 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     expect((await captureRules.effectiveRules(member)).map(rule => rule.id).sort()).toEqual([first.rule!.id, second.rule!.id].sort());
   });
 
+  it("dispatches the persisted exact latest pointer without an undo message timestamp and marks it undone", async () => {
+    await cell();
+    await save(member, slack);
+    const [pointer] = await actions();
+    const instructionId = pointer.inverse.payload.instructionId;
+    const result = await undoCaptureRuleInstruction(member, slackUndo, instructionId);
+    expect(result).toMatchObject({status: "undone", counts: {restored: 1, retained: 0, pending: false}});
+    const [audit] = await audits();
+    expect((await actions())[0].undone_at).toEqual(audit.undo_started_at);
+    expect(await captureRules.effectiveRules(member)).toHaveLength(0);
+    expect(await save(member, slack)).toMatchObject({status: "undone", counts: {restored: 1}});
+    expect(await audits()).toHaveLength(1);
+    expect(await actions()).toHaveLength(1);
+    expect(models.create).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["older", "member", "team", "web", "channel", "thread", "missing"])("refuses a dispatched pointer aimed at a different %s instruction with no writes", async target => {
+    await save(member, slack);
+    const [latest] = await audits();
+    let expectedInstructionId = newId("cinstr");
+    if (target === "older") {
+      expectedInstructionId = latest.id;
+      await save(member, {...slack, messageTs: "1800000000.004"});
+    } else if (target !== "missing") {
+      const person = target === "member" ? other : target === "team" ? elsewhere : member;
+      const context = target === "web" ? web : {...slack, ...(target === "channel" ? {channelId: "C_OTHER"} : target === "thread" ? {threadTs: "1800000000.099"} : {}), messageTs: "1800000000.004"};
+      const saved = await save(person, context);
+      const [audit] = await getSql()`SELECT id FROM capture_rule_instructions WHERE rule_id = ${saved.rule!.id}`;
+      expectedInstructionId = audit.id;
+    }
+    const beforeAudits = await audits();
+    const beforeActions = await actions();
+    const beforeRules = await captureRules.effectiveRules(member);
+    await expect(undoCaptureRuleInstruction(member, slackUndo, expectedInstructionId)).rejects.toMatchObject({status: 409});
+    expect(await audits()).toEqual(beforeAudits);
+    expect(await actions()).toEqual(beforeActions);
+    expect(await captureRules.effectiveRules(member)).toEqual(beforeRules);
+  });
+
+  it("uses the latest capture audit's one-hour window even if the generic pointer claims a later expiry", async () => {
+    await save(member, slack);
+    await save(member, {...slack, messageTs: "1800000000.004"});
+    const [first, latest] = await audits();
+    await getSql()`UPDATE capture_rule_instructions SET undo_until = clock_timestamp() - interval '1 second' WHERE id = ${latest.id}`;
+    await getSql()`UPDATE slack_tool_actions SET expires_at = clock_timestamp() + interval '1 day' WHERE team_id = ${member.teamId}`;
+    await expect(undoCaptureRuleInstruction(member, slackUndo, latest.id)).rejects.toMatchObject({status: 400});
+    await expect(undoCaptureRuleInstruction(member, slackUndo, first.id)).rejects.toMatchObject({status: 409});
+    expect(await captureRules.effectiveRules(member)).toHaveLength(2);
+    expect((await audits()).every(audit => !audit.undo_started_at)).toBe(true);
+    expect((await actions()).every(action => !action.undone_at)).toBe(true);
+  });
+
+  it("does not fall through an already-undone latest instruction to an older persisted pointer", async () => {
+    await save(member, slack);
+    await save(member, {...slack, messageTs: "1800000000.004"});
+    const [first, latest] = await audits();
+    await undoCaptureRuleInstruction(member, slackUndo, latest.id);
+    await expect(undoCaptureRuleInstruction(member, slackUndo, first.id)).rejects.toMatchObject({status: 409});
+    await expect(undoCaptureRuleInstruction(member, slackUndo, latest.id)).rejects.toMatchObject({status: 400});
+    expect(await captureRules.effectiveRules(member)).toHaveLength(1);
+    expect((await audits())[0].undo_started_at).toBeNull();
+  });
+
+  it("keeps current team-admin authorization for guarded Slack undo even after the live rule was deleted", async () => {
+    const id = await cell(other);
+    models.create.mockResolvedValue(proposal(input({scope: "team"})));
+    const saved = await save(admin, slack);
+    const [pointer] = await actions();
+    await captureRules.deleteCaptureRule(admin, saved.rule!.id);
+    await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
+    await expect(undoCaptureRuleInstruction(admin, slackUndo, pointer.inverse.payload.instructionId)).rejects.toMatchObject({status: 403});
+    expect((await actions())[0].undone_at).toBeNull();
+    expect((await read(id)).lifecycle).toBe("retracted");
+    await getSql()`UPDATE members SET role = 'admin' WHERE id = ${admin.memberId}`;
+    expect((await undoCaptureRuleInstruction(admin, slackUndo, pointer.inverse.payload.instructionId)).counts!.restored).toBe(1);
+  });
+
   it("allows only one simultaneous undo and preserves its owner authorization", async () => {
     await cell();
     await save();
@@ -491,7 +713,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
   });
 
   it("validates source context and request without model work", async () => {
-    for (const context of [{source: "slack"}, {...slack, threadTs: "bad"}, {...web, channelId: "C_FORGED"}])
+    for (const context of [{source: "slack"}, {...slack, messageTs: undefined}, {...slack, messageTs: "bad"}, {...slack, threadTs: "bad"}, {...web, channelId: "C_FORGED"}, {...web, messageTs: slack.messageTs}, {...slack, payload: {instructionId: "forged"}}])
       await expect(setCaptureRuleFromText(member, "Exclude private-marker", context as typeof web)).rejects.toMatchObject({status: 400});
     await expect(setCaptureRuleFromText(member, " ", web)).rejects.toMatchObject({status: 400});
     expect(models.create).not.toHaveBeenCalled();
