@@ -1,4 +1,6 @@
 import { decisionTools } from "./decisions";
+export { reactToSlack } from "./react";
+export type { SlackReactResult } from "./react";
 export { slackToolReply } from "./reply";
 import { captureTools } from "./capture";
 import { decideDecisiveness } from "@/server/slack/decisiveness";
@@ -23,7 +25,8 @@ import type { SlackToolContext } from "./context";
 export { toolActor, slackToolContext } from "./context";
 export type { SlackToolContext } from "./context";
 export type SlackToolResult = {
-  text: string;
+  text?: string;
+  react?: string;
   blocks?: Array<Record<string, unknown>>;
   silent?: boolean;
 };
