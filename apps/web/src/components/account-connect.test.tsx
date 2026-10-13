@@ -201,7 +201,7 @@ it.each(["codex", "executor", "invalid"])(
     );
     try {
       const selected = container.querySelector(
-        '[role="tab"][aria-selected="true"]',
+        '[role="tablist"][aria-label="Agent"] [role="tab"][aria-selected="true"]',
       )!;
       expect(selected.textContent).toBe(
         stored === "codex"
@@ -210,8 +210,9 @@ it.each(["codex", "executor", "invalid"])(
             ? "Executor"
             : "Claude Code",
       );
-      const tabs =
-        container.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+      const tabs = container.querySelectorAll<HTMLButtonElement>(
+        '[role="tablist"][aria-label="Agent"] [role="tab"]',
+      );
       await act(async () => tabs[1].click());
       expect(dom.window.localStorage.getItem("hive.install.client.v1")).toBe(
         "codex",
@@ -249,12 +250,16 @@ it("keeps client tabs usable when local storage is blocked", async () => {
       throw new Error("Storage blocked");
     });
   try {
-    const tabs = container.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    const tabs = container.querySelectorAll<HTMLButtonElement>(
+      '[role="tablist"][aria-label="Agent"] [role="tab"]',
+    );
     await act(async () => tabs[1].click());
     expect(tabs[1].getAttribute("aria-selected")).toBe("true");
-    expect(container.querySelector('[role="tabpanel"]')?.textContent).toContain(
-      "codex mcp add",
-    );
+    expect(
+      container
+        .querySelector('[role="tablist"][aria-label="Agent"]')
+        ?.parentElement?.querySelector('[role="tabpanel"]')?.textContent,
+    ).toContain("codex mcp add");
   } finally {
     get.mockRestore();
     set.mockRestore();

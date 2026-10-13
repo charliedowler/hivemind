@@ -12,8 +12,12 @@ import { Feed } from "./feed";
 import { PromptBlock } from "./prompt-block";
 import { setupPrompt } from "@/lib/agent-onboarding";
 import { renderWelcome } from "@/server/identity/welcome-template";
+import { Consent } from "./consent";
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/lib/auth-client", () => ({
+  authClient: { oauth2: { consent: vi.fn() } },
+}));
 vi.mock("@/lib/client", () => ({
   requestJson: mocks.request,
   errorMessage: (e: Error) => e.message,
@@ -22,6 +26,30 @@ vi.mock("@/lib/client", () => ({
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+});
+it("states personal and future access only for person-wide consent", () => {
+  const props = {
+    clientName: "Codex",
+    teamName: "Workshop",
+    email: "human@example.test",
+    claims: [],
+    oauthQuery: "client_id=codex",
+  };
+  const person = renderToStaticMarkup(
+    <Consent {...props} scopes={["hive:person"]} />,
+  );
+  expect(person).toContain(
+    "personal hive and organisations you join now or in future",
+  );
+  expect(person).toContain(
+    "Sharing with an organisation still needs your permission.",
+  );
+  expect(person).toContain(
+    "follows your future hive memberships until you revoke it",
+  );
+  const team = renderToStaticMarkup(<Consent {...props} scopes={["hive"]} />);
+  expect(team).toContain("Access is limited to this hive.");
+  expect(team).not.toContain("future hive memberships");
 });
 async function mount(element: React.ReactNode) {
   const dom = new JSDOM('<div id="root"></div>', {
