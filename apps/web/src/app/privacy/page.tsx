@@ -62,7 +62,7 @@ export default function PrivacyPage() {
         <p>
           Our service providers process information for the features you use.
           Vercel hosts Hive. Neon stores the data. Anthropic and OpenAI provide
-          model calls. TypeSafe classifies learnings. Resend sends email.
+          model calls. TypeSafe classifies learnings. Resend sends email. Inth stores consent records.
         </p>
         <p>
           Google and Slack process sign-in information when you use their
@@ -89,9 +89,11 @@ export default function PrivacyPage() {
       <section>
         <h2>Cookies, advertising and sale of data</h2>
         <p>
-          We only use a session cookie to keep you signed in. We do not use
-          advertising or tracking cookies. We do not sell your data or use it
-          for advertising.
+          We use necessary cookies to keep you signed in and remember your
+          privacy choices. Inth stores the consent choices you submit. Optional
+          measurement of page and cell visits starts only after you opt in. The
+          Cookie preferences control is in the footer.
+          We do not sell your data or use it for advertising.
         </p>
       </section>
       <section>

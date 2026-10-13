@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withConsentManifest } from "c15t/next/build";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
@@ -17,4 +18,4 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@hivemind/core", "@hivemind/design-system"],
 };
 
-export default nextConfig;
+export default withConsentManifest(nextConfig);

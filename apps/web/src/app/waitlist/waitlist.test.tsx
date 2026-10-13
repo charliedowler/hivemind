@@ -6,6 +6,8 @@ import { POST as earlyAccessPost } from "../api/early-access/route";
 import { getSql } from "@/server/db/client";
 import WaitlistPage, { generateMetadata } from "./page";
 
+vi.mock("@/lib/measurement-consent", () => ({ useMeasurementConsent: () => false }));
+
 vi.mock("@/lib/public-url", () => ({
   publicUrl: async () => "https://gohive.dev",
 }));

@@ -1,8 +1,12 @@
 import { fontVariables } from "./fonts";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { ConsentBanner, ConsentDialog, ConsentRoot } from "c15t/next";
+import { resolveConsent } from "c15t/next/server";
+import { CookiePreferencesLink } from "@/components/cookie-preferences-link";
 import "@hivemind/design-system/app.css";
 import "./globals.css";
+import "./privacy.css";
 
 
 export const metadata: Metadata = {
@@ -26,7 +30,14 @@ export default function RootLayout({
       <body
         className={fontVariables}
       >
-        {children}
+        <ConsentRoot state={resolveConsent({ reportSessions: false })}>
+          {children}
+          <ConsentBanner legalLinks={["privacyPolicy"]} />
+          <ConsentDialog legalLinks={["privacyPolicy"]} />
+          <footer className="privacy-footer">
+            <CookiePreferencesLink />
+          </footer>
+        </ConsentRoot>
       </body>
     </html>
   );

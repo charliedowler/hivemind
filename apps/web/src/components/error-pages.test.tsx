@@ -7,6 +7,8 @@ import { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } from "@/app/api/[...path
 import { POST as errorBeacon } from "@/app/api/analytics/error/route";
 import { browserAuthResponse } from "@/server/auth-error-response";
 
+vi.mock("@/lib/measurement-consent", () => ({ useMeasurementConsent: () => false }));
+
 const mocks = vi.hoisted(() => ({ session: vi.fn(), recordEvent: vi.fn() }));
 vi.mock("@/server/auth", () => ({ getWebContext: mocks.session }));
 vi.mock("@/server/analytics/events", () => ({ recordEvent: mocks.recordEvent, nativeOrigin: () => ({ entrypoint: "web" }) }));

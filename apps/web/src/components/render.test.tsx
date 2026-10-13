@@ -12,6 +12,8 @@ import { learningStatus } from "@/lib/learning-presentation";
 import { Login } from "./login";
 import { enabledSignInProviders } from "@/lib/auth-providers";
 
+vi.mock("@/lib/measurement-consent", () => ({ useMeasurementConsent: () => false }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push() {}, refresh() {} }),
 }));
