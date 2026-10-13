@@ -42,20 +42,28 @@ async function main() {
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   let resolveCode;
   let rejectCode;
+  let callbackResponse;
+  let received = false;
   const codePromise = new Promise((resolve, reject) => { resolveCode = resolve; rejectCode = reject; });
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname !== '/callback' || url.searchParams.get('state') !== state) { response.writeHead(400).end('This sign-in does not match the hive request.'); return; }
     const code = url.searchParams.get('code');
     if (!code) { response.writeHead(400).end('Hive sign-in did not finish.'); rejectCode(new Error('Hive sign-in was declined')); return; }
-    response.writeHead(200, { 'Content-Type': 'text/plain' }).end('Hive is connected. Return to your agent and run gohive status.');
+    if (received) { response.writeHead(409).end('Sign-in is already finishing. Run npx gohive status.'); return; }
+    received = true;
+    callbackResponse = response;
+    if (background) updateSignIn({ phase: 'exchanging' });
     resolveCode(code);
   });
+  server.requestTimeout = 15000;
+  server.headersTimeout = 15000;
   const timeout = setTimeout(() => rejectCode(new Error('Hive sign-in timed out. Run gohive login to retry.')), background ? 600000 : 120000);
   let approval;
   codePromise.catch(() => {});
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    server.ref();
     const redirectUri = `http://127.0.0.1:${server.address().port}/callback`;
     const registration = await json(discovery.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Hive hooks', application_type: 'native', redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none', scope }) });
     if (!registration.client_id) throw new Error('Hive did not register the hook client');
@@ -66,11 +74,11 @@ async function main() {
       loginUrl.search = authorizationUrl.search;
       if (process.env.HIVE_AGENT_INBOX) loginUrl.searchParams.set('login_hint', process.env.HIVE_AGENT_INBOX);
       if (process.env.HIVE_AGENT_NAME) loginUrl.searchParams.set('agent_name', process.env.HIVE_AGENT_NAME);
-      approval = setTimeout(() => console.log(process.env.HIVE_AGENT_INBOX
+      if (!background) approval = setTimeout(() => console.log(process.env.HIVE_AGENT_INBOX
         ? `If AgentID is waiting, run agentmail inboxes authorize --inbox-id ${process.env.HIVE_AGENT_INBOX} --auth-token <token shown at https://auth.agentid.com>`
         : 'If AgentID is waiting, choose an inbox you control and run the approval command shown at https://auth.agentid.com'), 5000);
     }
-    console.log(`Open ${loginUrl.href}`);
+    if (!background) console.log(`Open ${loginUrl.href}`);
     if (background) updateSignIn({ phase: 'waiting', url: loginUrl.href });
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
     const args = process.platform === 'win32' ? ['/c', 'start', '', loginUrl.href] : [loginUrl.href];
@@ -81,13 +89,18 @@ async function main() {
     const code = await codePromise;
     const tokens = await json(discovery.token_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id: registration.client_id, redirect_uri: redirectUri, resource }) });
     if (!tokens.access_token) throw new Error('Hive did not return a token');
-    if (background) updateSignIn({ phase: 'connected', url: undefined });
+    if (background) updateSignIn({ phase: 'exchanging' });
     saveCredentials({ ...tokens, baseUrl, client_id: registration.client_id, token_endpoint: trustedUrl(discovery.token_endpoint), expires_at: Date.now() + (tokens.expires_in || 3600) * 1000 });
+    if (background) updateSignIn({ phase: 'connected', url: undefined });
+    callbackResponse.writeHead(200, { 'Content-Type': 'text/plain' }).end('Hive is connected. Return to your agent and run npx gohive status.');
     if (background) {
       if (process.env.HIVE_NATIVE_CODEX === '1') await nativeLogin();
     }
-    console.log('The hooks can now read your hive. Run gohive doctor to check your foragers.');
-  } finally { clearTimeout(timeout); clearTimeout(approval); server.closeAllConnections(); server.close(); }
+    if (!background) console.log('The hooks can now read your hive. Run gohive doctor to check your foragers.');
+  } catch (error) {
+    if (callbackResponse && !callbackResponse.headersSent) callbackResponse.writeHead(502, { 'Content-Type': 'text/plain' }).end('Hive could not finish sign-in. Return to your agent and run npx gohive status.');
+    throw error;
+  } finally { clearTimeout(timeout); clearTimeout(approval); server.close(); }
 }
 async function nativeLogin() {
   await new Promise(resolve => {
@@ -108,5 +121,5 @@ async function nativeLogin() {
 }
 main().catch(error => {
   if (process.env.HIVE_SIGN_IN_ATTEMPT) { try { updateSignIn({ phase: 'failed', url: undefined }); } catch {} }
-  console.error(error.message); process.exitCode = 1;
+  if (!process.env.HIVE_SIGN_IN_ATTEMPT) console.error(error.message); process.exitCode = 1;
 });

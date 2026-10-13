@@ -3,11 +3,11 @@
 Requires Node 20 or later. Supports Claude Code, Codex and Executor.
 
 ```sh
-npx gohive install
+npx gohive@latest install
 npx gohive status
 npx gohive doctor
 npx gohive uninstall
-npx gohive install --client executor
+npx gohive@latest install --client executor
 npx gohive doctor --client executor
 ```
 
@@ -41,7 +41,7 @@ Provenance attestations are off because npm only issues them for public source r
 
 ## Executor
 
-Use `npx gohive install --client executor`. It installs the local skill without adding a second direct Hive MCP server. It detects an Executor endpoint in Claude or Codex configuration and opens a URL-prefilled organisation add page when supported. Pass `--executor-url https://executor.sh/<organisation>/mcp` to choose an endpoint. The walkthrough uses OAuth and keeps request headers empty.
+Use `npx gohive@latest install --client executor`. It installs the local skill without adding a second direct Hive MCP server. It detects an Executor endpoint in Claude or Codex configuration and opens a URL-prefilled organisation add page when supported. Pass `--executor-url https://executor.sh/<organisation>/mcp` to choose an endpoint. The walkthrough uses OAuth and keeps request headers empty.
 
 Executor v1 exposes `mcp.addServer`, `mcp.probeEndpoint`, `coreTools.oauth.probe` and `coreTools.oauth.start` through its management MCP API and `executor call`. The newer Executor CLI manages apps. Interactive install probes the server and OAuth metadata, fills the Hive server fields through the v1 API, and starts a user-owned OAuth flow when supported. It leaves existing integration settings, organisation accounts and policies in place. The browser handles account selection and consent. Non-interactive installs print the setup link. Doctor reads the current v1 CLI profile's Hive integration and connection health; with a newer CLI or only a cloud endpoint it reports that a dashboard check is needed.
 

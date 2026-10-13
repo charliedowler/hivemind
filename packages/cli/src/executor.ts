@@ -89,14 +89,14 @@ function executorHealth(options: ExecutorOptions, integration: RemoteIntegration
 export function doctorExecutor(options: ExecutorOptions): boolean {
   const log = options.log || console.log;
   const found = detectExecutor(options);
-  if (!found.detected) { log('Executor: Not detected. Run npx gohive install --client executor --executor-url <organisation MCP URL>'); return false; }
+  if (!found.detected) { log('Executor: Not detected. Run npx gohive@latest install --client executor --executor-url <organisation MCP URL>'); return false; }
   if (!found.cli || !/^executor v1\./.test(found.version || '')) {
     log(`Executor: Connection check needed. Open ${executorSetupLink(found.endpoint)}`);
     return false;
   }
   const { checked, integration } = findHive(options);
   if (!checked) { log('Executor: Profile check failed. Run executor login'); return false; }
-  if (!integration) { log('Executor: Hive is missing. Run npx gohive install --client executor'); return false; }
+  if (!integration) { log('Executor: Hive is missing. Run npx gohive@latest install --client executor'); return false; }
   if ((integration.config?.endpoint || integration.endpoint)?.replace(/\/$/, '') !== url) { log('Executor: The Hive URL differs. Open the existing integration and check its server URL'); return false; }
   const healthy = executorHealth(options, integration);
   log(`Executor: ${healthy ? 'Connected' : 'Sign-in or connection check needed. Open the Hive account in Executor'}`);
@@ -125,7 +125,7 @@ export function installExecutor(options: ExecutorOptions) {
     }
     const probe = call(options, ['mcp', 'probeEndpoint'], { endpoint: url });
     if (probe?.ok && probe.data?.requiresOAuth === false) {
-      log('Executor: Hive OAuth is unavailable. Retry npx gohive install --client executor when OAuth is available');
+      log('Executor: Hive OAuth is unavailable. Retry npx gohive@latest install --client executor when OAuth is available');
       return { link, detection: found };
     }
     let slug = integration?.slug || 'hive';

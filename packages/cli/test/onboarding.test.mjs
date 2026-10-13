@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -16,7 +17,7 @@ test('join links accept only the Hive origin and a three-word phrase', () => {
 });
 for (const identity of ['human', 'agent']) test(`${identity} install returns while OAuth waits; status resumes and joins with its own human credential`, async t => {
   const home = mkdtempSync(join(tmpdir(), 'gohive-background-'));
-  let baseUrl, redirect, verifier, lastPhrase;
+  let baseUrl, redirect, verifier, lastPhrase, releaseExchange;
   const calls = [];
   const server = createServer(async (request, response) => {
     const chunks = []; for await (const c of request) chunks.push(c);
@@ -25,7 +26,7 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
     if (request.url === '/.well-known/oauth-protected-resource') return send({authorization_servers:[baseUrl],scopes_supported:['hive','hive:person']});
     if (request.url === '/.well-known/oauth-authorization-server') return send({registration_endpoint:baseUrl+'/register',authorization_endpoint:baseUrl+'/authorize',token_endpoint:baseUrl+'/token',scopes_supported:['hive','hive:person','offline_access']});
     if (request.url === '/register') { redirect = JSON.parse(body).redirect_uris[0]; return send({client_id:'hook-fixture'}); }
-    if (request.url === '/token') { verifier = new URLSearchParams(body).get('code_verifier'); return send({access_token:'hook-fixture-token',refresh_token:'refresh-fixture',expires_in:3600}); }
+    if (request.url === '/token') { if (identity === 'human') await new Promise(resolve=>releaseExchange=resolve); verifier = new URLSearchParams(body).get('code_verifier'); return send({access_token:'hook-fixture-token',refresh_token:'refresh-fixture',expires_in:3600}); }
     if (request.url === '/api/mcp' && !request.headers.authorization) { response.writeHead(401, {'WWW-Authenticate':`Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`}).end(); return; }
     if (request.url === '/api/mcp') {
       assert.equal(request.headers.authorization,'Bearer hook-fixture-token');
@@ -48,7 +49,9 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
   const logs=[];
   if (identity === 'human') await beginSignIn({home,agents:[],identity:'agent',log:()=>{}});
   const start=Date.now();
-  await beginSignIn({home,agents:[],identity,phrase:'amber-honey-fox',log:line=>logs.push(line)});
+  const installed=await exec(process.execPath,[bin,'install','--client','claude','--home',home,'--join-url','https://gohive.dev/j/amber-honey-fox',...(identity==='agent'?['--identity','agent']:[])],{env:{...process.env,CI:'true',CLAUDECODE:'1'},timeout:20000});
+  logs.push(...installed.stdout.trim().split('\n'));
+  assert.equal(logs[0],'gohive 0.1.8');
   assert.ok(Date.now()-start<20000);
   const state=signInState(home);
   assert.equal(state.phase,'waiting');
@@ -61,8 +64,28 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
   const pending=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(pending.stdout.includes('Open '));
   assert.ok(pending.stdout.includes(identity === 'human' ? 'Sign in with Google in the tab that just opened; run `npx gohive status` when done.' : 'Approve this sign-in as the agent'));
+  if (identity === 'human') {
+    await new Promise(resolve=>setTimeout(resolve,60000));
+    process.kill(state.pid,0);
+    const later=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
+    assert.ok(later.stdout.includes('Open '));
+    assert.equal(signInState(home).attempt,state.attempt);
+    assert.equal(signInState(home).url,state.url);
+  }
   const callback=new URL(redirect); callback.searchParams.set('state',new URL(state.url).searchParams.get('state')); callback.searchParams.set('code','fixture-code');
-  assert.equal((await fetch(callback)).status,200);
+  const callbackPending=fetch(callback);
+  if (identity === 'human') {
+    for(let i=0;i<100&&!releaseExchange;i++) await new Promise(resolve=>setTimeout(resolve,20));
+    assert.ok(releaseExchange);
+    const finishing=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
+    assert.ok(finishing.stdout.includes('Finishing sign-in'));
+    assert.equal(signInState(home).attempt,state.attempt);
+    releaseExchange();
+  }
+  const callbackResult=await callbackPending;
+  assert.equal(callbackResult.status,200);
+  assert.ok((await callbackResult.text()).includes('Hive is connected'));
+  assert.ok(JSON.parse(readFileSync(join(home,'.hive/oauth.json'),'utf8')).access_token);
   for(let i=0;i<50 && signInState(home).phase!=='connected';i++) await new Promise(resolve=>setTimeout(resolve,20));
   const complete=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(complete.stdout.includes("You're in Lightdash."));
@@ -71,8 +94,17 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
   assert.ok(complete.stdout.includes('https://gohive.dev/j/amber-honey-fox'));
   assert.equal(lastPhrase,'amber-honey-fox');
   assert.ok(verifier.length>=32);
+  assert.equal(createHash('sha256').update(verifier).digest('base64url'),new URL(state.url).searchParams.get('code_challenge'));
   const stored=JSON.parse(readFileSync(join(home,'.hive/oauth.json'),'utf8'));
   assert.equal(stored.client_id,'hook-fixture');
   await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
+  assert.equal(signInState(home).attempt,state.attempt);
   assert.equal(calls.filter(name=>name==='hive_join').length,1);
+});
+
+
+test('an interactive harness requires an explicit agent identity flag even with headless', async () => {
+  const home=mkdtempSync(join(tmpdir(),'gohive-guard-'));
+  await assert.rejects(exec(process.execPath,[bin,'install','--headless','--home',home,'--client','claude'],{env:{...process.env,CLAUDECODE:'1'},timeout:20000}),error=>error.stdout.startsWith('gohive 0.1.8\n')&&error.stderr.includes('explicitly --identity agent'));
+  assert.equal(signInState(home),undefined);
 });

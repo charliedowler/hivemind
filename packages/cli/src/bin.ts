@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { installExecutor, doctorExecutor, detectExecutor } from './executor.js';
 import { install, uninstall, doctor, detectAgents, type Agent } from './installer.js';
-import { installerIdentity, type Identity } from './identity.js';
+import { installerIdentity, harness, type Identity } from './identity.js';
 import { beginSignIn, status, joinPhrase } from './onboarding.js';
 
 async function main() {
   if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Hive needs Node 20 or later');
   const args = process.argv.slice(2);
   const command = args.shift() || 'help';
+  if (command === 'install' || command === 'login') console.log(`gohive ${JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version}`);
   let home = process.env.HOME || homedir();
   let backupDir: string | undefined;
   let selectedAgent: Agent | undefined;
@@ -47,6 +48,7 @@ async function main() {
   if (executorClient && selectedAgent) throw new Error('Choose one client per --client install');
   const options = { home, agents, backupDir };
   const mode = installerIdentity(process.env, !!process.stdin.isTTY && !!process.stdout.isTTY, identity, headless);
+  if (mode === 'agent' && harness(process.env) && identity !== 'agent') throw new Error('An interactive coding harness needs human sign-in. Use --identity human, or explicitly --identity agent for an agent.');
   const executorOptions = { home, endpoint: executorUrl };
   if (executorClient) {
     if (command === 'install') {

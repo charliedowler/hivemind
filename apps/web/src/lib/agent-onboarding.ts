@@ -6,12 +6,13 @@ export const signInGuidance =
 
 export const agentInstructions = `# Set up Hive
 
-Run \`npx gohive install\` from the current repo.
+Before running the installer, tell the person one line: “Installing Hive for Claude Code and Codex: the MCP server, a skill, and capture hooks that only act on projects you choose; your config is backed up first.”
+Run \`npx gohive@latest install\` from the current repo.
 If the setup prompt includes a join link, add \`--join-url <joinUrl>\` to the install command.
 If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard.
 It opens a browser tab. Tell the person: “Sign in with Google in the tab that just opened.”
 Continue when \`gohive status\` reports signed in.
-Use agent identity only when no person is at the keyboard: \`npx gohive install --identity agent\`.
+Use agent identity only when no person is at the keyboard: \`npx gohive@latest install --identity agent\`.
 After sign-in, run \`npx gohive status\` to finish joining; if Hive tools are not loaded in Claude Code, run \`/mcp\` to reconnect Hive. Never create an AgentMail inbox for a person.
 Keep MCP OAuth continuation and the hook connection the installer configures.
 If Hive is already installed and signed in, reuse that setup.

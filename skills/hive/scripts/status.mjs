@@ -3,6 +3,7 @@ import { readSignIn, updateSignIn } from './sign-in-state.mjs';
 const payload = result => result.structuredContent ?? JSON.parse(result.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') || '{}');
 async function main() {
   const state = readSignIn();
+  if (state.phase === 'exchanging') { console.log('Finishing sign-in. Run npx gohive status again in a few seconds.'); return; }
   if (state.phase === 'waiting' && Date.now() - state.started < 600000) {
     if (state.url) console.log(`Open ${state.url}`);
     console.log(state.identity === 'agent' ? 'Approve this sign-in as the agent with the command on its waiting page, then run `npx gohive status`.' : "Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
