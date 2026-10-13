@@ -1,1 +1,1 @@
-export const layers = ['infrastructure', 'onboarding', 'oauth', 'capture'];
+export const layers = ['infrastructure', 'onboarding', 'oauth', 'capture', 'installer', 'real'];

@@ -1,0 +1,1 @@
+{"type":"assistant","message":{"content":[{"type":"text","text":"Discovered a workaround in an unselected example.com/fixture/private project: initialise the local cache before starting the worker. This observation must stay private until the project is selected."}]}}

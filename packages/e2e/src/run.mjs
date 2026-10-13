@@ -17,15 +17,19 @@ const before = await fingerprintRealConfigs(realHome);
 const started = Date.now();
 const report = { mode, commit: null, version: null, durationMs: 0, configUnchanged: false, scenarios: [] };
 let runtime;
+let starting;
+const startup = new AbortController();
 let active;
 let stopping;
 async function finish() {
   if (stopping) return stopping;
   stopping = (async () => {
+    startup.abort(new Error('Harness is stopping'));
     const failures = [];
     try { await active?.finish(); } catch (error) { failures.push(error); }
     active = null;
     try { await stopAll(); } catch (error) { failures.push(error); }
+    if (starting) runtime = await starting.catch(() => runtime);
     try { await runtime?.close(); } catch (error) { failures.push(error); }
     for (const error of failures) {
       process.exitCode = 1;
@@ -40,9 +44,9 @@ async function finish() {
   })();
   return stopping;
 }
-for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => { process.exitCode = 130; await finish(); process.exit(130); });
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.once(signal, async () => { report.interruptedBy = signal; process.exitCode = 130; await finish(); process.exit(130); });
 try {
-  runtime = await startRuntime();
+  runtime = await (starting = startRuntime({ signal: startup.signal }));
   report.commit = runtime.commit;
   report.version = runtime.version;
   const scenarios = [];
@@ -60,14 +64,15 @@ try {
   for (const scenario of selected) {
     const started = Date.now();
     console.log(`RUN ${scenario.name}`);
-    active = scenarioContext(runtime, scenario.name);
-    const result = { name: scenario.name, status: 'pass', durationMs: 0, directory: active.directory };
+    const context = scenarioContext(runtime, scenario.name);
+    active = context;
+    const result = { name: scenario.name, status: 'pass', durationMs: 0, directory: context.directory };
     try {
-      await active.resetRateLimits();
-      await scenario.run(active);
-      const inspected = [...active.outputs, ...active.events.filter(event => event.kind === 'mail').map(event => ({ text: event.body.text, surface: 'mail' })), ...active.events.filter(event => event.kind === 'slack' && event.body.text).map(event => ({ text: event.body.text, surface: 'slack' }))];
+      await context.resetRateLimits();
+      await scenario.run(context);
+      const inspected = [...context.outputs, ...context.events.filter(event => event.kind === 'mail').map(event => ({ text: event.body.text, surface: 'mail' })), ...context.events.filter(event => event.kind === 'slack' && event.body.text).map(event => ({ text: event.body.text, surface: 'slack' }))];
       const violations = inspected.flatMap(item => outputViolations(item.text || '').map(violation => ({ ...violation, surface: item.surface })));
-      await active.artifact('output-guard.json', { inspected: inspected.length, violations });
+      await context.artifact('output-guard.json', { inspected: inspected.length, violations });
       if (violations.length) throw new Error(`Output contract: ${JSON.stringify(violations)}`);
     } catch (error) {
       result.status = error.code === 'E2E_BLOCKED' ? 'blocked' : 'fail';
@@ -76,7 +81,7 @@ try {
       if (result.status === 'fail') process.exitCode = 1;
       else if (!process.exitCode) process.exitCode = 2;
     } finally {
-      try { await active.finish(); } catch (error) { result.status = 'fail'; result.error = [result.error, error.message].filter(Boolean).join('\n'); process.exitCode = 1; }
+      try { await context.finish(); } catch (error) { result.status = 'fail'; result.error = [result.error, error.message].filter(Boolean).join('\n'); process.exitCode = 1; }
       active = null;
       result.durationMs = Date.now() - started;
       report.scenarios.push(result);
@@ -84,6 +89,7 @@ try {
       console.log(`${result.status.toUpperCase()} ${scenario.name} (${(result.durationMs / 1000).toFixed(1)}s)${result.error ? ': ' + result.error : ''}`);
       await writeReports({ ...report, durationMs: Date.now() - started }, evidenceRoot);
     }
+    if (stopping) break;
   }
 } catch (error) {
   process.exitCode = 1;

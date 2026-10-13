@@ -16,11 +16,12 @@ function localEnvironment() {
   return Object.fromEntries(['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SYSTEMROOT'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
 }
 
-export async function startRuntime() {
+export async function startRuntime({ signal } = {}) {
   const id = randomBytes(7).toString('hex');
   const directory = resolve(evidenceRoot, '_infrastructure');
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await command('pnpm', ['--filter', 'gohive', 'build'], { cwd: repoRoot, log: resolve(directory, 'installer-build.log') });
+  await command('pnpm', ['--filter', 'gohive', 'build'], { cwd: repoRoot, signal, log: resolve(directory, 'installer-build.log') });
+  signal?.throwIfAborted();
   const appDirectory = resolve(packageRoot, '.runtime', id);
   let db, sink, job, closing;
   const close = () => closing ??= (async () => {
@@ -32,6 +33,8 @@ export async function startRuntime() {
   })();
   try {
   db = await startDatabase();
+  await writeArtifact(directory, 'database.json', { name: db.name });
+  signal?.throwIfAborted();
   sink = await startSinks();
   const port = await freePort();
   const url = `http://localhost:${port}`;
@@ -68,9 +71,12 @@ export async function startRuntime() {
     SLACK_SIGNING_SECRET: 'hive-e2e-slack-signing',
   };
   await mkdir(env.HOME, { recursive: true, mode: 0o700 });
+  signal?.throwIfAborted();
   job = start(process.execPath, [resolve(packageRoot, 'src/server.mjs')], { cwd: repoRoot, env, log: resolve(directory, 'next.log') });
+  job.completed.catch(() => {});
     let ready = false;
     for (let attempt = 0; attempt < 120; attempt++) {
+      signal?.throwIfAborted();
       if (job.child.exitCode !== null) throw new Error(`Next exited: ${JSON.stringify(job.output())}`);
       try {
         const response = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(2000) });
