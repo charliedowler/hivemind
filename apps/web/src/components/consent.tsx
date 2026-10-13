@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button, Card, Sprite } from "@hivemind/design-system";
 import { authClient } from "@/lib/auth-client";
-import { errorMessage } from "@/lib/client";
+import { errorMessage, requestJson } from "@/lib/client";
 import { ErrorPanel } from "./primitives";
 
 export function Consent({
@@ -13,6 +13,8 @@ export function Consent({
   scopes,
   claims,
   oauthQuery,
+  teamId,
+  hives = [],
 }: {
   clientName: string;
   teamName: string;
@@ -20,10 +22,23 @@ export function Consent({
   scopes: string[];
   claims: string[];
   oauthQuery: string;
+  teamId?: string;
+  hives?: { teamId: string; teamName: string; personal: boolean }[];
 }) {
+  const [choice, setChoice] = useState<string>();
+  const selectedTeamId = choice ?? teamId;
+  const selectedTeamName =
+    hives.find((hive) => hive.teamId === selectedTeamId)?.teamName ?? teamName;
   const [error, submit, pending] = useActionState(
     async (_previous: string, form: FormData) => {
       try {
+        if (
+          form.get("decision") === "allow" &&
+          selectedTeamId &&
+          selectedTeamId !== teamId
+        ) {
+          await requestJson("/api/app/switch-hive", { teamId: selectedTeamId });
+        }
         const result = await authClient.oauth2.consent({
           accept: form.get("decision") === "allow",
           oauth_query: oauthQuery,
@@ -51,7 +66,7 @@ export function Consent({
           </>
         ) : (
           <>
-            This agent can act in <strong>{teamName}</strong>.
+            This agent can act in <strong>{selectedTeamName}</strong>.
           </>
         )}
       </p>
@@ -86,6 +101,25 @@ export function Consent({
         <ErrorPanel message="This connection request has expired or changed. Start the connection again from your agent." />
       ) : null}
       <form className="stack" action={submit}>
+        {hives.length ? (
+          <label className="stack">
+            <span>Default hive</span>
+            <select
+              aria-label="Default hive"
+              value={selectedTeamId}
+              disabled={pending}
+              onChange={(event) => setChoice(event.target.value)}
+            >
+              {hives.map((hive) => (
+                <option key={hive.teamId} value={hive.teamId}>
+                  {hive.personal
+                    ? `Personal · ${hive.teamName}`
+                    : hive.teamName}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <Button type="submit" name="decision" value="allow" loading={pending}>
           Allow access
         </Button>

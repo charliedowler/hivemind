@@ -13,10 +13,10 @@ import { PromptBlock } from "./prompt-block";
 import { setupPrompt } from "@/lib/agent-onboarding";
 import { renderWelcome } from "@/server/identity/welcome-template";
 import { Consent } from "./consent";
-const mocks = vi.hoisted(() => ({ request: vi.fn() }));
+const mocks = vi.hoisted(() => ({ request: vi.fn(), consent: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/auth-client", () => ({
-  authClient: { oauth2: { consent: vi.fn() } },
+  authClient: { oauth2: { consent: mocks.consent } },
 }));
 vi.mock("@/lib/client", () => ({
   requestJson: mocks.request,
@@ -51,6 +51,27 @@ it("states personal and future access only for person-wide consent", () => {
   expect(team).toContain("Access is limited to this hive.");
   expect(team).not.toContain("future hive memberships");
 });
+it("lists both hives with the organisation selected by default at consent", () => {
+  const html = renderToStaticMarkup(
+    <Consent
+      clientName="Claude"
+      teamName="Lightdash"
+      teamId="team"
+      email="human@example.test"
+      scopes={["hive:person"]}
+      claims={[]}
+      oauthQuery="client_id=claude"
+      hives={[
+        { teamId: "personal", teamName: "My hive", personal: true },
+        { teamId: "team", teamName: "Lightdash", personal: false },
+      ]}
+    />,
+  );
+  expect(html).toContain('value="team" selected=""');
+  expect(html).toContain("Personal · My hive");
+  expect(html).toContain("Lightdash");
+  expect(html).toContain("organisations you join now or in future");
+});
 async function mount(element: React.ReactNode) {
   const dom = new JSDOM('<div id="root"></div>', {
     url: "http://localhost/app",
@@ -73,6 +94,54 @@ async function mount(element: React.ReactNode) {
     },
   };
 }
+it.each(["allow", "cancel"])(
+  "keeps the signed OAuth scope unchanged when choosing a hive and pressing %s",
+  async (decision) => {
+    const query = "client_id=claude&scope=hive&sig=signed";
+    const { host, close } = await mount(
+      <Consent
+        clientName="Claude"
+        teamName="Lightdash"
+        teamId="team"
+        email="human@example.test"
+        scopes={["hive"]}
+        claims={[]}
+        oauthQuery={query}
+        hives={[
+          { teamId: "personal", teamName: "My hive", personal: true },
+          { teamId: "team", teamName: "Lightdash", personal: false },
+        ]}
+      />,
+    );
+    vi.stubGlobal("FormData", window.FormData);
+    mocks.request.mockResolvedValue({ ok: true });
+    mocks.consent.mockResolvedValue({ data: {} });
+    try {
+      const select = host.querySelector("select")!;
+      await act(async () => {
+        select.value = "personal";
+        select.dispatchEvent(new window.Event("change", { bubbles: true }));
+      });
+      expect(host.textContent).toContain("This agent can act in My hive.");
+      await act(async () =>
+        host
+          .querySelector<HTMLButtonElement>(`button[value="${decision}"]`)!
+          .click(),
+      );
+      if (decision === "allow")
+        expect(mocks.request).toHaveBeenCalledWith("/api/app/switch-hive", {
+          teamId: "personal",
+        });
+      else expect(mocks.request).not.toHaveBeenCalled();
+      expect(mocks.consent).toHaveBeenCalledWith({
+        accept: decision === "allow",
+        oauth_query: query,
+      });
+    } finally {
+      await close();
+    }
+  },
+);
 it("regenerates the invite prompt after rotate and hides it when paused", async () => {
   const { host, close } = await mount(
     <HiveInvite

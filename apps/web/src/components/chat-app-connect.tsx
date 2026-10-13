@@ -8,9 +8,9 @@ const apps = [
   {
     name: "Claude app",
     steps: [
-      "Open Settings → Connectors → Add custom connector in Claude desktop or web.",
+      "Open Settings → Connectors in Claude desktop or web. Under Customize → Connectors, select Add → Add custom connector.",
       'Name it "Hive" and enter the server URL below.',
-      "Select Connect. Sign in with Google or Slack, pick your hive, and select Allow.",
+      "Select Connect. Sign in with Google or Slack, pick your hive, and select Allow access.",
       "Use the same Claude account on mobile. Your connector appears there too.",
     ],
     caveat:
@@ -19,9 +19,9 @@ const apps = [
   {
     name: "ChatGPT",
     steps: [
-      "Open Settings → Apps & Connectors → Advanced settings. Turn on Developer mode.",
-      'Select Create. Name the app "Hive", enter the server URL below, and choose OAuth authentication.',
-      "Select Create, sign in, and select Allow.",
+      "Open Plugins in the main sidebar → Add → Add custom MCP server.",
+      'Name it "Hive", enter the server URL below, and choose OAuth authentication.',
+      "Check I understand and want to continue. Select Create as a plugin, sign in, and select Allow access.",
       "Enable Hive in a chat through the + menu.",
     ],
     caveat:

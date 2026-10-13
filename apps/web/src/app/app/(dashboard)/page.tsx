@@ -8,19 +8,15 @@ export default async function Page({
 }) {
   const [params, ctx] = await Promise.all([searchParams, getWebContext()]);
   const hives = ctx ? await hiveChoices(ctx) : [];
+  const personal = Boolean(
+    hives.find((hive) => hive.teamId === ctx?.teamId)?.personal,
+  );
   return (
     <>
-      {params.joined === "1" && ctx ? (
-        <p role="status">
-          You joined {ctx.teamName}. Your personal hive stays yours.
-        </p>
+      {ctx && (!personal || params.joined === "1") ? (
+        <p role="status">You're in {ctx.teamName}.</p>
       ) : null}
-      <Feed
-        teamName={ctx?.teamName}
-        personal={Boolean(
-          hives.find((hive) => hive.teamId === ctx?.teamId)?.personal,
-        )}
-      />
+      <Feed teamName={ctx?.teamName} personal={personal} />
     </>
   );
 }
