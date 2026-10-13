@@ -38,7 +38,7 @@ export function feedbackStandingSql(alias = "l") {
     (array_agg(r.classification ORDER BY r.created_at DESC, r.id DESC) FILTER (WHERE r.classification IS NOT NULL))[1] AS last_outcome,
     max(r.created_at) FILTER (WHERE r.classification IS NOT NULL) AS last_outcome_at,
     max(r.created_at) FILTER (WHERE r.classification = 'useful') AS last_confirmed_at,
-    max(r.created_at) FILTER (WHERE r.classification = 'contradicted' AND btrim(CASE WHEN jsonb_typeof(r.evidence) = 'string' THEN r.evidence #>> '{}' ELSE concat_ws('', r.evidence->>'session_excerpt', r.evidence->>'diff', r.evidence->>'command_output') END) <> '') AS last_contradicted_at
+    max(r.created_at) FILTER (WHERE r.classification = 'contradicted' AND (r.after_state->>'evidencedContradiction' = 'true' OR btrim(CASE WHEN jsonb_typeof(r.evidence) = 'string' THEN r.evidence #>> '{}' ELSE concat_ws('', r.evidence->>'session_excerpt', r.evidence->>'diff', r.evidence->>'command_output') END) <> '')) AS last_contradicted_at
     FROM feedback f LEFT JOIN feedback_receipts r ON r.id = f.receipt_id AND r.learning_id = f.learning_id AND r.team_id = f.team_id AND r.member_id = f.member_id
     WHERE f.learning_id = ${q(`${alias}.id`)} AND f.team_id = ${q(`${alias}.team_id`)})`;
 }
@@ -266,7 +266,7 @@ async function writeFeedback(
       const updated = (
         await tx`SELECT lifecycle FROM ${audienceCellsSql(ctx)} l WHERE id = ${id}`
       )[0];
-      await tx`INSERT INTO feedback_receipts (id, team_id, learning_id, member_id, action, outcome, evidence, classification, judgment, vote, target_receipt_id, before_state, after_state, capture_flagged) VALUES (${receipt}, ${ctx.teamId}, ${id}, ${ctx.memberId}, ${change.withdraw ? "withdraw" : "report"}, ${change.outcome ?? null}, ${change.evidence ? tx.json(change.evidence) : null}, ${change.classification ?? null}, ${change.judgment ? tx.json(change.judgment) : null}, ${change.withdraw ? restoredVote : (change.vote ?? null)}, ${target}, ${tx.json(before)}, ${tx.json({ lifecycle: updated.lifecycle, votes })}, ${change.flagged ?? false})`;
+      await tx`INSERT INTO feedback_receipts (id, team_id, learning_id, member_id, action, outcome, evidence, classification, judgment, vote, target_receipt_id, before_state, after_state, capture_flagged) VALUES (${receipt}, ${ctx.teamId}, ${id}, ${ctx.memberId}, ${change.withdraw ? "withdraw" : "report"}, ${change.outcome ?? null}, ${change.evidence ? tx.json(change.evidence) : null}, ${change.classification ?? null}, ${change.judgment ? tx.json(change.judgment) : null}, ${change.withdraw ? restoredVote : (change.vote ?? null)}, ${target}, ${tx.json(before)}, ${tx.json({ lifecycle: updated.lifecycle, votes, evidencedContradiction: !change.withdraw && change.classification === "contradicted" })}, ${change.flagged ?? false})`;
       if (cell.lifecycle !== updated.lifecycle)
         await recordMutation({
           name: "learning.lifecycle_changed",

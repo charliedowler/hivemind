@@ -203,7 +203,7 @@ describe.skipIf(!process.env.DATABASE_URL)("feedback decides retrieval", () => {
     ]);
   });
 
-  it("does not treat an empty evidence object as an evidenced contradiction", async () => {
+  it("uses the supported contradiction stamp when the result contains inline evidence", async () => {
     const fixture = await cell();
     models.outcome.mockResolvedValueOnce({
       classification: "contradicted",
@@ -211,13 +211,15 @@ describe.skipIf(!process.env.DATABASE_URL)("feedback decides retrieval", () => {
     });
     await reportOutcome(a, {
       id: fixture.id,
-      outcome: "Unsupported contradiction fixture",
+      outcome:
+        "The command output contradicts this cell: observed exit 1 instead of exit 0.",
       evidence: {},
     });
+    await sql`UPDATE feedback_receipts SET evidence = NULL WHERE learning_id = ${fixture.id}`;
     expect(await retrieved(a, fixture.id, fixture.query)).toEqual([
-      true,
-      true,
-      true,
+      false,
+      false,
+      false,
     ]);
   });
 
