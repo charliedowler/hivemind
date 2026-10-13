@@ -2,11 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { hiveRecentInput } from "@hivemind/core";
 import { recentLearnings, teamOverview } from "@/server/hive";
 import { ownerCapturePolicy } from "@/server/project-sharing";
-import { adminJoinPhrase } from "@/server/identity/join-phrases";
-import { isAgentMember } from "@/server/identity/agent-enrollment";
 import { HiveError } from "@/server/errors";
 import { withMcpContext } from "./context";
-import { getSql } from "@/server/db/client";
+import { hiveInviteLink } from "./invites";
 
 export function registerHiveResources(server: McpServer) {
   server.registerResource(
@@ -29,22 +27,13 @@ export function registerHiveResources(server: McpServer) {
           if (!(error instanceof HiveError) || error.status !== 403)
             throw error;
         }
-        let phrase = null;
-        if (
-          overview.role === "admin" &&
-          !(await isAgentMember(actor.memberId))
-        ) {
-          const [hive] =
-            await getSql()`SELECT personal_owner_member_id FROM teams WHERE id = ${actor.teamId}`;
-          if (hive?.personal_owner_member_id === null)
-            phrase = await adminJoinPhrase(actor);
-        }
+        const invite = await hiveInviteLink(actor);
         return {
           contents: [
             {
               uri: uri.href,
               mimeType: "text/markdown",
-              text: `# ${overview.teamName}\n\nMembers: ${overview.memberCount}\nCells: ${overview.learningCount}\n\n## Selected projects\n\n${projects}\n\nChat capture: disabled; captures without selected project context are refused.\n${phrase ? `\nJoin phrase: ${phrase.phrase}${phrase.paused ? " (paused)" : ""}\n` : ""}`,
+              text: `# ${overview.teamName}\n\nMembers: ${overview.memberCount}\nCells: ${overview.learningCount}\n\n## Selected projects\n\n${projects}\n\nChat capture: disabled; captures without selected project context are refused.\n\n## Invite teammates\n\n\`\`\`json\n${JSON.stringify(invite, null, 2)}\n\`\`\`\n`,
             },
           ],
         };

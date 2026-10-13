@@ -6,6 +6,11 @@ import { shareProjects, captureOwner } from "@/server/project-sharing";
 import { registerHiveTools } from "./server";
 import type { HiveContext } from "@hivemind/core";
 import { newId } from "@/server/db/ids";
+import {
+  generateJoinPhrase,
+  pauseJoinPhrase,
+  rotateJoinPhrase,
+} from "@/server/identity/join-phrases";
 import { recordFeedback } from "@/server/feedback";
 
 vi.mock("server-only", () => ({}));
@@ -66,6 +71,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await sql`DELETE FROM learnings WHERE team_id IN (${a.teamId}, ${b.teamId})`;
       await sql`DELETE FROM owner_capture_policy_history WHERE owner_member_id IN (${a.memberId}, ${b.memberId})`;
       await sql`DELETE FROM owner_capture_policies WHERE owner_member_id IN (${a.memberId}, ${b.memberId})`;
+      await sql`DELETE FROM hive_join_phrases WHERE team_id IN (${a.teamId}, ${b.teamId})`;
+      await sql`DELETE FROM team_domains WHERE team_id IN (${a.teamId}, ${b.teamId})`;
       await sql`DELETE FROM api_keys WHERE member_id IN (${a.memberId}, ${b.memberId})`;
       await sql`DELETE FROM teams WHERE id IN (${a.teamId}, ${b.teamId}) OR personal_owner_member_id IN (${a.memberId}, ${b.memberId})`;
       await sql`DELETE FROM members WHERE id IN (${a.memberId}, ${b.memberId})`;
@@ -127,8 +134,81 @@ describe.skipIf(!process.env.DATABASE_URL)(
         )[0].count,
       ).toBe(0);
     });
+    it("returns a personal hive's team-creation hint through the tool and overview", async () => {
+      const personal = (await captureOwner(a)).personal;
+      const result = await rpc(personal, "tools/call", {
+        name: "hive_invite_link",
+        arguments: {},
+      });
+      expect(JSON.parse(result.result.content[0].text)).toEqual({
+        joinUrl: null,
+        hint: "Create a hive for your team at https://gohive.dev/app/account",
+      });
+      const overview = await rpc(personal, "resources/read", {
+        uri: "hive://overview",
+      });
+      expect(overview.result.contents[0].text).toContain(
+        "Create a hive for your team at https://gohive.dev/app/account",
+      );
+    });
+    it("lists a strict input-free invite tool and rejects non-members", async () => {
+      const tools = (await rpc(a, "tools/list", {})).result.tools;
+      expect(
+        tools.find((tool: { name: string }) => tool.name === "hive_invite_link")
+          .inputSchema,
+      ).toMatchObject({
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      });
+      const refused = await rpc({ ...b, teamId: a.teamId }, "tools/call", {
+        name: "hive_invite_link",
+        arguments: {},
+      });
+      expect(refused.result.isError).toBe(true);
+      expect(refused.result.content[0].text).toContain("no active membership");
+      expect(JSON.stringify(refused)).not.toContain("MCP audience A");
+    });
+    it("lets members and agents read current links and reflects pause and rotation", async () => {
+      await sql`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${b.memberId}, ${a.teamId}, 'member')`;
+      const member = { ...b, teamId: a.teamId, teamName: a.teamName };
+      const phrase = await generateJoinPhrase(a);
+      const joinUrl = `https://gohive.dev/j/${phrase.phrase}`;
+      const read = async () =>
+        JSON.parse(
+          (
+            await rpc(member, "tools/call", {
+              name: "hive_invite_link",
+              arguments: {},
+            })
+          ).result.content[0].text,
+        );
+      expect(await read()).toEqual({
+        teamName: a.teamName,
+        joinUrl,
+        invitePrompt: `Set me up on Hive and join the ${a.teamName} hive: read https://gohive.dev/agent and follow it, then join with ${joinUrl}`,
+        joinPaused: true,
+      });
+      await sql`INSERT INTO team_domains (domain, team_id, created_by) VALUES (${`mcp${a.teamId.replace(/[^a-z0-9]/g, "")}.com`}, ${a.teamId}, ${a.memberId})`;
+      await pauseJoinPhrase(a, false);
+      expect((await read()).joinPaused).toBe(false);
+      await sql`UPDATE members SET actor_type = 'agent' WHERE id = ${b.memberId}`;
+      expect((await read()).joinUrl).toBe(joinUrl);
+      await sql`UPDATE members SET actor_type = 'human' WHERE id = ${b.memberId}`;
+      const rotated = await rotateJoinPhrase(a);
+      expect((await read()).joinUrl).toBe(
+        `https://gohive.dev/j/${rotated.phrase}`,
+      );
+      await pauseJoinPhrase(a, true);
+      const overview = await rpc(member, "resources/read", {
+        uri: "hive://overview",
+      });
+      expect(overview.result.contents[0].text).toContain(
+        `https://gohive.dev/j/${rotated.phrase}`,
+      );
+      expect(overview.result.contents[0].text).toContain('"joinPaused": true');
+    });
     it("filters other audiences, unhelpful votes and history from the recent resource", async () => {
-      await sql`INSERT INTO hive_memberships (member_id, team_id) VALUES (${b.memberId}, ${a.teamId})`;
       const visible = newId("lrn"),
         hidden = newId("lrn"),
         historical = newId("lrn"),

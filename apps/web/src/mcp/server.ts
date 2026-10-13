@@ -46,6 +46,7 @@ import { contextSchema, getContext, type ToolContext } from "./context";
 import { registerHiveInstructions } from "./instructions";
 import { registerHivePrompts } from "./prompts";
 import { registerHiveResources } from "./resources";
+import { hiveInviteLink } from "./invites";
 
 
 function age(date: string): string {
@@ -106,6 +107,11 @@ export function registerHiveTools(server: McpServer) {
   registerHiveInstructions(server);
   registerHivePrompts(server);
   registerHiveResources(server);
+  server.registerTool("hive_invite_link", {
+    title: "Invite teammates to this hive",
+    description: "Get the current organisation's domain-gated join link and setup prompt, or the personal hive's team-creation link.",
+    inputSchema: z.strictObject({}),
+  }, async (_input, ctx) => reply(async () => JSON.stringify(await hiveInviteLink(getContext(ctx))), ctx));
   server.registerTool("hive_share_projects", {
     title: "Choose projects for private capture",
     description: "Read the owner's selection, or save include/exclude patterns at its revision. Initial agent setup records the supplied humanInstruction. Adding projects later requires human authority. Captures stay personal; this never publishes to an organisation.",

@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   recent: vi.fn(),
   overview: vi.fn(),
   policy: vi.fn(),
-  phrase: vi.fn(),
   sql: vi.fn(),
 }));
 vi.mock("@/server/identity/agent-enrollment", () => ({
@@ -25,9 +24,6 @@ vi.mock("@/server/hive", () => ({
 }));
 vi.mock("@/server/project-sharing", () => ({
   ownerCapturePolicy: mocks.policy,
-}));
-vi.mock("@/server/identity/join-phrases", () => ({
-  adminJoinPhrase: mocks.phrase,
 }));
 
 const actor = {
@@ -205,7 +201,7 @@ describe("MCP model-facing wire contract", () => {
     expect(mocks.overview).not.toHaveBeenCalled();
     expect(mocks.policy).not.toHaveBeenCalled();
   });
-  it("reads only the fixed selected audience and hides admin phrases from members", async () => {
+  it("reads only the fixed selected audience and shares its invite with members", async () => {
     mocks.membership.mockResolvedValue(actor);
     mocks.overview.mockResolvedValue({
       teamName: "Selected hive",
@@ -217,13 +213,24 @@ describe("MCP model-facing wire contract", () => {
       include: ["github.com/team/repo"],
       exclude: [],
     });
+    mocks.sql.mockResolvedValue([
+      {
+        name: "Selected hive",
+        personal_owner_member_id: null,
+        join_paused: true,
+        phrase: "amber-honey-fox",
+      },
+    ]);
     const result = await rpc("resources/read", { uri: "hive://overview" });
     expect(result.result.contents[0]).toMatchObject({
       mimeType: "text/markdown",
       text: expect.stringContaining("Chat capture: disabled"),
     });
     expect(mocks.overview).toHaveBeenCalledWith(expect.objectContaining(actor));
-    expect(mocks.phrase).not.toHaveBeenCalled();
+    expect(result.result.contents[0].text).toContain(
+      "https://gohive.dev/j/amber-honey-fox",
+    );
+    expect(result.result.contents[0].text).toContain('"joinPaused": true');
     expect(
       (await rpc("resources/read", { uri: "hive://overview/another-hive" }))
         .error,
