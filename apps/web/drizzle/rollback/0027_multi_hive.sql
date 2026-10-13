@@ -1,6 +1,11 @@
 SET LOCAL lock_timeout = '3s';
 SET LOCAL statement_timeout = '30s';
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'hive_cutover_rollback_state' AND relnamespace = (SELECT relnamespace FROM pg_class WHERE oid = 'members'::regclass)) THEN
+    RAISE EXCEPTION 'Refuse lossy rollback: roll back 0029 before 0027';
+  END IF;
+END $$;
+DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM members WHERE provisional OR disabled_at IS NOT NULL)
     OR EXISTS (SELECT 1 FROM hive_join_phrases)
     OR EXISTS (SELECT 1 FROM hive_join_capabilities)

@@ -1,6 +1,11 @@
 SET LOCAL lock_timeout = '3s';
 SET LOCAL statement_timeout = '30s';
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'hive_cutover_rollback_state' AND relnamespace = (SELECT relnamespace FROM pg_class WHERE oid = 'members'::regclass)) THEN
+    RAISE EXCEPTION 'Refuse lossy rollback: roll back 0029 before 0028';
+  END IF;
+END $$;
+DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM owner_capture_policies WHERE revision > 0 OR cardinality(include_patterns) > 0 OR cardinality(exclude_patterns) > 0) OR EXISTS (SELECT 1 FROM knowledge_snapshots WHERE cardinality(audience_team_ids) > 1) OR EXISTS (SELECT 1 FROM owner_capture_policy_history) OR EXISTS (SELECT 1 FROM capture_policy_delegations) OR EXISTS (SELECT 1 FROM project_sharing_grants) OR EXISTS (SELECT 1 FROM learning_shares) OR EXISTS (SELECT 1 FROM feedback f JOIN learnings l ON l.id = f.learning_id WHERE f.team_id <> l.team_id) OR EXISTS (SELECT 1 FROM feedback_receipts f JOIN learnings l ON l.id = f.learning_id WHERE f.team_id <> l.team_id) THEN
     RAISE EXCEPTION 'Refuse lossy rollback of project selection, publication or audience feedback';
   END IF;
