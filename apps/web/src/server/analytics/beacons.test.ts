@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { learningBeacon, clientBeacon } from "./beacons";
+import { clientBeacon } from "./beacons";
 import { withOrigin, originFor, type EventRow } from "./events";
 const ctx = {
   teamId: "team_aaaaaaaaaaaa",
@@ -9,11 +9,8 @@ const ctx = {
 };
 const auth = vi.hoisted(() => ({
   key: vi.fn(),
-  web: vi.fn(),
-  learning: vi.fn(),
 }));
 vi.mock("../auth", () => ({
-  getWebContext: auth.web,
   authenticateApiKey: auth.key,
 }));
 vi.mock("../bearer-auth", () => ({
@@ -22,7 +19,6 @@ vi.mock("../bearer-auth", () => ({
     return ctx ? handler(request, ctx) : new Response(null, { status: 401 });
   },
 }));
-vi.mock("../hive", () => ({ getLearning: auth.learning }));
 vi.mock("../identity/rate-limit", () => ({ rateLimit: vi.fn() }));
 afterEach(() => vi.resetAllMocks());
 function request(
@@ -37,49 +33,6 @@ function request(
   });
 }
 describe("analytics beacons", () => {
-  it("requires a session and a readable team cell for a view", async () => {
-    auth.web.mockResolvedValue(null);
-    expect(
-      (
-        await learningBeacon(
-          request("/api/app/analytics/view", {
-            learningId: "lrn_aaaaaaaaaaaa",
-          }),
-        )
-      ).status,
-    ).toBe(401);
-    auth.web.mockResolvedValue(ctx);
-    auth.learning.mockResolvedValue(null);
-    expect(
-      (
-        await learningBeacon(
-          request("/api/app/analytics/view", {
-            learningId: "lrn_aaaaaaaaaaaa",
-          }),
-        )
-      ).status,
-    ).toBe(404);
-    auth.learning.mockResolvedValue({ id: "lrn_aaaaaaaaaaaa" });
-    const rows: EventRow[] = [];
-    await withOrigin(
-      originFor(ctx),
-      async () =>
-        expect(
-          (
-            await learningBeacon(
-              request("/api/app/analytics/view", {
-                learningId: "lrn_aaaaaaaaaaaa",
-              }),
-            )
-          ).status,
-        ).toBe(204),
-      async (row) => {
-        rows.push(row);
-      },
-    );
-    expect(rows[0].event_name).toBe("learning.viewed");
-    expect(auth.learning).toHaveBeenCalledWith(ctx, "lrn_aaaaaaaaaaaa");
-  });
   it("authenticates installer reports, hashes replay keys and refuses unknown steps", async () => {
     const body = {
       attemptId: "00000000-0000-4000-8000-000000000001",

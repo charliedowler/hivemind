@@ -90,9 +90,9 @@ export default function PrivacyPage() {
         <h2>Cookies, advertising and sale of data</h2>
         <p>
           We use necessary cookies to keep you signed in and remember your
-          privacy choices. Inth stores the consent choices you submit. Optional
-          measurement of page and cell visits starts only after you opt in. The
-          Cookie preferences control is in the footer.
+          privacy choices. Inth stores the consent choices you submit. We do not
+          track page or cell visits. The Cookie preferences control is in the
+          footer.
           We do not sell your data or use it for advertising.
         </p>
       </section>

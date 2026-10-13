@@ -2,7 +2,9 @@
 
 ## Round C, 13 October 2026
 
-The analytics, Decisions, tree, digest-settings and separate waitlist pages are removed. Team retains export; Slack retains scheduling. The analytics ledger and private SQL reports remain. Browser page and error beacons are removed. The cookie banner, privacy preferences and consent-gated cell-view telemetry remain. The earlier verification below is historical and does not describe the current page set. Screenshots of removed pages are deleted.
+The analytics, Decisions, tree, digest-settings and separate waitlist pages are removed. Team retains export; Slack retains scheduling. The analytics ledger and private SQL reports remain. All browser page, cell and error beacons and their endpoints are removed. The cookie banner and privacy preferences remain, with only the necessary category. The copy no longer offers optional measurement. The consent helper and its tests are removed. The earlier verification below is historical and does not describe the current page set. Screenshots of removed pages are deleted.
+
+Round C verification uses headless Firefox at 1280 and 390 pixels. The banner and necessary-only preferences render without overflow or page errors. A local choice survives reload and preferences reopen. No browser analytics request fires. The local run does not confirm a hosted consent-save response. Screenshots are `screenshots/simplify-2026-10-13/delete-cookie-{1280,390}.png`.
 
 
 Hive uses hosted c15t 3.0.0. The install adds one consent root, a banner, a preferences dialog and an app-owned Cookie preferences button in the root footer. The banner and dialog use Hive's honey, wax, ink, fonts, chamfered corners and hard shadows. The service remains usable without optional measurement.

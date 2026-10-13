@@ -1,5 +1,3 @@
-import { getWebContext } from "../auth";
-import { getLearning } from "../hive";
 import { withHiveBearerAuth } from "../bearer-auth";
 import { z } from "zod";
 import { httpError } from "@/lib/http";
@@ -11,35 +9,6 @@ function parseBeacon(text: string): unknown {
     return JSON.parse(text);
   } catch {
     throw Object.assign(new Error("Send a valid event."), { status: 400 });
-  }
-}
-export async function beaconInput(request: Request) {
-  if (request.headers.get("origin") !== new URL(request.url).origin)
-    throw Object.assign(new Error("Use the Hive page to send this event."), {
-      status: 403,
-    });
-  const text = await request.text();
-  if (text.length > 1024)
-    throw Object.assign(new Error("Event is too large."), { status: 413 });
-  return parseBeacon(text);
-}
-export async function learningBeacon(request: Request) {
-  try {
-    const ctx = await getWebContext();
-    if (!ctx) return new Response(null, { status: 401 });
-    const { learningId } = z
-      .object({ learningId: z.string().regex(/^lrn_[a-z2-7]{12}$/) })
-      .parse(await beaconInput(request));
-    if (!(await getLearning(ctx, learningId)))
-      return new Response(null, { status: 404 });
-    await recordEvent({
-      name: "learning.viewed",
-      learningId,
-      origin: originFor(ctx),
-    });
-    return new Response(null, { status: 204 });
-  } catch (error) {
-    return httpError(error);
   }
 }
 const clientReport = z.discriminatedUnion("kind", [

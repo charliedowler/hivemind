@@ -229,7 +229,7 @@ Retrieval results use compact Markdown with cell IDs. Capture, correction and fe
 - `/app/connect`: the one-command installer comes first. Keys for CI and headless setups and manual setup are collapsed below it. Members create, copy and revoke their own keys here. Manual setup remembers the selected Claude Code, Codex or Executor tab in local storage.
 - `/app/account`: the name form and signed-in email are visible. Change email reveals the existing verification flow. Only accounts with a stored password see Change password; its form is collapsed. Keys live on Connect.
 - Redirects: `/app/members` to `/app/team`, `/app/settings/slack` to `/app/team#slack`, `/app/settings/capture` to `/app/team#keeps`, and `/app/install` to `/app/connect`.
-- `/app/account` remains in the avatar menu. `/app/conflicts` and `/app/admin/analytics` redirect to `/app`; `/app/tree` redirects to `/app/team#export`; `/app/settings/slack/digests` redirects to `/app/team#slack`. The separate `/app/switch-account`, `/waitlist`, `/api/waitlist` and root `/settings/capture` routes are removed. The landing early-access form remains. Access-error pages offer Sign out directly.
+- `/app/account` remains in the avatar menu. `/app/conflicts` and `/app/admin/analytics` redirect to `/app`; `/app/tree` redirects to `/app/team#export`; `/app/settings/slack/digests` redirects to `/app/team#slack`. The separate `/app/switch-account`, `/waitlist`, `/api/waitlist` and root `/settings/capture` routes are removed. The landing early-access form remains. `/api/analytics/page`, `/api/analytics/error` and `/api/app/analytics/view` are removed; authenticated `/api/analytics/install` and `/api/analytics/hook` reports remain. Access-error pages offer Sign out directly.
 
 - Web API routes live under `/api/app/*` and authenticate with the session cookie. They call the same service functions as the MCP tools.
 
@@ -332,7 +332,7 @@ Operational limits: Blob garbage collection, a scheduled queue worker, streaming
 
 ## Analytics
 
-The [analytics contract](analytics.md) defines the versioned append-only event envelope, allowlisted metadata, fixed reasons, traffic classification, trusted boundaries and five private SQL reports. The analytics page and browser page and error beacons are removed. Cell-view telemetry still requires explicit measurement consent. Server events and authenticated installer and hook reports remain. Early-access signups stay in `early_access`. Round C changes no tables or migrations.
+The [analytics contract](analytics.md) defines the versioned append-only event envelope, allowlisted metadata, fixed reasons, traffic classification, trusted boundaries and five private SQL reports. The analytics page and all browser page, cell and error beacons are removed. Server events and authenticated installer and hook reports remain. Early-access signups stay in `early_access`. Round C changes no tables or migrations.
 
 ## Better Auth web and MCP access
 

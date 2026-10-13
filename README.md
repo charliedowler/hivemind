@@ -90,7 +90,7 @@ Both install paths were run for real against production on 12 October 2026: Code
 | `hive_snapshot` | Returns a private read-only tarball link that expires after 15 minutes. |
 | `hive_feedback` | Optional direct vote or actor-bound receipt withdrawal.                                                                                                                                                                                                                 |
 
-Signed-in navigation has Hive, Team, Connect and an avatar menu. Team holds Members, Slack, What Hive keeps and Export. Account and Sign out are in the avatar menu. `/app/install` redirects to `/app/connect`; `/app/members` redirects to `/app/team`; `/app/settings/slack` and `/app/settings/capture` redirect to the Slack and What Hive keeps sections. `/app/conflicts` and `/app/admin/analytics` redirect to `/app`. `/app/tree` redirects to `/app/team#export`; `/app/settings/slack/digests` redirects to `/app/team#slack`. The separate waitlist, switch-account and root `/settings/capture` routes are removed. The landing early-access form remains.
+Signed-in navigation has Hive, Team, Connect and an avatar menu. Team holds Members, Slack, What Hive keeps and Export. Account and Sign out are in the avatar menu. `/app/install` redirects to `/app/connect`; `/app/members` redirects to `/app/team`; `/app/settings/slack` and `/app/settings/capture` redirect to the Slack and What Hive keeps sections. `/app/conflicts` and `/app/admin/analytics` redirect to `/app`. `/app/tree` redirects to `/app/team#export`; `/app/settings/slack/digests` redirects to `/app/team#slack`. The separate waitlist, switch-account and root `/settings/capture` routes are removed. The landing early-access form remains. `/api/analytics/page`, `/api/analytics/error` and `/api/app/analytics/view` are removed; authenticated `/api/analytics/install` and `/api/analytics/hook` reports remain.
 
 ## Architecture
 
@@ -236,7 +236,7 @@ Production smoke checks on 12 October 2026 measured Jev at 205 ms for a friction
 
 ## Analytics and event logs
 
-The [analytics contract](docs/analytics.md) describes the private append-only event ledger, privacy limits and five SQL reports. The analytics page and browser page and error beacons are removed. Cell-view telemetry still requires explicit measurement consent. Server, installer and hook events remain. Early-access signups remain in `early_access`. Set `HIVE_REPORTING_DATABASE_URL` to a private ledger-only reporting login for SQL access. No Lightdash project is created here.
+The [analytics contract](docs/analytics.md) describes the private append-only event ledger, privacy limits and five SQL reports. The analytics page and all browser page, cell and error beacons are removed. Server, installer and hook events remain. Early-access signups remain in `early_access`. Set `HIVE_REPORTING_DATABASE_URL` to a private ledger-only reporting login for SQL access. No Lightdash project is created here.
 
 ## Better Auth and forager access
 

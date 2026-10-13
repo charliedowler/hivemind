@@ -2,38 +2,33 @@ import { defineConsentConfig } from "c15t/next";
 
 export default defineConsentConfig({
   options: {
-    consentCategories: ["necessary", "measurement"],
+    consentCategories: ["necessary"],
     legalLinks: { privacyPolicy: { href: "/privacy", target: "_self" } },
     i18n: {
       messages: {
         en: {
           legalLinks: { privacyPolicy: "Privacy policy" },
           common: {
-            acceptAll: "Accept all",
-            rejectAll: "Reject optional",
+            acceptAll: "Continue",
+            rejectAll: "Necessary only",
             customize: "Choose preferences",
             save: "Save preferences",
           },
           cookieBanner: {
             title: "Your privacy choices",
             description:
-              "Hive uses necessary cookies to run the service and remember your choices. Optional measurement helps us understand how Hive is used, only if you allow it.",
+              "Hive uses only necessary cookies to run the service and remember your choices. We do not track page or cell visits.",
           },
           consentManagerDialog: {
             title: "Privacy preferences",
             description:
-              "Choose whether Hive can measure page visits. You can change your mind here at any time. Necessary cookies stay on to run the service.",
+              "Hive uses only necessary cookies. These stay on to run the service, keep you signed in and remember your privacy choices.",
           },
           consentTypes: {
             necessary: {
               title: "Necessary",
               description:
                 "Keep you signed in, run Hive and remember your privacy choices. These stay on.",
-            },
-            measurement: {
-              title: "Measurement",
-              description:
-                "Allow Hive to measure page and cell visits to understand how the service is used. No measurement beacon is sent until you opt in.",
             },
           },
         },

@@ -10,7 +10,7 @@ The events answer five questions:
 4. How often do answers report gaps or classifiers refuse sensitive content, and how long do calls take?
 5. Which failed calls or missing completions explain a stall?
 
-Early-access signups remain in `early_access`. There is no `waitlist.signup` event or second signup ledger. The separate waitlist page and API, analytics dashboard and browser page and error beacons are removed. Consent-gated cell-view telemetry remains. The server ledger and authenticated installer/hook reports remain.
+Early-access signups remain in `early_access`. There is no `waitlist.signup` event or second signup ledger. The separate waitlist page and API, analytics dashboard and all browser page, cell and error beacons are removed. Their endpoints (`/api/analytics/page`, `/api/analytics/error` and `/api/app/analytics/view`) return 404. The server ledger and authenticated installer/hook reports remain.
 
 ## Envelope and privacy
 
@@ -36,7 +36,7 @@ The ledger intentionally has no cascading foreign keys. Removing a member or ope
 | `learning.superseded` | An accepted replacement commits. Links the older cell to its newer cell. Candidate proposals do not count. |
 | `learning.lifecycle_changed` | A committed lifecycle transition from a merge, vote, edit, moderation, or accepted replacement. Stores old and new lifecycle and a fixed reason. |
 | `learning.feedback` | A member's vote persists. Records `up`, `down`, or `outdated`; no vote note. |
-| `learning.viewed` | A consent-gated cell view, authenticated and scoped to the member’s team. |
+| `learning.viewed` | Historical cell-view event. New browser emissions stop in Round C. |
 | `search.performed` | Search returns. Records result count, score band, latency, and vector, text, prefix, recency, vote, and repo-boost signals. No query or repo is stored. |
 | `ask.performed` | The answer log persists. Records retrieved and cited counts, evidence gate and probability, configured synthesis model when used, latency, and gap flag. Friction answers use `friction_summary`. No question or answer is stored. |
 | `recent.performed` | Recent cells return. Records count and optional kind. Includes dashboard polling; this is observed use, not proof of a deliberate visit. |
@@ -128,7 +128,7 @@ Steps are `started`, `mcp_configured`, `instructions_written`, `hook_configured`
 
 ## Coverage limits and local verification
 
-Data starts when this code deploys. There is no historical backfill. Existing mutable rows cannot reconstruct all past actions. The beacon depends on browser delivery and cannot distinguish a deliberate view from every restored browser state. Dashboard polling is visible use, not engagement proof. All property and model allowlists need a deliberate update when adding a new model or event outcome.
+Data starts when this code deploys. There is no historical backfill. Existing mutable rows cannot reconstruct all past actions. Historical browser beacons depended on browser delivery and could not distinguish a deliberate view from every restored browser state. No new page, cell-view or error-page events are emitted. Dashboard polling is visible use, not engagement proof. All property and model allowlists need a deliberate update when adding a new model or event outcome.
 
 Run the fixture suite on the dedicated local endpoint. It creates and removes its own schema and does not change operational tables:
 
