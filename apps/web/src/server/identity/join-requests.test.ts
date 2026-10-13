@@ -325,11 +325,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
           await sql`SELECT undo_action_id FROM hive_join_requests WHERE id=${id}`
         )[0].undo_action_id,
       ).toBe(action.id);
+      const undoTs = `${++counter}.0001`;
       expect(
         await respondToJoinRequest(
-          { ...ctx, threadTs: "new-root" },
+          { ...ctx, threadTs: undoTs },
           "undo",
-          `${++counter}.0001`,
+          undoTs,
         ),
       ).toMatchObject({ react: "white_check_mark" });
       expect(await memberContext(person.memberId, admin.teamId)).toBeNull();
