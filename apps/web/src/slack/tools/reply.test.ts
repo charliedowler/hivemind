@@ -9,6 +9,9 @@ it("formats sibling tool timestamps and removes legacy undo hints", () => {
     "Schedule saved. Next: Monday 19 October at 9am (London time).",
   );
   expect(
+    slackToolReply("Weekly at 09:00 (Europe/London).", { timeZone: "UTC" }),
+  ).toBe("Weekly at 9am (London time).");
+  expect(
     slackToolReply("<https://gohive.dev/2026-10-19|Cell dated 2026-10-19>", {}),
   ).toBe("<https://gohive.dev/2026-10-19|Cell dated Monday 19 October>");
 });

@@ -51,12 +51,12 @@ export function decideInstruction(
 ) {
   if (!allowed) return decisivenessDecision(false, null);
   const request = text.trim().replace(/\s+/g, " ");
-  if (/^(?:maybe|perhaps|what if|I wonder|we could|we should)\b/i.test(request))
+  if (/^(?:maybe|perhaps|what if|I wonder|we could)\b/i.test(request))
     return {
       act: false,
       reason: "Tell Hive what to change when you want it to act.",
     };
-  if (/^(?:how|why|what|when|where|does|is|are)\b/i.test(request))
+  if (/^(?:how|why|when|where|does|is|are)\b/i.test(request))
     return {
       act: false,
       reason: "Tell Hive what to change when you want it to act.",
