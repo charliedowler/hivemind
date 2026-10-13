@@ -10,7 +10,7 @@ When Slack is connected, Hive sends each reachable admin one DM per request. Rep
 
 Plain **undo** reverses the last Slack decision by its author within one hour. Approval undo revokes the new membership and its following agents. If that person has already captured or published into the organisation, Hive keeps access and explains why undo is unavailable. A later membership change also blocks undo. A decline email cannot be recalled.
 
-The join page shows pending, declined and expired requests on revisit. After approval it shows **You're in <Team>.** The **Open <Team>** button selects that organisation. The share-on-join offer is supplied by the onboarding flow.
+The join page shows pending, declined and expired requests on revisit. After approval it shows **You're in <Team>.** The **Open <Team>** button selects that organisation. The approved landing mounts the onboarding flow’s ShareOnJoin offer. It asks **Share your learnings with <Team>?** **Yes** shares everything from the selected projects, now and in future. **Choose projects** opens the narrower choice. **Not now** leaves learnings personal. The component records the human choice; approval itself does not publish.
 
 ## Operations
 

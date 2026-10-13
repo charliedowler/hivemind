@@ -468,6 +468,42 @@ describe.skipIf(!process.env.DATABASE_URL)(
       });
       expect(await memberContext(person.memberId, admin.teamId)).not.toBeNull();
     });
+    it("waits for an in-flight capture before checking approval undo", async () => {
+      const { person, id } = await request("Concurrent Capture");
+      const ctx = {
+        ...slackContext("107.001"),
+        instructionText: `approve ${id}`,
+      };
+      await joinRequestTools[0].handler(ctx, {
+        decision: "approve",
+        person: id,
+      });
+      let ready!: () => void, release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        ready = resolve;
+      });
+      const continueCapture = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const capture = sql.begin(async (tx) => {
+        await tx`SELECT id FROM members WHERE id=${person.memberId} FOR SHARE`;
+        await tx`SELECT member_id FROM hive_memberships WHERE member_id=${person.memberId} AND team_id=${admin.teamId} FOR SHARE`;
+        await tx`SELECT id FROM teams WHERE id=${admin.teamId} FOR SHARE`;
+        ready();
+        await continueCapture;
+        await tx`SELECT pg_advisory_xact_lock(hashtext(${admin.teamId}),7291)`;
+        await tx`INSERT INTO learnings(id,team_id,member_id,owner_member_id,title,body,kind,source,confidence) VALUES (${newId("lrn")},${admin.teamId},${person.memberId},${person.memberId},'Concurrent fixture','A concurrent capture commits before approval undo checks its audience.','learning','codex',0.8)`;
+      });
+      await held;
+      const undo = undoThreadAction({ ...ctx, instructionText: "undo" });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      release();
+      await capture;
+      expect(await undo).toMatchObject({
+        text: "They have already captured into this hive, so approval cannot be undone.",
+      });
+      expect(await memberContext(person.memberId, admin.teamId)).not.toBeNull();
+    });
     it("bounds request attempts with the phrase-join rate limits", async () => {
       const person = await human();
       for (let i = 0; i < 5; i++)

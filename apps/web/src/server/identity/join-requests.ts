@@ -245,9 +245,9 @@ export async function undoJoinRequest(
   id: string,
   version: string,
 ) {
-  await tx`SELECT pg_advisory_xact_lock(hashtext(${ctx.teamId}),7291)`;
-  await tx`SELECT m.id FROM members m WHERE m.id IN (${ctx.memberId},(SELECT member_id FROM hive_join_requests WHERE id=${id} AND team_id=${ctx.teamId})) ORDER BY m.id FOR UPDATE`;
+  await tx`SELECT m.id FROM members m WHERE m.id IN (${ctx.memberId},(SELECT member_id FROM hive_join_requests WHERE id=${id} AND team_id=${ctx.teamId})) OR m.id IN (SELECT h.member_id FROM hive_memberships h JOIN hive_join_requests r ON r.member_id=h.owner_member_id AND r.team_id=h.team_id WHERE r.id=${id} AND r.team_id=${ctx.teamId} AND h.removed_at IS NULL) ORDER BY m.id FOR UPDATE`;
   await lockTeam(tx, ctx);
+  await tx`SELECT pg_advisory_xact_lock(hashtext(${ctx.teamId}),7291)`;
   const rows =
     await tx`SELECT *,decided_at::text AS version FROM hive_join_requests WHERE id=${id} AND team_id=${ctx.teamId} FOR UPDATE`;
   const request = rows[0];
