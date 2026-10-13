@@ -28,7 +28,7 @@ import {
 } from "./conflict-judgments";
 import { judgeMemory } from "./memory-judgments";
 import { runReversibleAction, undoLastAction } from "./slack/actions";
-import { POST } from "../app/api/app/conflicts/route";
+import { GET, POST } from "../app/api/app/conflicts/route";
 const auth = vi.hoisted(() => ({ ctx: null as HiveContext | null }));
 vi.mock("./auth", async (original) => ({
   ...(await original<typeof import("./auth")>()),
@@ -276,6 +276,37 @@ describe.skipIf(!process.env.DATABASE_URL)(
       );
       expect(await listDecisions(b, { search: "Retry setting" })).toEqual([]);
     });
+    it("reads only visible automatic changes touching the requested cell", async () => {
+      const { old, record } = await pair("supersede", "Cell scoped history");
+      await pair("keep_old", "Another cell history");
+      expect((await listDecisions(a, { cellId: old.id })).map((item) => item.id)).toEqual([record.id]);
+      const response = await GET(new Request(`https://hive.test/api/app/conflicts?cellId=${record.newer.id}`));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.decisions).toHaveLength(1);
+      expect(body.decisions[0]).toMatchObject({ id: record.id, older: { lifecycle: "superseded" }, canReverse: true });
+      auth.ctx = member;
+      expect((await (await GET(new Request(`https://hive.test/api/app/conflicts?cellId=${old.id}`))).json()).decisions[0].canReverse).toBe(false);
+      auth.ctx = b;
+      expect((await (await GET(new Request(`https://hive.test/api/app/conflicts?cellId=${old.id}`))).json()).decisions).toEqual([]);
+      expect((await GET(new Request("https://hive.test/api/app/conflicts"))).status).toBe(400);
+      auth.ctx = null;
+      expect((await GET(new Request(`https://hive.test/api/app/conflicts?cellId=${old.id}`))).status).toBe(401);
+    });
+    it("does not expose a cell change when either cell is private to another member", async () => {
+      const { old } = await pair("supersede", "Private cell history");
+      await getSql()`UPDATE learnings SET capture_flagged = true WHERE id = ${old.id} AND team_id = ${a.teamId}`;
+      auth.ctx = member;
+      const response = await GET(new Request(`https://hive.test/api/app/conflicts?cellId=${old.id}`));
+      expect(response.status).toBe(200);
+      expect((await response.json()).decisions).toEqual([]);
+    });
+    it("uses the default audit reason for a blank reason without changing the Slack or MCP default", async () => {
+      const { record } = await pair("supersede", "Blank reason");
+      const response = await POST(new Request("https://hive.test/api/app/conflicts", { method: "POST", body: JSON.stringify({ id: record.id, action: "reverse", reason: "  " }) }));
+      expect(response.status).toBe(200);
+      expect((await response.json()).reason).toBe("Admin requested reversal");
+    });
     it("rejects reversal after a cell changes", async () => {
       const { old, record } = await pair("keep_both", "Edited decision");
       await editLearning(a, old.id, {
@@ -285,6 +316,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await expect(
         reverseDecision(a, record.id, "Unsafe reversal."),
       ).rejects.toThrow("changes");
+      expect((await POST(new Request("https://hive.test/api/app/conflicts", { method: "POST", body: JSON.stringify({ id: record.id, action: "reverse" }) }))).status).toBe(409);
     });
     it("records Slack reversal and its inverse atomically without replaying the mutation", async () => {
       const { old, record } = await pair("supersede", "Slack reverse receipt");
@@ -305,7 +337,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const response = await POST(new Request("https://hive.test/api/app/conflicts", { method: "POST", body: JSON.stringify({ id: record.id, action: "reverse" }) }));
       expect(response.status).toBe(200);
       const result = await response.json();
-      expect(result.record).toMatchObject({ decision: "reversed", reason: "Reversed by A on the dashboard", canReverse: true, canEditReason: true });
+      expect(result.record).toMatchObject({ decision: "reversed", reason: "Admin requested reversal", canReverse: true, canEditReason: true });
       await updateDecisionReason(a, result.id, "Corrected audit note.");
       expect((await listDecisions(a, { id: result.id }))[0].reason).toBe("Corrected audit note.");
       await expect(updateDecisionReason(b, result.id, "Other team.")).rejects.toThrow("not found");

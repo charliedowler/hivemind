@@ -1,4 +1,4 @@
-import type { HiveContext } from "@hivemind/core";
+import type { HiveContext, LearningView } from "@hivemind/core";
 import { learningVisibleSql } from "./capture-visibility";
 import {
   recordEvent,
@@ -302,17 +302,20 @@ export async function listDecisions(
   ctx: HiveContext,
   filters: {
     id?: string;
+    cellId?: string;
     decision?: string;
     repo?: string;
     search?: string;
   } = {},
 ) {
   const rows =
-    await getSql()`SELECT d.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, b.title AS newer_title, a.repo, m.name AS author, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AS can_edit_reason, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AND d.model <> 'legacy' AND d.decision <> 'undecided' AND jsonb_array_length(d.before_state) = 2 AND jsonb_array_length(d.after_state) = 2 AND NOT EXISTS (SELECT 1 FROM conflict_decisions undo WHERE undo.reverses_id = d.id AND undo.team_id = d.team_id) AS can_reverse, s.older_id, s.newer_id FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings a ON a.id = s.older_id AND a.team_id = d.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = d.team_id JOIN members m ON m.id = d.pushed_by AND m.team_id = d.team_id WHERE d.team_id = ${ctx.teamId} AND (${filters.id ?? null}::text IS NULL OR d.id = ${filters.id ?? null}) AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${filters.decision ?? null}::text IS NULL OR d.decision = ${filters.decision ?? null}) AND (${filters.repo ?? null}::text IS NULL OR a.repo = ${filters.repo ?? null}) AND (${filters.search ?? ""} = '' OR concat_ws(' ', a.title, b.title, CASE WHEN a.capture_redacted OR b.capture_redacted THEN '' ELSE d.reason END, m.name) ILIKE ${"%" + (filters.search ?? "").replace(/[\\%_]/g, "\\$&") + "%"}) ORDER BY d.created_at DESC, d.id DESC LIMIT 100`;
+    await getSql()`SELECT d.*, (a.capture_redacted OR b.capture_redacted) AS capture_redacted, a.title AS older_title, b.title AS newer_title, a.lifecycle AS older_lifecycle, b.lifecycle AS newer_lifecycle, a.repo, m.name AS author, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AS can_edit_reason, EXISTS (SELECT 1 FROM members admin WHERE admin.id = ${ctx.memberId} AND admin.team_id = d.team_id AND admin.role = 'admin' AND admin.removed_at IS NULL) AND d.model <> 'legacy' AND d.decision <> 'undecided' AND jsonb_array_length(d.before_state) = 2 AND jsonb_array_length(d.after_state) = 2 AND NOT EXISTS (SELECT 1 FROM conflict_decisions undo WHERE undo.reverses_id = d.id AND undo.team_id = d.team_id) AS can_reverse, s.older_id, s.newer_id FROM conflict_decisions d JOIN learning_supersessions s ON s.id = d.edge_id AND s.team_id = d.team_id JOIN learnings a ON a.id = s.older_id AND a.team_id = d.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = d.team_id JOIN members m ON m.id = d.pushed_by AND m.team_id = d.team_id WHERE d.team_id = ${ctx.teamId} AND (${filters.id ?? null}::text IS NULL OR d.id = ${filters.id ?? null}) AND (${filters.cellId ?? null}::text IS NULL OR s.older_id = ${filters.cellId ?? null} OR s.newer_id = ${filters.cellId ?? null}) AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} AND (${filters.decision ?? null}::text IS NULL OR d.decision = ${filters.decision ?? null}) AND (${filters.repo ?? null}::text IS NULL OR a.repo = ${filters.repo ?? null}) AND (${filters.search ?? ""} = '' OR concat_ws(' ', a.title, b.title, CASE WHEN a.capture_redacted OR b.capture_redacted THEN '' ELSE d.reason END, m.name) ILIKE ${"%" + (filters.search ?? "").replace(/[\\%_]/g, "\\$&") + "%"}) ORDER BY d.created_at DESC, d.id DESC LIMIT 100`;
   return rows.map((row) => ({
     id: String(row.id),
-    older: { id: String(row.older_id), title: String(row.older_title) },
-    newer: { id: String(row.newer_id), title: String(row.newer_title) },
+    edgeId: String(row.edge_id),
+    reversesId: row.reverses_id ? String(row.reverses_id) : null,
+    older: { id: String(row.older_id), title: String(row.older_title), lifecycle: row.older_lifecycle as LearningView["lifecycle"] },
+    newer: { id: String(row.newer_id), title: String(row.newer_title), lifecycle: row.newer_lifecycle as LearningView["lifecycle"] },
     decision: row.decision as ConflictJudgment["decision"] | "reversed",
     reason: row.capture_redacted
       ? "A cell was redacted by a capture rule."

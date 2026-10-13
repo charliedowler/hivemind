@@ -1,13 +1,21 @@
 "use client";
 import { formatHumanDate } from "@hivemind/core";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type {
   FeedbackResult,
   FeedbackVote,
   LearningView,
 } from "@hivemind/core";
-import { Badge, Button, Dialog, MemberBee, Tag } from "@hivemind/design-system";
+import {
+  Badge,
+  Button,
+  Dialog,
+  Input,
+  MemberBee,
+  Tag,
+} from "@hivemind/design-system";
+import type { listDecisions } from "@/server/conflict-decisions";
 import { errorMessage, relativeTime, requestJson } from "@/lib/client";
 import {
   agentKind,
@@ -21,7 +29,7 @@ import { Markdown } from "./markdown";
 import { CaptureCellNote } from "./capture-cell-note";
 
 export function LearningDetail({
-  learning,
+  learning: initialLearning,
   onFeedback,
   canModerate,
   onModerated,
@@ -31,6 +39,9 @@ export function LearningDetail({
   onModerated?: () => void;
   onFeedback?: (id: string, votes: LearningView["votes"]) => void;
 }) {
+  const [refreshed, setRefreshed] = useState<LearningView>();
+  const learning =
+    refreshed?.id === initialLearning.id ? refreshed : initialLearning;
   const [feedback, setFeedback] = useState<{
     votes: LearningView["votes"];
     vote: FeedbackVote;
@@ -38,6 +49,17 @@ export function LearningDetail({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const votes = feedback?.votes ?? learning.votes;
+  async function refresh() {
+    try {
+      setRefreshed(
+        await requestJson<LearningView>(
+          `/api/app/learnings/${encodeURIComponent(learning.id)}`,
+        ),
+      );
+    } catch {
+      setError("Reversed. Reopen this cell to see its updated state.");
+    }
+  }
   async function vote(value: FeedbackVote) {
     setPending(true);
     setError("");
@@ -80,8 +102,35 @@ export function LearningDetail({
       ) : null}
       <CaptureNotice learning={learning} />
       <LifecycleNotice learning={learning} />
+      {!learning.id.startsWith("slk_") ? (
+        <CellChanges key={learning.id} id={learning.id} onReversed={refresh} />
+      ) : null}
       <FrictionDetails learning={learning} />
       <Markdown text={learning.body} />
+      <CellMetadata learning={learning} />
+      <LearningFooter
+        learning={learning}
+        votes={votes}
+        selectedVote={feedback?.vote}
+        pending={pending}
+        onVote={vote}
+      />
+      {learning.revision ? (
+        <LearningHistory id={learning.id} revision={learning.revision} />
+      ) : null}
+      {canModerate &&
+      !learning.id.startsWith("slk_") &&
+      learning.lifecycle !== "superseded" ? (
+        <Moderation id={learning.id} onDone={onModerated} />
+      ) : null}
+      {error ? <ErrorPanel message={error} /> : null}
+    </div>
+  );
+}
+
+function CellMetadata({ learning }: { learning: LearningView }) {
+  return (
+    <>
       {learning.tags.length ? (
         <div className="tags">
           {learning.tags.map((tag) => (
@@ -104,21 +153,287 @@ export function LearningDetail({
           Open the source message in Slack
         </a>
       ) : null}
-      <LearningFooter
-        learning={learning}
-        votes={votes}
-        selectedVote={feedback?.vote}
-        pending={pending}
-        onVote={vote}
+    </>
+  );
+}
+
+type CellDecision = Awaited<ReturnType<typeof listDecisions>>[number];
+
+function CellChanges({
+  id,
+  onReversed,
+}: {
+  id: string;
+  onReversed: () => Promise<void>;
+}) {
+  const [state, setState] = useState<{
+    decisions?: CellDecision[];
+    error?: string;
+  }>({});
+  const [history, setHistory] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    void requestJson<{ decisions: CellDecision[] }>(
+      `/api/app/conflicts?cellId=${encodeURIComponent(id)}`,
+      undefined,
+      controller.signal,
+    )
+      .then((result) => {
+        if (!controller.signal.aborted) setState(result);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setState({ error: errorMessage(error) });
+      });
+    return () => controller.abort();
+  }, [id]);
+  if (state.error) return <ErrorPanel message={state.error} />;
+  if (!state.decisions?.length) return null;
+  const { latest, historical } = relatedChanges(id, state.decisions);
+  function update(record: CellDecision) {
+    setState((previous) => ({
+      decisions: [
+        record,
+        ...(previous.decisions ?? []).filter((item) => item.id !== record.id),
+      ],
+    }));
+  }
+  return (
+    <section className="stack" aria-label="Cell changes">
+      {[...latest.values()]
+        .filter(
+          (record) =>
+            record.decision !== "undecided" && record.decision !== "keep_both",
+        )
+        .map((record) => (
+          <CellChange
+            key={record.id}
+            id={id}
+            record={record}
+            onChanged={update}
+            onReversed={onReversed}
+          />
+        ))}
+      {historical.length ? (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={history ? "Hide cell history" : "Show cell history"}
+            aria-expanded={history}
+            onClick={() => setHistory((value) => !value)}
+          >
+            {history ? "Hide history" : "Show history"}
+          </Button>
+          {history ? (
+            <div className="stack" aria-label="Historical cells">
+              <p className="small muted">
+                Includes replaced, outdated and retracted cells.
+              </p>
+              {historical.map((cell) => (
+                <p className="small" key={cell.id}>
+                  <CellCitation id={cell.id} title={cell.title} /> ·{" "}
+                  {cell.lifecycle === "superseded"
+                    ? "Replaced"
+                    : cell.lifecycle === "outdated"
+                      ? "Outdated"
+                      : "Retracted"}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function relatedChanges(id: string, decisions: CellDecision[]) {
+  const latest = new Map<string, CellDecision>();
+  const related = new Map<string, CellDecision["older"]>();
+  for (const record of decisions) {
+    if (!latest.has(record.edgeId)) latest.set(record.edgeId, record);
+    for (const cell of [record.older, record.newer]) {
+      if (cell.id !== id && !related.has(cell.id)) related.set(cell.id, cell);
+    }
+  }
+  const historical = [...related.values()].filter(
+    (cell) =>
+      cell.lifecycle &&
+      ["superseded", "outdated", "retracted"].includes(cell.lifecycle),
+  );
+  return { latest, historical };
+}
+
+function ChangeText({
+  id,
+  record,
+  citation,
+}: {
+  id: string;
+  record: CellDecision;
+  citation: ReactNode;
+}) {
+  const receiving =
+    record.decision === "keep_old"
+      ? record.older.id === id
+      : record.newer.id === id;
+  switch (record.decision) {
+    case "supersede":
+      return receiving ? (
+        <>Hive replaced {citation} with this cell</>
+      ) : (
+        <>Hive replaced this cell with {citation}</>
+      );
+    case "keep_old":
+      return receiving ? (
+        <>Hive merged {citation} into this cell</>
+      ) : (
+        <>Hive merged this cell into {citation}</>
+      );
+    case "reversed":
+      return (
+        <>
+          Reversed {relativeTime(record.createdAt)} · {citation}
+        </>
+      );
+    case "mark_outdated":
+      return <>Hive marked this cell and {citation} outdated</>;
+    default:
+      return receiving ? (
+        <>Hive retracted this cell after comparing it with {citation}</>
+      ) : (
+        <>Hive retracted {citation} after comparing it with this cell</>
+      );
+  }
+}
+
+function ReversalNote({
+  record,
+  pending,
+  onSave,
+}: {
+  record: CellDecision;
+  pending: boolean;
+  onSave: (note: string) => Promise<boolean>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState(false);
+  if (record.decision !== "reversed" || !record.canEditReason) return null;
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (await onSave(note)) {
+      setAdding(false);
+      setSaved(true);
+    }
+  }
+  if (saved)
+    return (
+      <p className="small muted" role="status">
+        Note saved.
+      </p>
+    );
+  if (!adding)
+    return (
+      <Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
+        Add a note
+      </Button>
+    );
+  return (
+    <form className="stack" onSubmit={(event) => void save(event)}>
+      <Input
+        id={`note-${record.id}`}
+        label="Optional note"
+        value={note}
+        maxLength={500}
+        onChange={(event) => setNote(event.target.value)}
       />
-      {learning.revision ? (
-        <LearningHistory id={learning.id} revision={learning.revision} />
-      ) : null}
-      {canModerate &&
-      !learning.id.startsWith("slk_") &&
-      learning.lifecycle !== "superseded" ? (
-        <Moderation id={learning.id} onDone={onModerated} />
-      ) : null}
+      <div className="row wrap">
+        <Button type="submit" size="sm" disabled={pending || !note.trim()}>
+          Save note
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          onClick={() => setAdding(false)}
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function CellChange({
+  id,
+  record,
+  onChanged,
+  onReversed,
+}: {
+  id: string;
+  record: CellDecision;
+  onChanged: (record: CellDecision) => void;
+  onReversed: () => Promise<void>;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const other = record.older.id === id ? record.newer : record.older;
+  const citation = <CellCitation id={other.id} title={other.title} />;
+  async function act(action: "reverse" | "reason", note?: string) {
+    setPending(true);
+    setError("");
+    try {
+      const result = await requestJson<{ record: CellDecision }>(
+        "/api/app/conflicts",
+        {
+          id: record.id,
+          action,
+          reason: action === "reverse" ? "Admin requested reversal" : note,
+        },
+      );
+      onChanged(result.record);
+      if (action === "reverse") await onReversed();
+      return true;
+    } catch (error) {
+      setError(errorMessage(error));
+      return false;
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <div className="stack">
+      <div className="row wrap">
+        <p className="small breakable" role="status">
+          <ChangeText id={id} record={record} citation={citation} />
+          {record.decision !== "reversed" ? (
+            <>
+              {" "}
+              ·{" "}
+              <time dateTime={record.createdAt}>
+                {relativeTime(record.createdAt)}
+              </time>
+            </>
+          ) : null}
+        </p>
+        {record.canReverse && record.decision !== "reversed" ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={pending}
+            onClick={() => void act("reverse")}
+          >
+            Reverse
+          </Button>
+        ) : null}
+      </div>
+      <ReversalNote
+        record={record}
+        pending={pending}
+        onSave={(note) => act("reason", note)}
+      />
       {error ? <ErrorPanel message={error} /> : null}
     </div>
   );
@@ -276,7 +591,12 @@ function FrictionDetails({ learning }: { learning: LearningView }) {
         {learning.cost == null
           ? "Minutes not measured"
           : `${learning.cost} minutes lost`}{" "}
-        · {learning.blocked == null ? "Blocking impact unknown" : learning.blocked ? "Blocked progress" : "Progress continued"}
+        ·{" "}
+        {learning.blocked == null
+          ? "Blocking impact unknown"
+          : learning.blocked
+            ? "Blocked progress"
+            : "Progress continued"}
       </p>
       {learning.workaround ? <p>Workaround: {learning.workaround}</p> : null}
     </div>
