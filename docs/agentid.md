@@ -38,13 +38,15 @@ A registered AgentID owner contact creates a provisional human and one personal 
 
 Hive sends one welcome email with a signed, single-use link valid for 24 hours. The claim checks the exact member and email, refuses account collisions, then verifies the human and creates the session in one transaction. Google and Slack with verified email can also claim the same provisional identity. Owner claims never verify an established password account.
 
-Humans retain their personal hive when joining organisations. Agents follow active owner memberships as members, never admins. Removal tombstones prevent automatic reenrolment. Agents create no organisation hives. Explicit invitations take precedence over personal redirects; joining itself publishes no projects.
+A verified human joins enabled work domains automatically at sign-in and the next authenticated page load, before website or MCP consent redirects. Removed memberships remain tombstones. The organisation is the first selection and the one-line join notice is consumed once per session. Humans retain their personal hive when joining organisations. Agents follow active owner memberships as members, never admins. Removal tombstones prevent automatic reenrolment. Agents create no organisation hives. Explicit invitations take precedence over personal redirects; joining itself publishes no projects.
 
 A three-word phrase is a domain-gated locator. `hive_join` needs a human token or a live human-granted capability. Without it, return the human join link: “Open <joinUrl> to join <team>”. Separate publication grants share selected projects into named organisations.
 
 ## Installer identity
 
-Run `npx gohive install --identity agent` for agent setup or `--identity human` for human setup. Harness detection uses `CLAUDECODE` and `CODEX_*` runtime markers. It does not infer an inbox from an API key. A known local inbox supplies `login_hint`; without one AgentID asks the agent to choose an inbox it controls. Approval happens at exactly `https://auth.agentid.com`, using the command shown there.
+Run `npx gohive install` when a person is present. Sign in as them with Google or Slack; use agent identity only when no human is at the keyboard. Harness markers label the runtime but never choose AgentID on their own. `--identity agent`, `--headless`, CI and explicit no-human markers select the agent path. Never create an AgentMail inbox for a person.
+
+The installer prints the sign-in URL and returns promptly. OAuth waits in a background callback; `gohive status` resumes setup, checks access and completes a supplied `--join-url` with the human token. Agent mode returns its AgentID URL immediately so the agent can act on the waiting-page approval command. A known inbox supplies `login_hint`; an API key alone never identifies an inbox. Approval happens at exactly `https://auth.agentid.com`.
 
 The installer uses `<harness> on <hostname>` as the local Hive display name. Hive sanitises it to 80 characters and disambiguates collisions on first join. It does not rename the AgentMail inbox. Separate inboxes appear as separate agents under their owner; the same inbox retains one identity across browsers. Recreating an address creates a new AgentID subject and cannot take over the former Hive identity.
 

@@ -1,6 +1,6 @@
 ---
 name: hive
-description: Use the team's Hive memory when starting repository work, hitting an unfamiliar error, choosing a library or approach, answering how something works here, or saving a learning, decision or friction after work. Requires the Hive MCP server. Skip unrelated personal tasks and general knowledge.
+description: Use the team's Hive memory when starting repository work, hitting an unfamiliar error, choosing a library or approach, answering how something works here, or saving a learning, decision or friction as soon as it is established. Requires the Hive MCP server. Skip unrelated personal tasks and general knowledge.
 metadata:
   triggers: repo-start, unfamiliar-error, approach-choice, team-question, durable-learning, session-end
 ---
@@ -11,7 +11,7 @@ Bring back what a teammate's agent would otherwise rediscover. Selected projects
 
 ## Select projects after sign-in
 
-When setting up Hive, check the current MCP connection first. If Hive is already installed and signed in, skip installation and account creation. If setup is missing, run `npx gohive install --identity agent`. Hive stores a local display name such as `Codex on this computer`; separate inboxes appear as separate agents under their owner, and the same inbox retains one identity across browsers. Never ask the human to sign up.
+When setting up Hive, check the current MCP connection first. If Hive is already installed and signed in, skip installation and account creation. If setup is missing, run `npx gohive install`. If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard (`--identity agent` or `--headless`). The installer returns promptly while sign-in runs in the background; run `gohive status` after the person signs in. With a join link, pass `--join-url <link>` so status completes the join with the human credential. Never create an AgentMail inbox for a person. Hive stores a local display name such as `Codex on this computer`; separate inboxes appear as separate agents under their owner, and the same inbox retains one identity across browsers. Never ask the human to sign up.
 
 If the prompt includes a join link, call `hive_join({phrase})` straight away once signed in. On `needs_human`, tell the human exactly: “Open <joinUrl> to join <team>”. Do not repeat installation or create another account to join. Your personal hive and its cells stay yours. Joining never publishes projects; organisation sharing requires a separate human grant.
 
@@ -22,6 +22,8 @@ Ask one question listing the candidates: “Which of these should Hive learn fro
 With no human and no existing selection, capture nothing and say once: “No projects selected yet; tell me which projects Hive may learn from”. Unselected, unknown or contradictory repository context permits no upload or model call. Fetch failures permit no capture. Supply a consistent repo and remote for each capture. Never ask the human to sign up.
 
 `hive_join({phrase})` joins only with a human token or a live human-granted capability. A `needs_human` result contains the owner's join link as the sole blocker. Joining never publishes projects.
+
+After setup, if the person has an organisation hive, call `hive_invite_link` and mention once: “Teammates can join with <prompt>”. Share its join link with other agents on request. Read the active phrase and paused flag; never create, rotate or resume a phrase on your own.
 
 ## Consult the hive
 
@@ -55,7 +57,7 @@ If `hive_push` returns `{ dropped: true, rule: <kind> }`, carry on silently. The
 
 ## Report a result
 
-Report a concrete result with hive_outcome when you have evidence. Use hive_feedback with vote: up (useful), down (unhelpful), or outdated for a direct judgment. Feedback changes both ranking and inclusion in the cell's audience. Default hive_search, hive_ask and hive_recent hide cells with at least two unhelpful votes that outnumber useful votes, a newer evidenced contradiction than the latest useful outcome, or an outdated, superseded or retracted lifecycle. Use include_history: true on those tools to investigate hidden cells, or read a known cell by ID. Use hive_feedback with withdraw: true and your receipt to withdraw your current feedback; Hive restores your previous contribution immediately. Retrieval alone never votes. One actor has one contribution per cell per audience, even across credentials; an organisation publication's feedback never changes the personal original.
+After using a cell, report a concrete result with hive_outcome when you have evidence. Use hive_feedback with vote: up (useful), down (unhelpful), or outdated for a direct judgment. Feedback changes both ranking and inclusion in the cell's audience. Default hive_search, hive_ask and hive_recent hide cells with at least two unhelpful votes that outnumber useful votes, a newer evidenced contradiction than the latest useful outcome, or an outdated, superseded or retracted lifecycle. Use include_history: true on those tools to investigate hidden cells, or read a known cell by ID. Use hive_feedback with withdraw: true and your receipt to withdraw your current feedback; Hive restores your previous contribution immediately. Retrieval alone never votes. One actor has one contribution per cell per audience, even across credentials; an organisation publication's feedback never changes the personal original.
 
 Vote unhelpful with `hive_feedback({id, vote: "down"})` when a cell misled you. Do not vote on cells merely retrieved.
 

@@ -4,8 +4,9 @@ import { mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { installExecutor, doctorExecutor, detectExecutor } from './executor.js';
-import { install, uninstall, doctor, detectAgents, completeSignIn, completeAgentSignIn, type Agent } from './installer.js';
-import { installerIdentity, displayName, knownInbox, type Identity } from './identity.js';
+import { install, uninstall, doctor, detectAgents, type Agent } from './installer.js';
+import { installerIdentity, type Identity } from './identity.js';
+import { beginSignIn, status, joinPhrase } from './onboarding.js';
 
 async function main() {
   if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Hive needs Node 20 or later');
@@ -18,13 +19,17 @@ async function main() {
   let executorUrl: string | undefined;
   let yes = false;
   let identity: Identity | undefined;
+  let headless = false;
+  let phrase: string | undefined;
   while (args.length) {
     const flag = args.shift();
     if (flag === '--yes' || flag === '-y') yes = true;
-    else if (flag === '--home' || flag === '--backup-dir' || flag === '--agent' || flag === '--client' || flag === '--executor-url' || flag === '--identity') {
+    else if (flag === '--headless') headless = true;
+    else if (flag === '--home' || flag === '--backup-dir' || flag === '--agent' || flag === '--client' || flag === '--executor-url' || flag === '--identity' || flag === '--join-url') {
       const value = args.shift();
       if (!value || value.startsWith('--')) throw new Error(`${flag} needs a value`);
       if (flag === '--home') home = value;
+      else if (flag === '--join-url') phrase = joinPhrase(value);
       else if (flag === '--identity') {
         if (value !== 'human' && value !== 'agent') throw new Error('Choose human or agent for --identity');
         identity = value;
@@ -41,7 +46,7 @@ async function main() {
   const agents = selectedAgent ? [selectedAgent] : detectAgents(home);
   if (executorClient && selectedAgent) throw new Error('Choose one client per --client install');
   const options = { home, agents, backupDir };
-  const mode = installerIdentity(process.env, !yes && !!process.stdin.isTTY && !!process.stdout.isTTY, identity);
+  const mode = installerIdentity(process.env, !!process.stdin.isTTY && !!process.stdout.isTTY, identity, headless);
   const executorOptions = { home, endpoint: executorUrl };
   if (executorClient) {
     if (command === 'install') {
@@ -59,27 +64,10 @@ async function main() {
   }
   if (command === 'install') {
     install(options);
-    const signIn = (client: 'codex' | 'hooks', selectedHome: string, script: string) => {
-      const env: NodeJS.ProcessEnv = { ...process.env, HOME: selectedHome, CODEX_HOME: join(selectedHome, '.codex'), HIVE_HOME: selectedHome };
-      delete env.CLAUDE_CONFIG_DIR;
-      if (mode === 'agent') {
-        env.HIVE_IDENTITY = 'agent';
-        env.HIVE_AGENT_NAME = displayName(process.env);
-        const inbox = knownInbox(process.env, home);
-        if (inbox) env.HIVE_AGENT_INBOX = inbox;
-      }
-      const result = client === 'codex'
-        ? spawnSync('codex', ['mcp', 'login', 'hive'], { env, stdio: 'inherit', cwd: selectedHome, timeout: 120000 })
-        : spawnSync(process.execPath, [script], { env, stdio: 'inherit', cwd: selectedHome, timeout: 130000 });
-      return result.status ?? 1;
-    };
-    if (mode === 'agent' && !yes) {
-      if (!completeAgentSignIn(options, signIn)) { process.exitCode = 1; return; }
-    } else completeSignIn(options, !yes && !!process.stdin.isTTY && !!process.stdout.isTTY, signIn);
-    const results: DoctorResult[] = [];
-    const healthy = doctor({ ...options, onDoctor: (agent, healthy) => results.push({ agent, healthy }) });
-    if (mode === 'agent' && !healthy) process.exitCode = 1;
-    await reportDoctor(results, home);
+    if (!yes) await beginSignIn({ home, agents, identity: mode, headless, phrase });
+    else console.log('Hive is installed. Run gohive login, then gohive status.');
+  } else if (command === 'status') {
+    if (!status(home, phrase)) process.exitCode = 1;
   } else if (command === 'doctor') {
     const results: DoctorResult[] = [];
     let healthy = doctor({ ...options, onDoctor: (agent, ready) => results.push({ agent, healthy: ready }) });
@@ -91,8 +79,8 @@ async function main() {
     await reportDoctor(results, home);
     if (!healthy) process.exitCode = 1;
   } else if (command === 'uninstall') uninstall(options);
-  else if (command === 'login') login(home, agents);
-  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--identity human|agent] [--yes] [--client claude|codex|executor]\ngohive doctor\ngohive login\ngohive uninstall\n\nAgent mode opens AgentID and waits up to two minutes per credential audience. Human mode keeps interactive sign-in. --yes installs without opening sign-in.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
+  else if (command === 'login') await beginSignIn({ home, agents, identity: mode, headless, phrase, force: true });
+  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--identity human|agent] [--headless] [--join-url <Hive link>] [--yes] [--client claude|codex|executor]\ngohive status\ngohive doctor\ngohive login\ngohive uninstall\n\nA person signs in as themselves with Google or Slack. Harness markers do not select agent identity. Use --identity agent or --headless when no human is present. Sign-in runs in the background; status resumes it. --yes installs without opening sign-in.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
   else throw new Error(`Unknown command: ${command}. Run gohive --help`);
 }
 
@@ -105,9 +93,4 @@ async function reportDoctor(results: DoctorResult[], home: string) {
   } catch {}
 }
 
-function login(home: string, agents: Agent[]) {
-  const directory = agents.includes('claude') ? '.claude' : '.codex';
-  const result = spawnSync(process.execPath, [join(home, directory, 'skills/hive/scripts/login.mjs')], { stdio: 'inherit', env: { ...process.env, HOME: home, HIVE_HOME: home } });
-  if (result.status !== 0) process.exitCode = 1;
-}
 main().catch(error => { console.error(error instanceof SyntaxError ? 'A configuration file contains invalid JSON. Fix it before retrying' : error.message); process.exitCode = 1; });

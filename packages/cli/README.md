@@ -4,6 +4,7 @@ Requires Node 20 or later. Supports Claude Code, Codex and Executor.
 
 ```sh
 npx gohive install
+npx gohive status
 npx gohive doctor
 npx gohive uninstall
 npx gohive install --client executor
@@ -12,11 +13,13 @@ npx gohive doctor --client executor
 
 The installer registers the Hive MCP server, installs the skill, merges Claude hooks, and adds a small marked block to each agent's instructions. It backs up each changed file first. Existing hooks and other MCP servers stay in place. Repeating install updates Hive without adding duplicate entries. Uninstall removes only owned, unchanged assets and the marked block. It leaves backups and credentials in place.
 
-Interactive install checks existing connections, starts Codex sign-in with `codex mcp login hive` when needed, then starts the separate hook sign-in for Claude hooks. Account selection and consent happen in the browser. Claude Code requires its own `/mcp` sign-in because it has no CLI login command. Doctor checks the connection after sign-in. The hook login is separate from the agents because their credential stores are private. Credentials stay in `~/.hive/oauth.json` with mode 0600. Existing Hive API keys also work for hooks without a login.
+If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard. Claude Code and Codex markers describe the harness; they do not select agent identity. Use `--identity agent` or `--headless` for an agent, or the explicit CI/no-human markers. Never create an AgentMail inbox for a person.
 
-Choose `--identity human|agent` to override detection. Without that flag, `CLAUDECODE` or a `CODEX_*` runtime marker selects agent mode unless both terminal streams are interactive. `CODEX_HOME` alone is a configuration path, not a runtime marker. Agent mode opens AgentID even without a TTY, preserves the MCP request through sign-in, and waits up to two minutes per credential audience. It uses an inbox from `AGENTMAIL_INBOX_ID`, `AGENTMAIL_INBOX`, `AGENTMAIL_INBOX_EMAIL`, `AGENTMAIL_EMAIL` or the AgentMail CLI config when available. A bearer API key alone does not identify an inbox. Local labels use the harness and hostname, remove unsafe characters, and fit 80 characters. Hive stores them on first join, not in the inbox name.
+The installer opens Google/Slack sign-in and returns promptly. Its OAuth callback continues in the background for up to ten minutes. Run `gohive status` after sign-in to finish setup, check access, join the supplied phrase and print any active organisation invitation. Pass `--join-url https://gohive.dev/j/<phrase>` with the team prompt. An agent receives its AgentID URL immediately and can approve it while the background callback waits; the CLI never traps the agent behind that approval. Existing connections skip account creation.
 
-Use `--yes` to install without opening sign-in in either identity mode. Human mode without interactive input also prints next steps. Each incomplete client prints one sign-in command or next step. Use `--client claude` or `--client codex` to select one agent. `--home /path` changes the home for every file and child command; do not use it to share credentials between people. `--backup-dir /path` sets a backup destination.
+Native MCP credentials remain separate from the hook credential in `~/.hive/oauth.json` (mode 0600). Codex's own OAuth command runs in the background after the hook sign-in. Claude Code connects its native audience from `/mcp` or the first Hive tool call. Each audience keeps its own consent and token store. `gohive doctor` checks native capabilities.
+
+Use `--yes` to install without starting sign-in. `--client claude|codex|executor` selects a client, `--home /path` changes the home for all files and child commands, and `--backup-dir /path` selects backups. Headless setup without an existing project selection captures nothing. `gohive status` prints organisation join links and team prompts without creating or rotating a phrase.
 
 SessionStart calls `hive_recent` for the current Git remote once per session and injects at most two lines. Empty, unauthenticated and unreachable hives stay silent. Hive saves when something is learned, not when the session ends. The skill captures proven fixes, decisions, gotchas and measured friction immediately. Stop is a background safety net for missed observations; PreCompact and SubagentStop use the same project and Jev gates. Session receipts and content hashes deduplicate all sweeps and mid-session pushes. A narrow PostToolUse nudge fires only when the same test/build command fails then passes. Successful MCP pushes record a local hash-only receipt. Hooks add no questions and never block the final answer. They save individual observations with evidence, not the transcript as a cell. Agent skills still work if a hook cannot connect.
 

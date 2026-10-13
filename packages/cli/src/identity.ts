@@ -8,8 +8,9 @@ export function harness(env: NodeJS.ProcessEnv): 'Claude Code' | 'Codex' | undef
   if (Object.entries(env).some(([key, value]) => key.startsWith('CODEX_') && key !== 'CODEX_HOME' && !!value)) return 'Codex';
 }
 
-export function installerIdentity(env: NodeJS.ProcessEnv, humanTerminal: boolean, explicit?: Identity): Identity {
-  return explicit ?? (harness(env) && !humanTerminal ? 'agent' : 'human');
+export function installerIdentity(env: NodeJS.ProcessEnv, _humanTerminal: boolean, explicit?: Identity, headless = false): Identity {
+  const enabled = (value?: string) => !!value && !/^(?:0|false|no)$/i.test(value);
+  return explicit ?? (headless || enabled(env.CI) || enabled(env.HIVE_HEADLESS) || enabled(env.HIVE_NO_HUMAN) ? 'agent' : 'human');
 }
 
 export function displayName(env: NodeJS.ProcessEnv, host = hostname()): string {

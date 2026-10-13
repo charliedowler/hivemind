@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { endpoint, saveCredentials } from './mcp.mjs';
+import { updateSignIn } from './sign-in-state.mjs';
 
 function trustedUrl(value) {
   const url = new URL(value);
@@ -17,6 +18,8 @@ async function json(url, init = {}) {
 }
 
 async function main() {
+  const background = Boolean(process.env.HIVE_SIGN_IN_ATTEMPT);
+  if (background) updateSignIn({ pid: process.pid });
   const baseUrl = endpoint();
   const resource = `${baseUrl}/api/mcp`;
   const probe = await fetch(resource, { headers: { Accept: 'application/json, text/event-stream' }, signal: AbortSignal.timeout(5000) });
@@ -45,10 +48,10 @@ async function main() {
     if (url.pathname !== '/callback' || url.searchParams.get('state') !== state) { response.writeHead(400).end('This sign-in does not match the hive request.'); return; }
     const code = url.searchParams.get('code');
     if (!code) { response.writeHead(400).end('Hive sign-in did not finish.'); rejectCode(new Error('Hive sign-in was declined')); return; }
-    response.writeHead(200, { 'Content-Type': 'text/plain' }).end('Your forager is connected. Return to the terminal.');
+    response.writeHead(200, { 'Content-Type': 'text/plain' }).end('Hive is connected. Return to your agent and run gohive status.');
     resolveCode(code);
   });
-  const timeout = setTimeout(() => rejectCode(new Error('Hive sign-in timed out. Run gohive login to retry.')), 120000);
+  const timeout = setTimeout(() => rejectCode(new Error('Hive sign-in timed out. Run gohive login to retry.')), background ? 600000 : 120000);
   let approval;
   codePromise.catch(() => {});
   try {
@@ -68,6 +71,7 @@ async function main() {
         : 'If AgentID is waiting, choose an inbox you control and run the approval command shown at https://auth.agentid.com'), 5000);
     }
     console.log(`Open ${loginUrl.href}`);
+    if (background) updateSignIn({ phase: 'waiting', url: loginUrl.href });
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
     const args = process.platform === 'win32' ? ['/c', 'start', '', loginUrl.href] : [loginUrl.href];
     if (process.env.HIVE_NO_BROWSER !== '1') {
@@ -77,8 +81,32 @@ async function main() {
     const code = await codePromise;
     const tokens = await json(discovery.token_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id: registration.client_id, redirect_uri: redirectUri, resource }) });
     if (!tokens.access_token) throw new Error('Hive did not return a token');
+    if (background) updateSignIn({ phase: 'connected', url: undefined });
     saveCredentials({ ...tokens, baseUrl, client_id: registration.client_id, token_endpoint: trustedUrl(discovery.token_endpoint), expires_at: Date.now() + (tokens.expires_in || 3600) * 1000 });
+    if (background) {
+      if (process.env.HIVE_NATIVE_CODEX === '1') await nativeLogin();
+    }
     console.log('The hooks can now read your hive. Run gohive doctor to check your foragers.');
   } finally { clearTimeout(timeout); clearTimeout(approval); server.closeAllConnections(); server.close(); }
 }
-main().catch(error => { console.error(error.message); process.exitCode = 1; });
+async function nativeLogin() {
+  await new Promise(resolve => {
+    updateSignIn({ phase: 'native-waiting', url: undefined });
+    const child = spawn('codex', ['mcp', 'login', 'hive'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    const read = chunk => {
+      output = (output + chunk.toString()).slice(-10000);
+      for (const match of output.matchAll(/https?:\/\/[^\s<>]+/g)) {
+        try { const url = new URL(match[0]); if (url.origin === new URL(endpoint()).origin && url.pathname.includes('authorize')) updateSignIn({ phase: 'native-waiting', url: url.href }); } catch {}
+      }
+    };
+    child.stdout.on('data', read); child.stderr.on('data', read);
+    const timer = setTimeout(() => child.kill(), 600000);
+    child.on('error', () => { clearTimeout(timer); updateSignIn({ phase: 'native-incomplete' }); resolve(); });
+    child.on('exit', code => { clearTimeout(timer); updateSignIn({ phase: code === 0 ? 'connected' : 'native-incomplete', url: undefined }); resolve(); });
+  });
+}
+main().catch(error => {
+  if (process.env.HIVE_SIGN_IN_ATTEMPT) { try { updateSignIn({ phase: 'failed', url: undefined }); } catch {} }
+  console.error(error.message); process.exitCode = 1;
+});
