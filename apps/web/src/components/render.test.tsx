@@ -196,7 +196,7 @@ describe("dashboard components", () => {
     expect(html).toContain("Superseded by");
     expect(html).toContain('href="/app/cells/lrn_replacement"');
     expect(html).toContain("Verify before use");
-    expect(html).toContain("Show version history");
+    expect(html).toContain("Show history");
   });
 
   it("shows automatic decisions without member actions", () => {

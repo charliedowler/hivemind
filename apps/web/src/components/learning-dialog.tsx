@@ -278,7 +278,7 @@ function FrictionDetails({ learning }: { learning: LearningView }) {
         {learning.cost == null
           ? "Minutes not measured"
           : `${learning.cost} minutes lost`}{" "}
-        · {learning.blocked ? "Blocked progress" : "Progress continued"}
+        · {learning.blocked == null ? "Blocking impact unknown" : learning.blocked ? "Blocked progress" : "Progress continued"}
       </p>
       {learning.workaround ? <p>Workaround: {learning.workaround}</p> : null}
     </div>

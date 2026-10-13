@@ -214,7 +214,7 @@ Upsert the member's vote. Recompute the three counters. Unknown id in this team:
 
 `requireMcpAuth` verifies the signature, issuer, audience, expiry and hive scope. It also verifies DPoP when used. The token's server-derived `hive_member_id`, `hive_team_id` and subject must identify the same current active membership. The resulting HiveContext reaches tools through AuthInfo.extra. Legacy `hm_` bearer keys remain an independent headless/CI path. Web cookies alone cannot authorize MCP. `/api/app/capture` uses the same shared bearer helper and team binding.
 
-Tool results are compact Markdown with cell IDs. Tool errors use isError and a one-line cause.
+Retrieval results use compact Markdown with cell IDs. Capture, correction and feedback results use JSON with reviewable fields and receipts. Tool errors use isError and a one-line cause.
 
 ## Web
 
@@ -278,7 +278,7 @@ Migrations 0004_email_access.sql and 0005_moderation.sql run in the migration ru
 
 ## Round 3: friction and insights
 
-The learning-kind enum includes learning, gotcha, decision, snippet, incident, insight and friction. hive_push accepts area (repo/tool/process/docs/environment/people), cost (optional nonnegative integer minutes, maximum 1,000,000 per report), blocked (boolean, default false) and workaround (optional text, at most 4000 characters). The workaround is redacted before storage. hive_search and hive_recent accept an optional kind hard filter. GET /api/app/feed accepts kind too.
+The learning-kind enum includes learning, gotcha, decision, snippet, incident, insight and friction. hive_push accepts area (repo/tool/process/docs/environment/people), cost (optional nonnegative integer minutes, maximum 1,000,000 per report), blocked (historically boolean, default false; now nullable) and workaround (optional text, at most 4000 characters). The workaround is redacted before storage. hive_search and hive_recent accept an optional kind hard filter. GET /api/app/feed accepts kind too.
 
 Learnings store the friction fields. On a same-kind duplicate, cost accumulates measured values, blocked is combined with OR, and a new workaround can replace the old one. Same normalized title and repo merge even when embeddings differ. Different kinds do not merge. Each learning_pushes event stores its own area, cost and blocked state. Friction deduplication uses title equality so distinct reports keep distinct citations. The weekly summary uses event timestamps in the last seven days, not lifetime cell totals. Null cost contributes to an explicit unmeasured count, never fabricated minutes. The summary joins both learning id and authenticated team id. It groups recurring titles after whitespace and case normalization, including citations to each cell, and ranks top areas by minutes then report count.
 
@@ -442,3 +442,40 @@ An admin's complete “Maybe we should…” instruction acts immediately and re
 Message events without an @mention route through the same tool handler when their thread has Hive history or an action receipt. The model receives metadata for the latest reversible action. Explicit `undo`, `cancel that` and `revert` prefer `undo_last_action` even if the model suggests another tool or produces a question about setting the action again. Human conversation can still select silence.
 
 `latestThreadAction(ctx)` and `undoThreadAction(ctx)` in `apps/web/src/slack/tools/undo.ts` select across shared action receipts and digest instructions, scoped to the exact team, channel and thread. Selection includes expired and already-undone receipts; it never falls back to an older action. The original actor, current permissions, one-hour window and resource revision still guard reversal. Successful undo reacts `white_check_mark` and posts nothing. Errors state the reason without control hints. Migration 0021 permits durable white-check undo receipts and backfills digest pointers into the shared action log. New digest mutations store their inverse pointer atomically with the schedule change. Successful undo removes a newly created schedule while preserving its post history.
+
+## Observation capture and outcome feedback, 13 October 2026
+
+This is the current capture and feedback contract. It replaces the historical title/body requirement and the earlier instructions to calculate metadata or search for a replacement ID before capture.
+
+`hive_push({observation, evidence?, context?})` accepts one fact in the agent's words. Evidence is a string or an object with `session_excerpt`, `diff` and `command_output`. Each evidence field is bounded at 50,000 characters. Context accepts repo, remote, cwd, home, branch, agent, sessionType, sessionRef and up to 20 paths. The old title/body form remains accepted. Title, body, kind, tags, area, cost, blocked, workaround, confidence, source, flat context fields, supersedes and verify_after are optional overrides. Supplied fields win over inference; flat context overrides the nested envelope. Explicit tags, including an empty array, suppress inferred tagging.
+
+Capture rules inspect the observation, evidence and full runtime envelope first. Drop exits before classification, embedding or storage. Redaction removes affected content and clears context, evidence and metadata sidecars as it does for the existing capture path. Secret redaction and the sensitive-data classifier run before the title model. Held captures retain owner-only visibility. Neither a raw envelope nor raw evidence goes to the title model.
+
+The existing Jev push classifier derives kind and repository topic tags. The relation classifier selects supported service tags and compares nearby cells. Friction area maps the classifier's supported repository topic to tool, docs, process, environment or repo. The LLM module makes one Haiku call for a short title and evidence-cited friction details when needed. An unavailable model falls back to the first sentence as title and unknown friction fields. Blocked is nullable: true, false or unknown. Workaround needs a quoted evidence basis. Cost remains null unless an exact evidence quote records measured minutes lost. Runtime, session duration and estimates are not measured loss. Confidence defaults to the existing 0.7 unless supplied. Repo and agent source derive from context; sessionRef and paths preserve the supplied envelope. Verification horizons and relation/conflict decisions use the existing policies. Explicit supersedes still accepts the replacement atomically.
+
+An observation's normalized content, repo and session identify a retry for the same member. A team-locked, unique push key returns the existing cell without another push count, friction cost or evidence event. Without a sessionRef the content and repo still identify a retry for that member. Different sessions retain observation accounting. Exact observation content can merge despite a generated title changing; legacy explicit title/body pushes retain title-sensitive duplicate semantics.
+
+The response is JSON with the saved cell, `inferred` metadata, relation judgments, accepted supersedes IDs, applied decisions, explicit override names and `correction: {tool: "hive_correct", id, revision}`. A replay adds `replayed: true`. The agent can inspect every decided field.
+
+`hive_correct({id, revision, observation?, retract?, evidence?})` accepts either a corrected observation or `retract: true`. It rechecks author/admin membership, team visibility and revision before work and inside the transaction. A correction creates a new immutable revision of the same cell, generates its title after privacy filtering and preserves redacted evidence. Retraction changes lifecycle with the same version audit. Superseded cells require the current endpoint. A stale handle returns 409.
+
+`hive_outcome({id, outcome, evidence?})` reports the concrete result of using a cell. It does not ask the agent to vote. Privacy rules run before outcome classification or persistence; a dropped result is refused, a redacted or held result records no vote, and held history is owner-only. Jev asks a typed result Choice and an evidence-support Noul, with timeout 500 ms, zero retries and logging off. Pure `decideOutcome` needs both result confidence and evidence support at least 0.80. An unavailable or uncertain judgment uses one Haiku structured call with an exact supporting quote and confidence at least 0.80. No supported result means inconclusive.
+
+| Outcome | Existing vote and standing rule |
+| --- | --- |
+| useful | up; can confirm the cell |
+| contradicted | down; reduces vote ranking, without inventing a retraction threshold |
+| stale | outdated; outdated votes greater than up votes mark the cell outdated |
+| inconclusive | audit receipt only; existing votes and lifecycle stay unchanged |
+
+The outcome can cite a check in its own text; separate evidence is optional. Bare approval, viewing, retrieval, unfinished attempts and unsupported claims are inconclusive. Search, recent, getLearning, hive_browse and hive_read never cast feedback.
+
+`feedback` remains keyed by authenticated member and cell. Two agents or credentials for one member cannot stack independent votes. A newer supported outcome or direct vote replaces that member's contribution. Team scope and active membership are hard checks. The existing lifecycle thresholds remain: terminal superseded/retracted states stay terminal, admin-outdated wins, outdated votes greater than up votes make outdated, positive votes or repeated pushes make confirmed, otherwise fresh.
+
+Every direct vote, outcome and withdrawal creates an actor-bound `feedback_receipts` audit row with text, redacted evidence, judgment, target receipt and before/after standing. `hive_feedback({id, withdraw: true, receipt?})` withdraws that actor's current receipt, or the specified non-affecting receipt. A replaced affecting receipt, reused withdrawal or another actor's receipt cannot remove newer feedback. Withdrawal restores the actor's previous contribution, then recomputes standing with current team votes and admin/terminal guards. Correct a result by reporting a new outcome for the same cell. Inconclusive receipt withdrawal has no lifecycle effect.
+
+The web Useful, Unhelpful and Outdated buttons remain optional direct controls. Show history loads both revisions and outcome receipts from the scoped versions API. It displays the actor, outcome text, classification, evidence, current contribution and withdrawals with human dates. Capture-rule scans include outcome evidence. Redaction clears outcome evidence and judgments and replaces text with a redaction marker without discarding the standing audit.
+
+Migration `0022_capture_contract.sql` relaxes blocked nullability, adds unique capture retry keys and marks correction evidence events so friction counts exclude edits. Existing false values stay false; no past uncertainty is invented. Migration `0023_outcome_feedback.sql` adds the outcome audit and a deferred actor/cell/team-bound reference from current feedback. Both are additive and repeatable. Reviewed rollback scripts refuse new observations or audit history rather than discard them. Apply them through `pnpm --filter web db:migrate` from the landing commit before pushing dependent code.
+
+The Hive skill, Codex instruction block, shared Claude/Executor skill and both Stop hook variants say observe, attach evidence, push. Search before investigating remains. After using a cell, report a known result in one line; merely retrieved cells get no feedback. Installer assets come from the shared skill and hook sources.

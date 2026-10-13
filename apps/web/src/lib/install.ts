@@ -12,10 +12,10 @@ const instructions = [
   "## Hive (team memory)",
   "- When you start work in a repo, call `hive_search` with the task in a few words and the repo as `owner/name`.",
   "- When you hit an error you do not understand, call `hive_search` with the error text before you investigate.",
-  "- Call `hive_push` when you learn something a teammate would otherwise need to rediscover. This includes gotchas, fixes, decisions and insights about how the team works. For friction, describe what slowed you down, how long it took and any workaround. Use a title that states the fact. Include the repo, 3 to 5 tags and relevant paths. Keep secrets and customer names out.",
-  "- When a result helped, call `hive_feedback` with `up`. When it is wrong or stale, vote `down` or `outdated` and say why.",
-  "- Before pushing a correction, search for and read the old cell. Set `supersedes` to its id so the replacement becomes current and the old source stays in history. Set `verify_after` to an ISO date for time-sensitive facts; check expired cells before use.",
-  "- Use `hive_browse` and `hive_read` to explore the read-only knowledge tree. Use `hive_snapshot` to download an archive for local grep. Tree edits are not saved; corrections go through `hive_push`.",
+  "- Capture one durable fact with `hive_push({observation, evidence?, context?})`. Attach a scrubbed command result, diff or excerpt and the repo, agent, session and paths you already know. Hive derives the title, tags, kind, expiry, friction fields and replacement relations. Keep secrets and identifying details out.",
+  "- After using a cell, report a known result in one line with `hive_outcome({id, outcome, evidence?})`. Viewing, searching and reading alone never warrant feedback. Use `hive_feedback({id, withdraw: true, receipt})` to withdraw your result.",
+  "- Read the inferred fields returned by capture. Correct your observation with `hive_correct({id, revision, observation, evidence?})`, or retract it with `{id, revision, retract: true}`. Verify expired or historical cells before use.",
+  "- Use `hive_browse` and `hive_read` to explore the read-only knowledge tree. Use `hive_snapshot` to download an archive for local grep. Tree edits are not saved; corrections go through `hive_correct`.",
   "- Use `hive_ask` for a question that needs several learnings joined into one answer.",
 ].join("\n");
 

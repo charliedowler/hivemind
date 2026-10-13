@@ -115,7 +115,8 @@ test('Stop skips quiet sessions and asks at most once without losing headless ou
   const first = JSON.parse(await run('stop.mjs', input, env));
   assert.equal(first.decision, 'block');
   assert.ok(first.reason.includes('repeating your previous final answer word for word'));
-  assert.ok(first.reason.includes('supersedes'));
+  assert.ok(first.reason.includes('observation'));
+  assert.ok(first.reason.includes('hive_outcome'));
   assert.equal(await run('stop.mjs', input, env), '');
   assert.equal(await run('stop.mjs', { ...input, session_id: 'active', stop_hook_active: true }, env), '');
 });

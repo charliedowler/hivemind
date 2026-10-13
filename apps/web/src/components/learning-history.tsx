@@ -1,7 +1,7 @@
 "use client";
 import { formatHumanDate } from "@hivemind/core";
 import { useState } from "react";
-import type { LearningVersion } from "@hivemind/core";
+import type { LearningVersion, FeedbackHistoryEntry } from "@hivemind/core";
 import { Button } from "@hivemind/design-system";
 import { errorMessage, requestJson } from "@/lib/client";
 import { ErrorPanel } from "./primitives";
@@ -14,6 +14,7 @@ export function LearningHistory({
 }) {
   const [state, setState] = useState<{
     versions?: LearningVersion[];
+    feedback?: FeedbackHistoryEntry[];
     error?: string;
     pending?: boolean;
   }>({});
@@ -21,9 +22,10 @@ export function LearningHistory({
     setState({ pending: true });
     try {
       setState(
-        await requestJson<{ versions: LearningVersion[] }>(
-          `/api/app/learnings/${encodeURIComponent(id)}/versions`,
-        ),
+        await requestJson<{
+          versions: LearningVersion[];
+          feedback: FeedbackHistoryEntry[];
+        }>(`/api/app/learnings/${encodeURIComponent(id)}/versions`),
       );
     } catch (error) {
       setState({ error: errorMessage(error) });
@@ -39,10 +41,48 @@ export function LearningHistory({
           disabled={state.pending}
           onClick={() => void load()}
         >
-          Show version history
+          Show history
         </Button>
       </div>
       {state.error ? <ErrorPanel message={state.error} /> : null}
+      {state.feedback?.length ? (
+        <section className="stack" aria-label="Outcome history">
+          <span className="eyebrow">Results from using this cell</span>
+          {state.feedback.map((entry) => (
+            <details className="version-entry" key={entry.receipt}>
+              <summary>
+                {entry.actor} ·{" "}
+                {entry.action === "withdraw"
+                  ? "Withdrew feedback"
+                  : (entry.classification ??
+                    (entry.vote
+                      ? (
+                          {
+                            up: "Useful",
+                            down: "Unhelpful",
+                            outdated: "Outdated",
+                          } as const
+                        )[entry.vote]
+                      : "Inconclusive"))}{" "}
+                · {formatHumanDate(entry.createdAt)}
+                {entry.current ? " · Current" : ""}
+              </summary>
+              {entry.outcome ? (
+                <p className="small breakable">{entry.outcome}</p>
+              ) : null}
+              {entry.evidence ? (
+                <pre tabIndex={0}>
+                  {typeof entry.evidence === "string"
+                    ? entry.evidence
+                    : Object.values(entry.evidence)
+                        .filter(Boolean)
+                        .join("\n\n")}
+                </pre>
+              ) : null}
+            </details>
+          ))}
+        </section>
+      ) : null}
       {state.versions?.map((version) => (
         <details className="version-entry" key={version.revision}>
           <summary>

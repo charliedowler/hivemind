@@ -83,7 +83,8 @@ test('install backs up files, preserves servers and remains idempotent', () => {
   const settings = f.read('.claude/settings.json');
   const instructions = f.read('.codex/AGENTS.md');
   const skill = f.read('.agents/skills/hive/SKILL.md');
-  assert.ok(skill.includes('supersedes'));
+  assert.ok(skill.includes('hive_correct'));
+  assert.ok(skill.includes('hive_outcome'));
   assert.equal(f.read('.codex/skills/hive/SKILL.md'), skill);
   assert.deepEqual(JSON.parse(f.read('.claude.json')).mcpServers.other, { command: 'keep' });
   assert.equal(first.registered.length, 2);

@@ -79,14 +79,16 @@ Both install paths were run for real against production on 12 October 2026: Code
 
 | Tool            | What it does                                                                                                                                                                                                                                                 |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `hive_push`     | Stores a learning, insight or friction point: title, markdown body, kind, tags, repo, paths, confidence, source, area, measured minutes lost, blocked and workaround. Redacts secrets. Merges confirmed duplicates. Accepts `supersedes`, `verify_after` and optional redacted evidence. |
+| `hive_push` | Captures an observation with optional evidence and runtime context. Hive derives metadata and relations. Returns the saved cell, inferred fields and a correction handle. Explicit metadata remains optional. |
+| `hive_correct` | Corrects or retracts a cell with its returned revision. Preserves audit history. |
+| `hive_outcome` | Reports a concrete result from using a cell. Hive classifies the result and returns a withdrawable receipt. |
 | `hive_search`   | Hybrid search of current cells with kind and tag filters; `include_history` opts into past guidance. Returns ranked learnings with ids and scores.                                                                                                                                                                              |
 | `hive_ask`      | Answers a question from the team's learnings, with citations to learning ids, a confidence and the gaps.                                                                                                                                                     |
 | `hive_recent`   | Lists what the team learned since a time, such as `24h` or `7d`, with a kind filter.                                                                                                                                                                         |
 | `hive_browse` | Lists files and folders in the team’s generated knowledge tree. |
 | `hive_read` | Reads one relative Markdown path from the tree. |
 | `hive_snapshot` | Returns a private read-only tarball link that expires after 15 minutes. |
-| `hive_feedback` | Votes a learning `up`, `down` or `outdated`.                                                                                                                                                                                                                 |
+| `hive_feedback` | Optional direct vote or actor-bound receipt withdrawal.                                                                                                                                                                                                                 |
 
 Signed-in navigation has Hive, Team, Connect and an avatar menu. Team holds Members, Slack, What Hive keeps and Export. Account and Sign out are in the avatar menu. `/app/install` redirects to `/app/connect`; `/app/members` redirects to `/app/team`; `/app/settings/slack` and `/app/settings/capture` redirect to the Slack and What Hive keeps sections. The other dashboard pages remain reachable by URL.
 

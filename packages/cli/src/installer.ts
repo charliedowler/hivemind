@@ -81,7 +81,7 @@ export function markInstructions(text: string, agent: Agent, remove = false): st
   const end = text.indexOf(endMarker);
   if ((begin === -1) !== (end === -1) || (begin !== -1 && (end < begin || text.indexOf(startMarker, begin + 1) !== -1 || text.indexOf(endMarker, end + 1) !== -1))) throw new Error('The Hive instruction markers are incomplete or duplicated. No files were changed');
   const skill = agent === 'claude' ? '~/.claude/skills/hive/SKILL.md' : '~/.agents/skills/hive/SKILL.md (also ~/.codex/skills/hive/SKILL.md)';
-  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. Before finishing, save scrubbed, verified fixes, gotchas, decisions, insights and friction with hive_push; use supersedes to replace stale cells. Skip routine summaries and sensitive data.\n${endMarker}`;
+  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. Before finishing, capture one scrubbed observation with evidence and known runtime context via hive_push. Hive derives metadata and relations. After using a cell, report a known result with hive_outcome; retrieval alone never votes. Skip routine summaries and sensitive data.\n${endMarker}`;
   if (begin !== -1) {
     const after = end + endMarker.length;
     return remove ? text.slice(0, begin) + text.slice(after).replace(/^\r?\n/, '') : text.slice(0, begin) + block + text.slice(after);
