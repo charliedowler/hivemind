@@ -1,3 +1,4 @@
+import { redactFeedback } from "./feedback";
 import type postgres from "postgres";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
@@ -237,7 +238,7 @@ export async function previewCaptureRule(ctx: HiveContext, id: string, cursor?: 
     throw new HiveError("This instruction changed. Review its current state.", 409);
   const rule = {...ruleView(row), enabled: true};
   const batchLimit = rule.kind === "content_category" ? 8 : instructionId ? 100 : scanLimit;
-  const cells = await sql`SELECT id, revision, title, body, repo, paths, source, lifecycle, capture_categories, capture_context, workaround, tags, session_ref, COALESCE((SELECT jsonb_agg(e.payload) FROM learning_evidence e WHERE e.learning_id = learnings.id AND e.team_id = learnings.team_id), '[]'::jsonb) AS evidence FROM learnings WHERE team_id = ${ctx.teamId} AND lifecycle IN ('fresh', 'confirmed', 'outdated') AND (${row.scope === "team"} OR member_id = ${ctx.memberId}) AND (${Boolean(instructionId && row.scope === 'team')} OR NOT capture_flagged OR member_id = ${ctx.memberId}) AND (${instruction?.created_at ?? null}::timestamptz IS NULL OR created_at <= ${instruction?.created_at ?? null}) AND (${cursor ?? null}::text IS NULL OR id > ${cursor ?? null}) ORDER BY id LIMIT ${batchLimit + 1}`;
+  const cells = await sql`SELECT id, revision, title, body, repo, paths, source, lifecycle, capture_categories, capture_context, workaround, tags, session_ref, COALESCE((SELECT jsonb_agg(e.payload) FROM learning_evidence e WHERE e.learning_id = learnings.id AND e.team_id = learnings.team_id), '[]'::jsonb) || COALESCE((SELECT jsonb_agg(jsonb_build_object('outcome', r.outcome, 'evidence', r.evidence)) FROM feedback_receipts r WHERE r.learning_id = learnings.id AND r.team_id = learnings.team_id), '[]'::jsonb) AS evidence FROM learnings WHERE team_id = ${ctx.teamId} AND lifecycle IN ('fresh', 'confirmed', 'outdated') AND (${row.scope === "team"} OR member_id = ${ctx.memberId}) AND (${Boolean(instructionId && row.scope === 'team')} OR NOT capture_flagged OR member_id = ${ctx.memberId}) AND (${instruction?.created_at ?? null}::timestamptz IS NULL OR created_at <= ${instruction?.created_at ?? null}) AND (${cursor ?? null}::text IS NULL OR id > ${cursor ?? null}) ORDER BY id LIMIT ${batchLimit + 1}`;
   const bounded = cells.slice(0, batchLimit);
   const matches: {id: string; revision: number; title: string; body: string; categories: Record<string, boolean>}[] = [];
   for (let start = 0; start < bounded.length; start += 8) {
@@ -294,6 +295,7 @@ export function applyCaptureRule(ctx: HiveContext, id: string, token: string, in
         else if (action === "flag")
           await tx`UPDATE learnings SET capture_flagged = true, capture_categories = capture_categories || ${tx.json(match.categories)}::jsonb, capture_rule_ids = ARRAY(SELECT DISTINCT unnest(capture_rule_ids || ARRAY[${id}]::text[])) WHERE id = ${cell.id} AND team_id = ${ctx.teamId}`;
         else {
+          await redactFeedback(tx, ctx, cell.id);
           await tx`UPDATE learnings SET title = ${match.title}, body = ${match.body}, capture_redacted = true, capture_categories = capture_categories || ${tx.json(match.categories)}::jsonb, capture_context = '{}'::jsonb, classification = NULL, repo = NULL, paths = '{}', tags = '{}', workaround = NULL, session_ref = NULL, capture_rule_ids = ARRAY(SELECT DISTINCT unnest(capture_rule_ids || ARRAY[${id}]::text[])) WHERE id = ${cell.id} AND team_id = ${ctx.teamId}`;
           const current = await tx`SELECT hive_learning_content(l) AS content FROM learnings l WHERE id = ${cell.id} AND team_id = ${ctx.teamId}`;
           await tx`UPDATE learning_versions SET content = ${tx.json(current[0].content)}, diff = '{}'::jsonb WHERE learning_id = ${cell.id} AND team_id = ${ctx.teamId}`;

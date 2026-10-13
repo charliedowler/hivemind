@@ -5,8 +5,15 @@ import {
 } from "./analytics/events";
 import { invalidateKnowledgeSnapshots, scheduleKnowledge } from "./knowledge-tree";
 import type postgres from "postgres";
+import { deriveCaptureDetails, cleanEvidence, evidenceText } from "./llm/capture";
+import { classifyPush, classificationJson, frictionAreaForTopic } from "./classify";
+import { queueEvidence } from "./knowledge-tree";
+import { newId } from "./db/ids";
+import { redactFeedback } from "./feedback";
 import {
   learningEditInput,
+  hiveCorrectInput,
+  type HiveCorrectInput,
   redactSecrets,
   type HiveContext,
   type LearningConflict,
@@ -262,7 +269,7 @@ async function editLearningAction(
   const { enforceCaptureRules } = await import("./capture-rules");
   const capture = await enforceCaptureRules(ctx, {
     title: data.title ?? candidate.title,
-    body: data.body ?? candidate.body,
+    body: data.observation ?? data.body ?? candidate.body,
     remote: candidate.capture_context?.remote,
     cwd: candidate.capture_context?.cwd,
     home: candidate.capture_context?.home,
@@ -270,8 +277,9 @@ async function editLearningAction(
     repo: candidate.repo ?? undefined,
     paths: candidate.paths,
     agent: candidate.capture_context?.agent ?? candidate.source,
-    categories: data.title || data.body ? undefined : candidate.capture_categories,
+    categories: data.title || data.body || data.observation ? undefined : candidate.capture_categories,
   }, undefined, [
+    evidenceText(data.evidence),
     ...(candidate.tags ?? []),
     ...(candidate.paths ?? []),
     candidate.repo ?? "",
@@ -279,8 +287,19 @@ async function editLearningAction(
     candidate.session_ref ?? "",
     ...Object.values(candidate.capture_context ?? {}).filter((value): value is string => typeof value === "string"),
   ]);
-  if (capture.action === "drop")
+  if (capture.action === "drop" && (data.lifecycle !== "retracted" || data.observation || data.body || data.title))
     throw new HiveError("This edit was excluded by a capture rule.", 422);
+  const evidence = capture.redacted || capture.action === "drop" ? undefined : cleanEvidence(data.evidence);
+  let correctedTitle = redactSecrets(capture.title).text;
+  let correctedMetadata: {kind: LearningKind; tags: string[]; area: string | null; blocked: boolean | null; cost: number | null; workaround: string | null; classification: ReturnType<typeof classificationJson> | null} | undefined;
+  if (data.observation) {
+    const classification = await classifyPush({title: "", body: redactSecrets(capture.body).text, repo: capture.redacted ? null : candidate.repo, evidence: evidenceText(evidence), workaround: "", blocked: null});
+    if (classification.decision.action === "refuse") throw new HiveInputError("Remove identifying details before sharing this correction.");
+    const details = await deriveCaptureDetails(redactSecrets(capture.body).text, evidenceText(evidence));
+    correctedTitle = details.title;
+    const kind = classification.decision.kind;
+    correctedMetadata = {kind, tags: classification.decision.tags, area: kind === "friction" ? frictionAreaForTopic(classification.decision.tags[0]) ?? null : null, blocked: kind === "friction" ? details.blocked : null, cost: kind === "friction" ? details.cost : null, workaround: kind === "friction" ? details.workaround : null, classification: classification.classification ? classificationJson(classification.classification) : null};
+  }
   const result = await analyticsTransaction(() =>
     getSql().begin(async (tx) => {
       await lockLearningWrites(tx, ctx);
@@ -300,7 +319,7 @@ async function editLearningAction(
         );
       if (row.lifecycle === "superseded")
         throw new HiveError("Edit the current cell in the chain instead.", 409);
-      const title = redactSecrets(capture.title).text,
+      const title = redactSecrets(correctedTitle).text,
         body = redactSecrets(capture.body).text;
       if (
         row.admin_outdated &&
@@ -309,18 +328,24 @@ async function editLearningAction(
         !row.admin
       )
         throw new HiveError("A team admin must clear the outdated mark.", 403);
-      await tx`UPDATE learnings SET title = ${title}, body = ${body}, verify_after = ${data.verify_after ? new Date(data.verify_after) : row.verify_after}, lifecycle = ${data.lifecycle ?? row.lifecycle}, admin_outdated = ${data.lifecycle && ["fresh", "confirmed"].includes(data.lifecycle) ? false : row.admin_outdated}, capture_flagged = capture_flagged OR ${capture.flagged}, capture_redacted = capture_redacted OR ${capture.redacted}, capture_rule_ids = ARRAY(SELECT DISTINCT unnest(capture_rule_ids || ${capture.matches.map(match => match.ruleId)}::text[])), capture_categories = ${tx.json(capture.categories)}, repo = ${capture.redacted ? null : row.repo}, tags = ${capture.redacted ? [] : row.tags}, paths = ${capture.redacted ? [] : row.paths}, workaround = ${capture.redacted ? null : row.workaround}, session_ref = ${capture.redacted ? null : row.session_ref}, capture_context = ${tx.json(capture.redacted ? {} : row.capture_context ?? {})}, classification = ${capture.redacted ? null : row.classification ? tx.json(row.classification) : null} WHERE id = ${id} AND team_id = ${ctx.teamId}`;
-      if ((data.title || data.body || capture.redacted) && (await hasEmbeddingColumn())) {
+      await tx`UPDATE learnings SET kind = ${correctedMetadata?.kind ?? row.kind}, area = ${correctedMetadata ? correctedMetadata.area : row.area}, blocked = ${correctedMetadata ? correctedMetadata.blocked : row.blocked}, cost = ${correctedMetadata ? correctedMetadata.cost : row.cost}, title = ${title}, body = ${body}, verify_after = ${data.verify_after ? new Date(data.verify_after) : correctedMetadata ? verificationHorizon(correctedMetadata.kind, correctedMetadata.area ?? undefined, correctedMetadata.tags) : row.verify_after}, lifecycle = ${data.lifecycle ?? row.lifecycle}, admin_outdated = ${data.lifecycle && ["fresh", "confirmed"].includes(data.lifecycle) ? false : row.admin_outdated}, capture_flagged = capture_flagged OR ${capture.flagged}, capture_redacted = capture_redacted OR ${capture.redacted}, capture_rule_ids = ARRAY(SELECT DISTINCT unnest(capture_rule_ids || ${capture.matches.map(match => match.ruleId)}::text[])), capture_categories = ${tx.json(capture.categories)}, repo = ${capture.redacted ? null : row.repo}, tags = ${capture.redacted ? [] : correctedMetadata?.tags ?? row.tags}, paths = ${capture.redacted ? [] : row.paths}, workaround = ${capture.redacted ? null : correctedMetadata ? correctedMetadata.workaround : row.workaround}, session_ref = ${capture.redacted ? null : row.session_ref}, capture_context = ${tx.json(capture.redacted ? {} : row.capture_context ?? {})}, classification = ${capture.redacted ? null : correctedMetadata ? correctedMetadata.classification ? tx.json(correctedMetadata.classification) : null : row.classification ? tx.json(row.classification) : null} WHERE id = ${id} AND team_id = ${ctx.teamId}`;
+      if ((data.title || data.body || data.observation || capture.redacted) && (await hasEmbeddingColumn())) {
         const embedding = await embedText(`${title}\n\n${body}`);
         await tx`UPDATE learnings SET embedding = ${embedding ? JSON.stringify(embedding) : null}::vector WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       }
       const updated =
         await tx`SELECT revision FROM learnings WHERE id = ${id} AND team_id = ${ctx.teamId}`;
       if (capture.redacted) {
+        await redactFeedback(tx, ctx, id);
         await tx`DELETE FROM learning_versions WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND revision <> ${updated[0].revision}`;
         await tx`UPDATE learning_versions SET diff = '{}'::jsonb WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND revision = ${updated[0].revision}`;
         await tx`DELETE FROM learning_evidence WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
         await tx`UPDATE learning_pushes SET session_ref = NULL, classification = NULL WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
+      }
+      if (evidence || data.observation) {
+        const pushId = newId("psh");
+        await tx`INSERT INTO learning_pushes (id, learning_id, team_id, member_id, source, session_ref, merged, blocked, is_correction) VALUES (${pushId}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${row.source}, ${capture.redacted ? null : row.session_ref}, true, NULL, true)`;
+        await queueEvidence(tx, ctx, id, pushId, {observation: body, evidence, revision: data.revision, retract: data.lifecycle === "retracted"});
       }
       if (capture.redacted || (capture.flagged && !row.capture_flagged))
         await invalidateKnowledgeSnapshots(tx, ctx);
@@ -336,6 +361,16 @@ async function editLearningAction(
   );
   scheduleKnowledge(ctx);
   return result;
+}
+
+export function correctLearning(ctx: HiveContext, input: HiveCorrectInput) {
+  const data = hiveCorrectInput.parse(input);
+  return editLearning(ctx, data.id, {
+    revision: data.revision,
+    observation: data.observation,
+    evidence: data.evidence,
+    ...(data.retract ? {lifecycle: "retracted" as const} : {}),
+  });
 }
 
 export async function answerLifecycleContext(

@@ -94,7 +94,7 @@ export const learnings = pgTable("learnings", {
   repo: text("repo"),
   area: text("area"),
   cost: integer("cost"),
-  blocked: boolean("blocked").notNull().default(false),
+  blocked: boolean("blocked"),
   workaround: text("workaround"),
   confidence: real("confidence").notNull(),
   sessionRef: text("session_ref"),
@@ -131,7 +131,7 @@ export const learningPushes = pgTable("learning_pushes", {
   sessionRef: text("session_ref"),
   area: text("area"),
   cost: integer("cost"),
-  blocked: boolean("blocked").notNull().default(false),
+  blocked: boolean("blocked"),
   classification: jsonb("classification"),
   merged: boolean("merged").notNull(),
   createdAt: createdAt(),
@@ -151,6 +151,7 @@ export const feedback = pgTable(
       .references(() => teams.id),
     vote: text("vote").notNull(),
     note: text("note"),
+    receiptId: text("receipt_id"),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

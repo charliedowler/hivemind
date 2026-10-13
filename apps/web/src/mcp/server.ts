@@ -13,6 +13,8 @@ import {
   hiveAskInput,
   hiveFeedbackInput,
   hivePushInput,
+  hiveCorrectInput,
+  hiveOutcomeInput,
   hiveRecentInput,
   hiveSearchInput,
   type HiveContext,
@@ -31,6 +33,8 @@ import {
 } from "@/server/knowledge-tree";
 import { HiveError } from "@/server/errors";
 
+import { correctLearning } from "@/server/lifecycle";
+import { reportOutcome } from "@/server/feedback";
 import { reverseDecision } from "@/server/conflict-decisions";
 
 import { searchSlack } from "@/server/slack/search";
@@ -174,31 +178,33 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Share a learning",
       description:
-        "Save a learning that would help a teammate. Include its evidence and repo. Use supersedes to correct a current cell. Set verify_after for facts that need checking later. For friction, record what slowed you down and any workaround. Include measured minutes lost and whether it blocked progress. Keep secrets and customer names out.",
+        "Share one observation in your words, optional evidence and the runtime context you already know. Hive derives the title, metadata and relations. Returns the saved cell, inferred fields and a revision-bound correction handle. Keep secrets and identifying details out.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>
       reply(async () => {
         const userAgent =
           ctx.http?.req?.headers.get("user-agent")?.toLowerCase() ?? "";
-        const source =
-          input.source === "manual"
-            ? userAgent.includes("claude")
-              ? "claude-code"
-              : userAgent.includes("codex")
-                ? "codex"
-                : "manual"
-            : input.source;
+        const source = input.source ?? (input.context?.agent === "codex" || input.agent === "codex" || userAgent.includes("codex") ? "codex" : input.context?.agent === "claude-code" || input.agent === "claude-code" || userAgent.includes("claude") ? "claude-code" : "manual");
         const result = await pushLearning(getContext(ctx), {
           ...input,
           source,
-          agent: input.agent ?? (userAgent.includes("executor") ? "executor" : source),
+          agent: input.agent ?? input.context?.agent ?? (userAgent.includes("executor") ? "executor" : source),
         });
-        if (result.dropped) return JSON.stringify(result);
-        const decisions = result.decisions?.map(record => `Decision ${record.id}: ${record.decision}, ${Math.round(record.confidence * 100)}% confidence, ${record.model}. ${record.reason}`).join("\n");
-        return `${result.merged ? `Merged into ${result.id} (seen ${result.pushCount} times)` : `Saved ${result.id}`}${result.redactions ? `\nRedacted ${result.redactions} secret${result.redactions === 1 ? "" : "s"}.` : ""}${decisions ? `\n${decisions}\nSee the Decisions log at /app/conflicts.` : ""}`;
+        return JSON.stringify(result);
       }, ctx),
   );
+
+  server.registerTool("hive_correct", {
+    title: "Correct or retract your cell",
+    description: "Correct the observation or retract it. Use the saved revision. Authors and team admins can edit; the change preserves audit history.",
+    inputSchema: hiveCorrectInput,
+  }, async (input, ctx) => reply(async () => JSON.stringify(await correctLearning(getContext(ctx), input)), ctx));
+  server.registerTool("hive_outcome", {
+    title: "Report a result from using a cell",
+    description: "Report a concrete result from using this cell, with evidence when available. Hive classifies useful, contradicted, stale or inconclusive. Retrieval alone never votes. Returns an actor-bound receipt you can withdraw with hive_feedback.",
+    inputSchema: hiveOutcomeInput,
+  }, async (input, ctx) => reply(async () => JSON.stringify(await reportOutcome(getContext(ctx), input)), ctx));
 
   server.registerTool(
     "hive_search",
@@ -279,13 +285,13 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Review a learning",
       description:
-        "Call after using a learning to vote it up, down, or outdated. Include a correction or context when helpful.",
+        "Optional direct useful, unhelpful or outdated vote. Prefer hive_outcome for an evidenced result. Use withdraw: true and the receipt to withdraw your feedback. The newest feedback replaces your prior vote; retrieval never votes.",
       inputSchema: hiveFeedbackInput,
     },
     async (input, ctx) =>
       reply(async () => {
         const result = await recordFeedback(getContext(ctx), input);
-        return `${result.id}: +${result.votes.up} / -${result.votes.down} / outdated ${result.votes.outdated}`;
+        return JSON.stringify(result);
       }, ctx),
   );
 }

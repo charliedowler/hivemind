@@ -55,7 +55,7 @@ export function learningView(
     captureRuleIds: (row.capture_rule_ids as string[] | undefined) ?? [],
     area: row.area as LearningView["area"],
     cost: row.cost == null ? null : Number(row.cost),
-    blocked: Boolean(row.blocked),
+    blocked: row.blocked == null ? null : Boolean(row.blocked),
     workaround: row.workaround as string | null,
     createdAt: date(row.created_at),
     updatedAt: date(row.updated_at),

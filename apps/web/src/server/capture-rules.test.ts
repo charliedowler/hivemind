@@ -13,7 +13,7 @@ import {embedText} from "./llm/embeddings";
 const models = vi.hoisted(() => ({create: vi.fn(), classify: vi.fn(), synthesize: vi.fn()}));
 vi.mock("@anthropic-ai/sdk", () => ({default: class {messages = {create: models.create};}}));
 vi.mock("./capture-categories", () => ({classifyCaptureCategories: vi.fn(async (_input, categories: string[]) => Object.fromEntries(categories.map(category => [category, true])))}));
-vi.mock("./classify", () => ({classifyPush: models.classify, classifyAsk: vi.fn(async () => ({classification: null, decision: "gap"})), classificationJson: (value: unknown) => value}));
+vi.mock("./classify", async original => ({...await original<typeof import("./classify")>(), classifyPush: models.classify, classifyAsk: vi.fn(async () => ({classification: null, decision: "gap"})), classificationJson: (value: unknown) => value}));
 vi.mock("./llm/embeddings", () => ({embedText: vi.fn(async () => null)}));
 vi.mock("./llm/synthesize", () => ({synthesizeAnswer: models.synthesize, extractiveAnswer: vi.fn()}));
 vi.mock("./memory-judgments", () => ({judgeMemory: vi.fn(async () => ({tags: [], relations: []})), rerankMemory: vi.fn(async (_question, hits) => hits)}));

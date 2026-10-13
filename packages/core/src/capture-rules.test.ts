@@ -303,7 +303,7 @@ describe("evaluateCaptureRules", () => {
   });
   it.each([false, true])("accepts maximal push title and body with independent field bounds, regex: %s", (regex) => {
     const input = hivePushInput.parse({ title: "x".repeat(194) + "secret", body: "x".repeat(captureInputLimit - 6) + "secret" });
-    expect(evaluateCaptureRules([rule({ kind: "keyword", pattern: "secret", regex, action: "redact" })], input)).toMatchObject({
+    expect(evaluateCaptureRules([rule({ kind: "keyword", pattern: "secret", regex, action: "redact" })], {...input, title: input.title!, body: input.body!})).toMatchObject({
       action: "redact",
       title: "x".repeat(194) + "[removed]",
       body: "x".repeat(captureInputLimit - 6) + "[removed]",

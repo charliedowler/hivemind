@@ -12,6 +12,7 @@ import {
   learningKinds,
   redactSecrets,
   type LearningKind,
+  type FrictionArea,
   type SearchHit,
 } from "@hivemind/core";
 import { z } from "zod";
@@ -28,6 +29,11 @@ export const repoAreas = [
   "process",
   "none",
 ] as const;
+
+export function frictionAreaForTopic(topic?: string): FrictionArea | undefined {
+  const areas: Record<string, FrictionArea> = {tooling: "tool", deployment: "environment", process: "process", documentation: "docs", frontend: "repo", backend: "repo", database: "repo", testing: "repo"};
+  return topic ? areas[topic] : undefined;
+}
 
 export const pushQuestions = {
   kind: choice(
@@ -351,9 +357,10 @@ export async function classifyPush(input: {
   body: string;
   repo: string | null;
   workaround: string;
-  blocked: boolean;
-  cost?: number;
+  blocked: boolean | null;
+  cost?: number | null;
   kind?: LearningKind;
+  evidence?: string;
 }) {
   const classification = await evaluate(
     "push",

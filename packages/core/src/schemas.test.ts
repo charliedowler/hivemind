@@ -8,7 +8,7 @@ import {
 } from "./schemas";
 
 describe("hive_push", () => {
-  it("parses a learning and supplies defaults", () => {
+  it("keeps overrides optional for server inference", () => {
     expect(
       hivePushInput.parse({
         title: "Build the workspace",
@@ -17,11 +17,6 @@ describe("hive_push", () => {
     ).toEqual({
       title: "Build the workspace",
       body: "Run the build from the root.",
-      blocked: false,
-      tags: [],
-      paths: [],
-      confidence: 0.7,
-      source: "manual",
     });
   });
   it("rejects an invalid learning", () => {

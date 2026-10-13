@@ -44,95 +44,112 @@ export type LearningKind = z.infer<typeof learningKindSchema>;
 export type LearningSource = z.infer<typeof learningSourceSchema>;
 export type FeedbackVote = z.infer<typeof feedbackVoteSchema>;
 
-export const hivePushInput = z.object({
-  evidence: z
-    .object({
-      session_excerpt: z.string().max(50000).optional(),
-      diff: z.string().max(50000).optional(),
-    })
-    .optional(),
-  supersedes: z
-    .string()
-    .regex(/^lrn_[a-z2-7]{12}$/)
-    .optional()
-    .describe(
-      "The current cell this learning replaces. The old cell stays readable.",
-    ),
-  verify_after: z.iso
-    .datetime({ offset: true })
-    .optional()
-    .describe("An ISO timestamp after which this fact needs verification."),
-  title: z
-    .string()
-    .min(1)
-    .max(200)
-    .describe("A short, specific title for the learning."),
-  body: z
-    .string()
-    .min(1)
-    .max(20000)
-    .describe("The learning in Markdown, including context and evidence."),
-  kind: learningKindSchema
-    .optional()
-    .describe(
-      "The kind of knowledge being shared. Omit to use the hive classifier.",
-    ),
-  area: frictionAreaSchema
-    .optional()
-    .describe(
-      "Where friction occurred: repo, tool, process, docs, environment or people.",
-    ),
-  cost: z
-    .number()
-    .int()
-    .min(0)
-    .max(1000000)
-    .optional()
-    .describe("Measured minutes lost. Omit when not measured."),
-  blocked: z
-    .boolean()
-    .default(false)
-    .describe("Whether friction blocked progress."),
-  workaround: z
-    .string()
-    .trim()
-    .max(4000)
-    .optional()
-    .describe("A workaround that helped with the friction."),
-  tags: z
-    .array(z.string())
-    .max(12)
-    .default([])
-    .describe("Up to 12 topic tags that help teammates find this learning."),
-  repo: z
-    .string()
-    .optional()
-    .describe("The related repository, such as owner/name."),
+export const captureEvidenceSchema = z.union([
+  z.string().trim().min(1).max(50000),
+  z.object({
+    session_excerpt: z.string().max(50000).optional(),
+    diff: z.string().max(50000).optional(),
+    command_output: z.string().max(50000).optional(),
+  }),
+]);
+export type CaptureEvidence = z.infer<typeof captureEvidenceSchema>;
+
+export const captureContextSchema = z.object({
+  repo: z.string().trim().max(2000).optional(),
   remote: z.string().trim().max(2000).optional(),
   cwd: z.string().trim().max(4000).optional(),
   home: z.string().trim().max(4000).optional(),
   branch: z.string().trim().max(500).optional(),
   agent: z.string().trim().min(1).max(120).optional(),
   sessionType: z.string().trim().min(1).max(120).optional(),
-  paths: z
-    .array(z.string())
-    .max(20)
-    .default([])
-    .describe("Up to 20 repository-relative paths related to the learning."),
-  confidence: z
-    .number()
-    .min(0)
-    .max(1)
-    .default(0.7)
-    .describe("Confidence in the learning, from 0 to 1."),
-  source: learningSourceSchema
-    .default("manual")
-    .describe("The agent or person sharing the learning."),
-  sessionRef: z
-    .string()
-    .optional()
-    .describe("An optional reference to the originating agent session."),
+  sessionRef: z.string().trim().max(2000).optional(),
+  paths: z.array(z.string().max(4000)).max(20).optional(),
 });
+
+export const hivePushInput = z
+  .object({
+    observation: z
+      .string()
+      .trim()
+      .min(1)
+      .max(20000)
+      .optional()
+      .describe(
+        "One fact in your own words. Attach evidence and the runtime context you already know.",
+      ),
+    evidence: captureEvidenceSchema.optional(),
+    context: captureContextSchema.optional(),
+    title: z.string().trim().min(1).max(200).optional(),
+    body: z.string().trim().min(1).max(20000).optional(),
+    kind: learningKindSchema.optional(),
+    tags: z.array(z.string().max(120)).max(12).optional(),
+    area: frictionAreaSchema.optional(),
+    cost: z
+      .number()
+      .int()
+      .min(0)
+      .max(1000000)
+      .nullable()
+      .optional()
+      .describe("Measured minutes lost; null means unmeasured."),
+    blocked: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe("True or false only when known; null means unknown."),
+    workaround: z.string().trim().max(4000).nullable().optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    source: learningSourceSchema.optional(),
+    ...captureContextSchema.shape,
+    supersedes: z
+      .string()
+      .regex(/^lrn_[a-z2-7]{12}$/)
+      .optional(),
+    verify_after: z.iso.datetime({ offset: true }).optional(),
+  })
+  .refine(
+    (value) => Boolean(value.observation || (value.title && value.body)),
+    {
+      message: "Supply an observation, or a title and body.",
+    },
+  );
+
+export const hiveCorrectInput = z
+  .object({
+    id: z.string().regex(/^lrn_[a-z2-7]{12}$/),
+    revision: z
+      .number()
+      .int()
+      .positive()
+      .describe("The revision returned with the saved cell."),
+    observation: z.string().trim().min(1).max(20000).optional(),
+    retract: z.literal(true).optional(),
+    evidence: captureEvidenceSchema.optional(),
+  })
+  .refine((value) => Boolean(value.observation) !== Boolean(value.retract), {
+    message: "Supply an observation or retract: true.",
+  });
+export type HiveCorrectInput = z.infer<typeof hiveCorrectInput>;
+export const outcomeKinds = [
+  "useful",
+  "contradicted",
+  "stale",
+  "inconclusive",
+] as const;
+export type OutcomeKind = (typeof outcomeKinds)[number];
+export const hiveOutcomeInput = z.object({
+  id: z.string().regex(/^lrn_[a-z2-7]{12}$/),
+  outcome: z
+    .string()
+    .trim()
+    .min(1)
+    .max(4000)
+    .describe(
+      "The result of using this cell, with a cited check or failure. Retrieval alone is not an outcome.",
+    ),
+  evidence: captureEvidenceSchema.optional(),
+});
+export type HiveOutcomeInput = z.infer<typeof hiveOutcomeInput>;
 
 export const hiveSearchInput = z.object({
   include_history: z
@@ -208,19 +225,23 @@ export const hiveRecentInput = z.object({
     .describe("The maximum number of recent learnings, from 1 to 50."),
 });
 
-export const hiveFeedbackInput = z.object({
-  id: z.string().describe("The identifier of the learning to review."),
-  vote: feedbackVoteSchema.describe(
-    "Vote up for useful knowledge, down for unhelpful knowledge, or outdated for stale knowledge.",
-  ),
-  note: z
-    .string()
-    .max(1000)
-    .optional()
-    .describe(
-      "Optional context for the vote or a correction, up to 1000 characters.",
-    ),
-});
+export const hiveFeedbackInput = z
+  .object({
+    id: z.string().describe("The cell you used."),
+    vote: feedbackVoteSchema.optional(),
+    note: z.string().max(1000).optional(),
+    withdraw: z.literal(true).optional(),
+    receipt: z
+      .string()
+      .regex(/^fbr_[a-z2-7]{12}$/)
+      .optional()
+      .describe(
+        "Use the returned receipt to withdraw that feedback. A replaced receipt cannot remove newer feedback.",
+      ),
+  })
+  .refine((value) => Boolean(value.vote) !== Boolean(value.withdraw), {
+    message: "Supply a vote or withdraw: true.",
+  });
 
 export type HivePushInput = z.infer<typeof hivePushInput>;
 export type HiveSearchInput = z.infer<typeof hiveSearchInput>;
@@ -234,6 +255,8 @@ export const hiveBrowseInput = z.object({
 export const hiveReadInput = z.object({ path: z.string().min(1).max(500) });
 export const learningEditInput = z.object({
   revision: z.number().int().positive(),
+  observation: z.string().trim().min(1).max(20000).optional(),
+  evidence: captureEvidenceSchema.optional(),
   title: z.string().trim().min(1).max(200).optional(),
   body: z.string().trim().min(1).max(20000).optional(),
   verify_after: z.iso.datetime({ offset: true }).optional(),

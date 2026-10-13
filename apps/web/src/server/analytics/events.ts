@@ -272,6 +272,7 @@ export const propertiesSchema = z.object({
       "relations",
       "conflicts",
       "rerank",
+      "feedback",
     ]),
   ),
   model: nullable(modelSchema),

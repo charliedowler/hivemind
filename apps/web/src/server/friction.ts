@@ -18,7 +18,7 @@ export async function frictionSummary(
     repo = normalizeRepo(repoInput);
   const since = new Date(Date.now() - 7 * 86400000);
   const rows =
-    await sql`SELECT p.learning_id AS id, l.title, p.area, p.cost, p.blocked FROM learning_pushes p JOIN learnings l ON l.id = p.learning_id AND l.team_id = p.team_id WHERE p.team_id = ${ctx.teamId} AND l.capture_flagged = false AND l.kind = 'friction' AND l.lifecycle IN ('fresh','confirmed') AND p.created_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY p.created_at DESC`;
+    await sql`SELECT p.learning_id AS id, l.title, p.area, p.cost, p.blocked FROM learning_pushes p JOIN learnings l ON l.id = p.learning_id AND l.team_id = p.team_id WHERE p.team_id = ${ctx.teamId} AND NOT p.is_correction AND l.capture_flagged = false AND l.kind = 'friction' AND l.lifecycle IN ('fresh','confirmed') AND p.created_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo}) ORDER BY p.created_at DESC`;
   const areas = new Map<string, FrictionSummary["areas"][number]>();
   const titles = new Map<string, FrictionSummary["recurring"][number]>();
   const cells = new Map<string, string>();

@@ -11,7 +11,7 @@ export type DigestItem = {
 export type DigestFriction = DigestItem & {
   area: string;
   minutes: number | null;
-  blocked: boolean;
+  blocked: boolean | null;
   workaround?: string | null;
 };
 export type DigestData = {

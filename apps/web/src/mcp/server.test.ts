@@ -6,15 +6,19 @@ import {
 } from "@modelcontextprotocol/server";
 import {
   hivePushInput,
+  hiveReadInput,
   hiveRecentInput,
   hiveSearchInput,
   type LearningView,
 } from "@hivemind/core";
-import { pushLearning, recentLearnings, searchLearnings } from "@/server/hive";
+import { pushLearning, recentLearnings, searchLearnings, recordFeedback } from "@/server/hive";
+import {readKnowledge} from "@/server/knowledge-tree";
 import { reverseDecision } from "@/server/conflict-decisions";
 import { HiveError } from "@/server/errors";
 import { z } from "zod";
 import { registerHiveTools } from "./server";
+
+vi.mock("@/server/knowledge-tree", () => ({browseKnowledge: vi.fn(), readKnowledge: vi.fn(), snapshotKnowledge: vi.fn()}));
 
 vi.mock("@/server/conflict-decisions", () => ({ reverseDecision: vi.fn() }));
 
@@ -151,4 +155,29 @@ it("exposes decision reversal by ID and returns the guarded inverse receipt", as
   expect(reverseDecision).toHaveBeenCalledWith(context, "dec_target", undefined, undefined, "through MCP");
   vi.mocked(reverseDecision).mockRejectedValue(new HiveError("A cell changes after this decision.", 409));
   expect(await call({ decision_id: "dec_inverse" }, toolContext)).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("changes") }] });
+});
+
+it("returns the full saved capture and its inferred fields", async () => {
+  const server = new McpServer({name: "test", version: "1.0.0"});
+  const register = vi.spyOn(server, "registerTool");
+  registerHiveTools(server);
+  const call = register.mock.calls.find(([name]) => name === "hive_push")![2] as ToolCallback<typeof hivePushInput>;
+  const input = hivePushInput.parse({observation: "A fact from a failing build", context: {agent: "codex", repo: "team/widget"}});
+  const saved = {id: "lrn_aaaaaaaaaaaa", merged: false, pushCount: 1, redactions: 0, learning: {title: "A fact from a failing build", blocked: null, cost: null}, inferred: {kind: "gotcha"}, correction: {id: "lrn_aaaaaaaaaaaa", revision: 1, tool: "hive_correct"}};
+  vi.mocked(pushLearning).mockResolvedValue(saved as unknown as Awaited<ReturnType<typeof pushLearning>>);
+  const result = await call(input, toolContext);
+  expect(JSON.parse((result as {content: {text: string}[]}).content[0]!.text)).toEqual(saved);
+  expect(pushLearning).toHaveBeenCalledWith(context, expect.objectContaining({source: "codex", agent: "codex", observation: input.observation}));
+  expect(register.mock.calls.map(([name]) => name)).toEqual(expect.arrayContaining(["hive_correct", "hive_outcome"]));
+});
+
+it("never casts feedback when reading the knowledge tree", async () => {
+  const server = new McpServer({name: "test", version: "1.0.0"});
+  const register = vi.spyOn(server, "registerTool");
+  registerHiveTools(server);
+  const call = register.mock.calls.find(([name]) => name === "hive_read")![2] as ToolCallback<typeof hiveReadInput>;
+  vi.mocked(readKnowledge).mockResolvedValue({revision: 1, path: "INDEX.md", content: "A saved fact"});
+  vi.mocked(recordFeedback).mockClear();
+  expect(await call({path: "INDEX.md"}, toolContext)).toMatchObject({content: [{text: "Revision 1: INDEX.md\n\nA saved fact"}]});
+  expect(recordFeedback).not.toHaveBeenCalled();
 });

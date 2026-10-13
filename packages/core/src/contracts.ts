@@ -5,6 +5,8 @@ import type {
   LearningSource,
   FrictionArea,
   LearningLifecycle,
+  OutcomeKind,
+  CaptureEvidence,
 } from "./schemas";
 
 export type HiveContext = {
@@ -67,7 +69,7 @@ export type LearningView = {
   adminOutdated?: boolean;
   area?: FrictionArea | null;
   cost?: number | null;
-  blocked?: boolean;
+  blocked?: boolean | null;
   workaround?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -97,6 +99,9 @@ export type PushResult = { dropped: true; rule: CaptureRuleInput["kind"] } | {
   pushCount: number;
   redactions: number;
   learning: LearningView;
+  inferred?: CaptureMetadata;
+  correction?: { tool: "hive_correct"; id: string; revision: number };
+  replayed?: boolean;
   decisions?: Pick<
     ConflictDecisionRecord,
     "id" | "decision" | "reason" | "confidence" | "model"
@@ -123,7 +128,31 @@ export type AskResult = {
   synthesized: boolean;
 };
 
-export type FeedbackResult = { id: string; votes: VoteCounts };
+export type CaptureMetadata = Pick<LearningView, "title" | "kind" | "tags" | "area" | "blocked" | "workaround" | "cost" | "confidence" | "repo" | "source" | "sessionRef" | "paths" | "verifyAfter" | "supersededBy"> & {
+  context: Record<string, unknown>;
+  supersedes: string[];
+  relations: {id: string; relation: string; confidence: number}[];
+  overrides: string[];
+};
+export type FeedbackResult = {
+  id: string;
+  votes: VoteCounts;
+  receipt?: string;
+  withdrawn?: boolean;
+  classification?: OutcomeKind;
+  vote?: "up" | "down" | "outdated" | null;
+};
+export type FeedbackHistoryEntry = {
+  receipt: string;
+  actor: string;
+  action: "report" | "withdraw";
+  outcome: string | null;
+  classification: OutcomeKind | null;
+  vote: "up" | "down" | "outdated" | null;
+  evidence: CaptureEvidence | null;
+  createdAt: string;
+  current: boolean;
+};
 
 export type MemberView = {
   id: string;
