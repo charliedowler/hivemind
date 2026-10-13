@@ -20,6 +20,7 @@ export function joinPhrase(value?: string): string | undefined {
 }
 export async function beginSignIn({ home, agents, identity, headless = false, phrase, force = false, log = console.log }: { home: string; agents: Agent[]; identity: Identity; headless?: boolean; phrase?: string; force?: boolean; log?: (line: string) => void }) {
   const previous = signInState(home);
+  force = force || Boolean(previous && previous.identity !== identity && ['starting', 'waiting', 'native-waiting'].includes(previous.phase));
   if (force && previous?.pid && Date.now() - previous.started < 600000 && ['starting', 'waiting', 'native-waiting'].includes(previous.phase)) { try { process.kill(previous.pid); } catch {} }
   if (!force && previous?.pid && Date.now() - previous.started < 600000 && ['starting', 'waiting', 'native-waiting'].includes(previous.phase)) {
     try { process.kill(previous.pid, 0); announce(previous, headless, log); return; } catch {}
@@ -43,8 +44,8 @@ export async function beginSignIn({ home, agents, identity, headless = false, ph
 function announce(state: SignInState, headless: boolean, log: (line: string) => void) {
   if (state.phase === 'failed') { log('Sign-in did not finish. Run gohive login to try again.'); return; }
   if (state.url) log(`Open ${state.url}`);
-  if (state.identity === 'human') log(headless ? 'Sign in with Google at that link, then run gohive status.' : "Sign in with Google in the tab that just opened; I'll continue when you're done.");
-  else log('Approve the sign-in at https://auth.agentid.com using its AgentMail command, then run gohive status.');
+  if (state.identity === 'human') log(headless ? 'Sign in with Google at that link, then run gohive status.' : "Sign in with Google in the tab that just opened; run `npx gohive status` when done.");
+  else log('Approve this sign-in as the agent at https://auth.agentid.com using its AgentMail command, then run `npx gohive status`.');
 }
 export function status(home: string, phrase?: string, log = console.log): boolean {
   const result = spawnSync(process.execPath, [fileURLToPath(new URL('../assets/hive/scripts/status.mjs', import.meta.url)), ...(phrase ? [phrase] : [])], { env: { ...process.env, HOME: home, HIVE_HOME: home, CODEX_HOME: join(home, '.codex') }, cwd: home, encoding: 'utf8', timeout: 18000 });

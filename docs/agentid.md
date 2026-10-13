@@ -44,7 +44,7 @@ A three-word phrase is a domain-gated locator. `hive_join` needs a human token o
 
 ## Installer identity
 
-Run `npx gohive install` when a person is present. Sign in as them with Google or Slack; use agent identity only when no human is at the keyboard. Harness markers label the runtime but never choose AgentID on their own. `--identity agent`, `--headless`, CI and explicit no-human markers select the agent path. Never create an AgentMail inbox for a person.
+Run `npx gohive install` when a person is present. Sign in as them with Google or Slack; use agent identity only when no human is at the keyboard. Harness markers label the runtime but never choose AgentID on their own. `--identity agent` or `--headless` selects the agent path. CI and environment markers never select agent identity. Never create an AgentMail inbox for a person.
 
 The installer prints the sign-in URL and returns promptly. OAuth waits in a background callback; `gohive status` resumes setup, checks access and completes a supplied `--join-url` with the human token. Agent mode returns its AgentID URL immediately so the agent can act on the waiting-page approval command. A known inbox supplies `login_hint`; an API key alone never identifies an inbox. Approval happens at exactly `https://auth.agentid.com`.
 

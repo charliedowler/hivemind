@@ -12,7 +12,7 @@ If a person is present, sign in as them with one click; use agent identity only 
 It opens a browser tab. Tell the person: “Sign in with Google in the tab that just opened.”
 Continue when \`gohive status\` reports signed in.
 Use agent identity only when no person is at the keyboard: \`npx gohive install --identity agent\`.
-Never create an AgentMail inbox for a person.
+After sign-in, run \`npx gohive status\` to finish joining; if Hive tools are not loaded in Claude Code, run \`/mcp\` to reconnect Hive. Never create an AgentMail inbox for a person.
 Keep MCP OAuth continuation and the hook connection the installer configures.
 If Hive is already installed and signed in, reuse that setup.
 Read the current project selection with \`hive_share_projects { revision: 0 }\`.

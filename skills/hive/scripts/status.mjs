@@ -5,13 +5,13 @@ async function main() {
   const state = readSignIn();
   if (state.phase === 'waiting' && Date.now() - state.started < 600000) {
     if (state.url) console.log(`Open ${state.url}`);
-    console.log(state.identity === 'agent' ? 'Approve the AgentID sign-in with the command on its waiting page, then run gohive status.' : "Sign in with Google in the tab that just opened; I'll continue when you're done."); return;
+    console.log(state.identity === 'agent' ? 'Approve this sign-in as the agent with the command on its waiting page, then run `npx gohive status`.' : "Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
   }
   const token = await bearerToken(homeDirectory(), endpoint(), AbortSignal.timeout(2000));
   if (!token) {
     if (state.url && Date.now() - state.started < 600000 && state.phase !== 'failed') {
       console.log(`Open ${state.url}`);
-      console.log(state.identity === 'agent' ? 'Approve the AgentID sign-in with the command on its waiting page, then run gohive status.' : "Sign in with Google in the tab that just opened; I'll continue when you're done."); return;
+      console.log(state.identity === 'agent' ? 'Approve this sign-in as the agent with the command on its waiting page, then run `npx gohive status`.' : "Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
     }
     throw new Error('Sign in first');
   }
@@ -25,6 +25,7 @@ async function main() {
     console.log(joined.teamName ? `You're in ${joined.teamName}.` : 'Your hive membership is ready.');
   }
   console.log(state.phase === 'native-waiting' ? 'Signed in. Finish the native MCP connection in the open tab, then run gohive status.' : state.phase === 'native-incomplete' ? 'Signed in. Run codex mcp login hive to finish the native connection.' : 'Signed in. Hive is ready.');
+  if (state.identity === 'human') console.log('If Hive tools are not loaded in Claude Code, run /mcp to reconnect Hive.');
   if (state.phase === 'native-waiting' && state.url) console.log(`Open ${state.url}`);
   try {
     const result = payload(await callTool('hive_invite_link', {}, { token, signal: AbortSignal.timeout(2500) }));
@@ -32,7 +33,7 @@ async function main() {
     for (const invitation of links) {
       if (!invitation.joinUrl || invitation.paused || invitation.joinPaused) continue;
       console.log(`Join ${invitation.teamName || invitation.team}: ${invitation.joinUrl}`);
-      console.log(invitation.prompt || `Set me up on Hive and join the ${invitation.teamName || invitation.team} hive: read https://gohive.dev/agent and follow it, then join with ${invitation.joinUrl}`);
+      console.log(invitation.invitePrompt || invitation.prompt || `Set me up on Hive and join the ${invitation.teamName || invitation.team} hive: read https://gohive.dev/agent and follow it, then join with ${invitation.joinUrl}`);
     }
   } catch {}
 }

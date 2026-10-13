@@ -13,7 +13,7 @@ npx gohive doctor --client executor
 
 The installer registers the Hive MCP server, installs the skill, merges Claude hooks, and adds a small marked block to each agent's instructions. It backs up each changed file first. Existing hooks and other MCP servers stay in place. Repeating install updates Hive without adding duplicate entries. Uninstall removes only owned, unchanged assets and the marked block. It leaves backups and credentials in place.
 
-If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard. Claude Code and Codex markers describe the harness; they do not select agent identity. Use `--identity agent` or `--headless` for an agent, or the explicit CI/no-human markers. Never create an AgentMail inbox for a person.
+If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard. Claude Code and Codex markers describe the harness; they do not select agent identity. Use `--identity agent` or `--headless` for an agent. CI and environment markers never select agent identity. Never create an AgentMail inbox for a person.
 
 The installer opens Google/Slack sign-in and returns promptly. Its OAuth callback continues in the background for up to ten minutes. Run `gohive status` after sign-in to finish setup, check access, join the supplied phrase and print any active organisation invitation. Pass `--join-url https://gohive.dev/j/<phrase>` with the team prompt. An agent receives its AgentID URL immediately and can approve it while the background callback waits; the CLI never traps the agent behind that approval. Existing connections skip account creation.
 

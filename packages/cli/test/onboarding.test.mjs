@@ -35,7 +35,7 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
       calls.push(rpc.params.name);
       let result = {};
       if (rpc.params.name === 'hive_join') { lastPhrase=rpc.params.arguments.phrase; result={joined:true,teamName:'Lightdash'}; }
-      if (rpc.params.name === 'hive_invite_link') result={invitations:[{teamName:'Lightdash',joinUrl:'https://gohive.dev/j/amber-honey-fox',prompt:'Team prompt fixture',paused:false}]};
+      if (rpc.params.name === 'hive_invite_link') result={invitations:[{teamName:'Lightdash',joinUrl:'https://gohive.dev/j/amber-honey-fox',invitePrompt:'Team prompt fixture',paused:false}]};
       return send({jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(result)}]}});
     }
     response.writeHead(404).end();
@@ -46,22 +46,27 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
   process.env.HIVE_URL=baseUrl; process.env.HIVE_NO_BROWSER='1';
   t.after(() => { const state=signInState(home); try { process.kill(state.pid); } catch {} server.close(); for(const [key,value] of Object.entries(previous)) value===undefined?delete process.env[key]:process.env[key]=value; });
   const logs=[];
+  if (identity === 'human') await beginSignIn({home,agents:[],identity:'agent',log:()=>{}});
   const start=Date.now();
   await beginSignIn({home,agents:[],identity,phrase:'amber-honey-fox',log:line=>logs.push(line)});
   assert.ok(Date.now()-start<20000);
   const state=signInState(home);
   assert.equal(state.phase,'waiting');
   assert.equal(statSync(join(home,'.hive/sign-in.json')).mode&0o777,0o600);
-  assert.ok(logs.some(line=>identity==='human'?line.includes("I'll continue when you're done"):line.includes('auth.agentid.com')));
+  const instruction = identity === 'human' ? 'Sign in with Google in the tab that just opened; run `npx gohive status` when done.' : 'Approve this sign-in as the agent at https://auth.agentid.com using its AgentMail command, then run `npx gohive status`.';
+  assert.ok(logs.includes(instruction));
+  assert.ok(!logs.some(line=>line.includes('as yourself')));
   assert.equal(new URL(state.url).pathname,identity==='agent'?'/api/auth/agentid/start':'/authorize');
   const env={...process.env,HOME:home,HIVE_HOME:home,CODEX_HOME:join(home,'.codex')};
   const pending=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(pending.stdout.includes('Open '));
+  assert.ok(pending.stdout.includes(identity === 'human' ? 'Sign in with Google in the tab that just opened; run `npx gohive status` when done.' : 'Approve this sign-in as the agent'));
   const callback=new URL(redirect); callback.searchParams.set('state',new URL(state.url).searchParams.get('state')); callback.searchParams.set('code','fixture-code');
   assert.equal((await fetch(callback)).status,200);
   for(let i=0;i<50 && signInState(home).phase!=='connected';i++) await new Promise(resolve=>setTimeout(resolve,20));
   const complete=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(complete.stdout.includes("You're in Lightdash."));
+  if (identity === 'human') assert.ok(complete.stdout.includes('run /mcp to reconnect Hive'));
   assert.ok(complete.stdout.includes('Team prompt fixture'));
   assert.ok(complete.stdout.includes('https://gohive.dev/j/amber-honey-fox'));
   assert.equal(lastPhrase,'amber-honey-fox');

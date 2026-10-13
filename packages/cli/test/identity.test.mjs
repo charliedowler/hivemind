@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { installerIdentity, harness, displayName, knownInbox } from '../dist/identity.js';
 import { completeAgentSignIn, markInstructions } from '../dist/installer.js';
 
-test('interactive harness sessions stay human; agent identity needs a flag or headless marker', () => {
+test('interactive harness sessions stay human; agent identity needs a explicit flag', () => {
   assert.equal(installerIdentity({}, false), 'human');
   assert.equal(installerIdentity({ CLAUDECODE: '1' }, false), 'human');
   for (const key of ['CODEX_CI', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CODEX_VERSION']) assert.equal(installerIdentity({ [key]: 'fixture' }, false), 'human');
@@ -15,8 +15,8 @@ test('interactive harness sessions stay human; agent identity needs a flag or he
   assert.equal(installerIdentity({ CLAUDECODE: '1' }, false, 'human'), 'human');
   assert.equal(installerIdentity({}, true, 'agent'), 'agent');
   assert.equal(installerIdentity({}, false, undefined, true), 'agent');
-  assert.equal(installerIdentity({CI:'1'}, false), 'agent');
-  assert.equal(installerIdentity({HIVE_NO_HUMAN:'true'}, false), 'agent');
+  for (const key of ['CI','HIVE_HEADLESS','HIVE_NO_HUMAN']) for (const value of ['true','1']) assert.equal(installerIdentity({[key]:value, CLAUDECODE:'1'}, false), 'human');
+  assert.equal(installerIdentity({CI:'true'}, false, 'agent'), 'agent');
   assert.equal(installerIdentity({CI:'false'}, false), 'human');
   assert.equal(harness({ CLAUDECODE: '1' }), 'Claude Code');
 });
