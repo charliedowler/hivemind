@@ -11,7 +11,7 @@ import { bearerToken } from '../../../skills/hive/scripts/mcp.mjs';
 
 const loginScript = fileURLToPath(new URL('../../../skills/hive/scripts/login.mjs', import.meta.url));
 
-for (const [identity, inbox] of [['human', ''], ['agent', 'fixture@agentmail.to'], ['agent', '']]) test(`${identity} ${inbox ? 'known inbox' : 'no inbox'} hook OAuth login discovers the server, uses PKCE and saves a private refreshable token`, async t => {
+for (const [identity, inbox] of [['human', '']]) test(`${identity} ${inbox ? 'known inbox' : 'no inbox'} hook OAuth login discovers the server, uses PKCE and saves a private refreshable token`, async t => {
   let baseUrl;
   let redirectUri;
   let challenge;

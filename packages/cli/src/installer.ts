@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { codexHiveSection, writeCodexServer, writeClaudeServer } from "./agent-config.js";
 import { harness } from './identity.js';
 
 export type Agent = 'claude' | 'codex';
@@ -93,7 +94,7 @@ export function markInstructions(text: string, agent: Agent | 'executor', remove
   const end = text.indexOf(endMarker);
   if ((begin === -1) !== (end === -1) || (begin !== -1 && (end < begin || text.indexOf(startMarker, begin + 1) !== -1 || text.indexOf(endMarker, end + 1) !== -1))) throw new Error('The Hive instruction markers are incomplete or duplicated. No files were changed');
   const skill = agent === 'executor' ? '~/.hive/skills/hive/SKILL.md' : agent === 'claude' ? '~/.claude/skills/hive/SKILL.md' : '~/.agents/skills/hive/SKILL.md (also ~/.codex/skills/hive/SKILL.md)';
-  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard. Before setup, say "Installing Hive for ${agent === 'claude' ? 'Claude Code' : agent === 'codex' ? 'Codex' : 'Executor'}: the MCP server, a skill${agent === 'claude' ? ', and capture hooks' : ''} that only act on projects you choose; your config is backed up first." Run npx gohive@latest install without an agent flag for a person; the browser flow runs in the background and gohive status resumes it. If Hive tools are not loaded in Claude Code after sign-in, run /mcp to reconnect Hive. Never create an AgentMail inbox for a person. After setup, call hive_invite_link for organisation hives and mention once "Teammates can join with <prompt>"; share the returned link with other agents on request. Read active/paused state without creating or rotating a phrase. Already installed and signed in means skip installation and account creation. With a join link, go straight to hive_join once signed in; on needs_human say "Open <joinUrl> to join <team>". After sign-in, read hive_share_projects before capture; skip the project question when a selection exists. Otherwise ask the human the one project question from the skill; without an existing selection and a human, capture nothing. Never ask the human to sign up. Hive saves when something is learned, not when the session ends. Capture immediately when a non-obvious failure is fixed (cause and fix), an approach is chosen (decision and why), a gotcha or workaround is found, or measured friction occurs (what blocked and how long only if measured). Push the observation and evidence via hive_push from selected projects only, with consistent runtime context and the Jev gate. Tell the human one line only if it changes what they should do. Stop is a non-blocking safety net for missed facts; skip session receipts and content already pushed. Codex and Executor follow these triggers without hooks. Hive derives metadata and relations. After using a cell, report a concrete evidenced result with hive_outcome. Vote up (useful), down (unhelpful when a cell misled you), or outdated with hive_feedback for a direct judgment. Feedback changes ranking and audience inclusion; use include_history: true to inspect hidden cells. Withdraw your current feedback with your receipt to restore the previous contribution. Retrieval alone never votes; never vote on cells merely retrieved. One actor has one contribution per cell per audience; organisation feedback never changes the personal original. Skip routine summaries and sensitive data.\n${endMarker}`;
+  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work or investigating an unfamiliar error. Call hive_search before investigating. Already installed and signed in means skip installation and account creation. If Hive MCP tools are absent, NEVER run the installer unless the person asked to set up Hive or this is the onboarding prompt. Run npx --yes gohive@latest status once, never --no-install. If installed and signed in, say exactly one line: "Hive is set up but not loaded in this session; restart Codex (or run /mcp in Claude Code) to use it", then continue without Hive. If not installed, offer setup in one line and do nothing else. Never announce installation or print a join prompt outside an actual install. If latest resolves to a missing version, retry once with the version status printed, then give up quietly. For setup, run npx --yes gohive@latest install and read its needs_email result. Ask with the harness's question/picker tool when one exists; otherwise a numbered list. Confirm the detected email: Yes / Type a different one. Rerun install --email with the human's answer and --join-url when supplied. Agents use Hive bearer credentials; no browser opens. With a join link, call hive_join; on needs_human say "Open <joinUrl> to join <team>". A pending claim starts private; tell the person to click the email link once. Read hive_share_projects before capture; skip the project question when a selection exists. Otherwise detect cwd, Git remotes and known worktrees; include github.com/<org>/* choices when remotes share an organisation. Ask once with the native multi-select picker which projects Hive may learn from, then save include/exclude and humanInstruction at the read revision. Without a human answer or existing selection, capture nothing. Never ask the human to sign up. Joining never publishes. Read hive_agent_status after claim; completed joins offer "Share your learnings with <Team>?" with Yes (everything selected, now and in future), Choose projects, Not now. Ask via the native picker. Use hive_share_with with mode all_selected for Yes, projects for the chosen projects, or not_now; record the humanInstruction. During setup only, read hive_invite_link and give the team prompt once. Never create, rotate or resume a phrase. Hive saves when something is learned, not when the session ends. Capture a proven fix, decision, gotcha or measured friction immediately with hive_push from selected projects only; supply evidence and consistent runtime context, keep the Jev gate, skip duplicates and sensitive data. Stop is a non-blocking safety net. Codex and Executor use the same triggers without hooks. After using a cell, report an evidenced result with hive_outcome. Vote up (useful), down (unhelpful when a cell misled you), or outdated with hive_feedback. Use include_history: true for hidden cells; never vote on cells merely retrieved. Keep the receipt to withdraw current feedback. Organisation feedback never changes the personal original.\n${endMarker}`;
   if (begin !== -1) {
     const after = end + endMarker.length;
     return remove ? text.slice(0, begin) + text.slice(after).replace(/^\r?\n/, '') : text.slice(0, begin) + block + text.slice(after);
@@ -160,7 +161,9 @@ function server(home: string, agent: Agent, run: Runner): { exists: boolean; com
   }
   const result = run('codex', ['mcp', 'get', 'hive', '--json'], home);
   if (result.status !== 0) {
-    if (!/not found|no mcp server|does not exist|unknown server/i.test(result.stderr + result.stdout)) throw new Error('Codex could not inspect the existing Hive server. No files were changed');
+    const section = codexHiveSection(read(join(home, '.codex/config.toml')) || '');
+    if (section) return { exists: true, compatible: /^url\s*=\s*["']https:\/\/gohive\.dev\/api\/mcp\/?["']/m.test(section) };
+    if (!/not found|no mcp server|does not exist|unknown server/i.test(result.stderr + result.stdout)) return { exists: false, compatible: false };
     return { exists: false, compatible: false };
   }
   const value = JSON.parse(result.stdout);
@@ -254,7 +257,16 @@ export function install(options: Options): Manifest {
         if (value.exists) { log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} already knows this hive`); continue; }
         const args = agent === 'claude' ? ['mcp', 'add', '--transport', 'http', 'hive', url, '--scope', 'user'] : ['mcp', 'add', 'hive', '--url', url];
         const result = run(agent, args, home);
-        if (result.status !== 0) throw new Error(`${agent} could not register Hive. Check the agent CLI, then run gohive install again`);
+        if (result.status !== 0) {
+          try {
+            if (agent === 'codex') writeCodexServer(home, url);
+            else writeClaudeServer(home, url);
+            log(`${agent === 'codex' ? 'Codex' : 'Claude Code'}: the native command failed; Hive is registered in its config.`);
+          } catch {
+            log(`${agent === 'codex' ? 'Codex' : 'Claude Code'} needs attention: its config was kept. The other clients will finish.`);
+            continue;
+          }
+        }
         manifest.registered = [...new Set([...manifest.registered, agent])];
         atomicWrite(manifestPath(home), JSON.stringify(manifest, null, 2) + '\n');
         log(`${agent === 'claude' ? 'Claude Code' : 'Codex'} has joined the hive`);
@@ -283,23 +295,6 @@ export function connectionHealthy(options: Options, client: Agent | 'hooks'): bo
 }
 
 export type SignInRunner = (client: 'codex' | 'hooks', home: string, script: string) => number;
-export function completeAgentSignIn(options: Options, signIn: SignInRunner): boolean {
-  const agents = options.agents || detectAgents(options.home, options.run);
-  const log = options.log || console.log;
-  if (agents.every(agent => connectionHealthy(options, agent)) && (!agents.includes('claude') || connectionHealthy(options, 'hooks'))) return true;
-  if (!connectionHealthy(options, 'hooks')) {
-    const directory = agents.includes('claude') ? '.claude' : '.codex';
-    if (signIn('hooks', options.home, join(options.home, directory, 'skills/hive/scripts/login.mjs')) !== 0) {
-      log('Open the AgentID sign-in link, approve the waiting request, then run gohive install --identity agent again');
-      return false;
-    }
-  }
-  if (agents.includes('codex') && !connectionHealthy(options, 'codex') && signIn('codex', options.home, '') !== 0) {
-    log('Run codex mcp login hive to grant this Codex client access');
-    return false;
-  }
-  return true;
-}
 export function completeSignIn(options: Options, interactive: boolean, signIn: SignInRunner) {
   const agents = options.agents || detectAgents(options.home, options.run);
   const log = options.log || console.log;

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
 import { getSql } from "../db/client";
 import { hashToken, newId } from "../db/ids";
-import { bootstrapAgent, authenticateAgentCredential, agentStatus, pollAgentConnection, revokeAgentCredential } from "./agent-credentials";
+import { bootstrapAgent, authenticateAgentCredential, agentStatus, pollAgentConnection, revokeAgentCredential, cancelAgentConnection } from "./agent-credentials";
 import { claimWelcome, issueWelcomeLink } from "./welcome";
 import { createHiveAuth } from "../better-auth";
 import { memberContext, listHiveContexts } from "./enrollment";
@@ -64,6 +64,24 @@ describe.skipIf(!process.env.DATABASE_URL)("Hive-issued agent bootstrap", () => 
     await expect(bootstrapAgent({...input(),email:"invalid"},null)).rejects.toThrow();
     await expect(bootstrapAgent({...input(),agentName:""},null)).rejects.toThrow();
     await expect(bootstrapAgent({...input(),joinPhrase:"bad"},null)).rejects.toThrow(/three-word/);
+  });
+  it("cancels pending connections and revokes an approved connection using its polling proof", async () => {
+    const fixture = await fresh();
+    await claimWelcome(new URL(await issueWelcomeLink(fixture.owner)).searchParams.get('token')!);
+    const pending = await bootstrapAgent(fixture.data, '198.18.1.2');
+    if (pending.status !== 'link_sent') throw new Error('Expected connection');
+    await expect(cancelAgentConnection(pending.requestId, 'wrong')).rejects.toMatchObject({status:403});
+    await cancelAgentConnection(pending.requestId, pending.pollingToken);
+    await expect(pollAgentConnection(pending.requestId, pending.pollingToken)).rejects.toMatchObject({status:403});
+    const approved = await bootstrapAgent(fixture.data, '198.18.1.3');
+    if (approved.status !== 'link_sent') throw new Error('Expected connection');
+    const message = messages.at(-1)!.text;
+    const token = new URL(message.match(/https?:\/\/\S+/)![0]).searchParams.get('token')!;
+    await claimWelcome(token);
+    const credential = await pollAgentConnection(approved.requestId, approved.pollingToken);
+    if (credential.status !== 'issued') throw new Error('Expected credential');
+    await cancelAgentConnection(approved.requestId, approved.pollingToken);
+    expect(await authenticateAgentCredential(credential.credential)).toBeNull();
   });
   it("rejects the sixth IP and sixth email attempt independently and limits global issuance", async () => {
     for(let n=0;n<5;n++)await bootstrapAgent(input(),"198.18.2.1");

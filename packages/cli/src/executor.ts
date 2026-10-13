@@ -88,6 +88,15 @@ function executorHealth(options: ExecutorOptions, integration: RemoteIntegration
 
 export function doctorExecutor(options: ExecutorOptions): boolean {
   const log = options.log || console.log;
+  try {
+    const state = JSON.parse(readFileSync(join(options.home, '.hive/agent.json'), 'utf8'));
+    if (state.executor && state.credential) {
+      const result = call(options, ['coreTools', 'connections', 'refresh'], {owner:'user',name:'hive-agent',integration:'hive-agent'});
+      const healthy = result?.ok && (result.data?.lastHealth as {status?:string})?.status === 'healthy';
+      log(`Executor: ${healthy ? 'Connected' : 'Connection check needed.'}`);
+      return Boolean(healthy);
+    }
+  } catch {}
   const found = detectExecutor(options);
   if (!found.detected) { log('Executor: Not detected. Run npx gohive@latest install --client executor --executor-url <organisation MCP URL>'); return false; }
   if (!found.cli || !/^executor v1\./.test(found.version || '')) {
@@ -174,4 +183,22 @@ export function installExecutor(options: ExecutorOptions) {
     browser.unref();
   }
   return { link, detection: found };
+}
+
+export function installExecutorBearer(options: ExecutorOptions) {
+  const log = options.log || console.log;
+  const found = detectExecutor(options);
+  if (!found.cli || !/^executor v1\./.test(found.version || '')) {
+    log('Executor needs attention: its local CLI is unavailable. The agent credential and skill are installed.');
+    return false;
+  }
+  const added = call(options, ['mcp', 'addServer'], { transport: 'stdio', name: 'Hive agent', slug: 'hive-agent', command: process.execPath, args: [join(options.home, '.hive/skills/hive/scripts/agent-proxy.mjs'), options.home], spawnPerCall: true });
+  if (!added?.ok || typeof added.data?.slug !== 'string') { log('Executor needs attention: its profile could not register this local agent. The credential stays private.'); return false; }
+  const connection = call(options, ['coreTools', 'connections', 'create'], { owner: 'user', name: 'hive-agent', integration: added.data.slug, template: 'none' });
+  if (!connection?.ok) {
+    const existing = call(options, ['coreTools', 'connections', 'refresh'], { owner: 'user', name: 'hive-agent', integration: added.data.slug });
+    if (!existing?.ok) { log('Executor needs attention: reconnect the local Hive agent profile.'); return false; }
+  }
+  log('Executor: Connected with this machine’s private agent credential.');
+  return true;
 }

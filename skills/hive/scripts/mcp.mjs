@@ -17,6 +17,10 @@ export function saveCredentials(value, home = homeDirectory()) {
 
 export async function bearerToken(home = homeDirectory(), baseUrl = endpoint(), signal) {
   try {
+    const agent = JSON.parse(readFileSync(join(home, '.hive/agent.json'), 'utf8'));
+    if (agent.baseUrl === baseUrl && /^ha_[A-Za-z0-9_-]{43}$/.test(agent.credential || '')) return agent.credential;
+  } catch {}
+  try {
     const stored = JSON.parse(readFileSync(join(home, '.hive/oauth.json'), 'utf8'));
     if (stored.baseUrl === baseUrl && stored.access_token) {
       if (!stored.expires_at || stored.expires_at > Date.now() + 30000) return stored.access_token;

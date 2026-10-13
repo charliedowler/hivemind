@@ -82,6 +82,20 @@ export async function pollAgentConnection(requestId: string, pollingToken: strin
   return { status: "issued" as const, credential, agentId: String(rows[0].agent_member_id), claimPending: false };
 }
 
+export async function cancelAgentConnection(requestId: string, pollingToken: string) {
+  await getSql().begin(async tx => {
+    const rows = await tx`SELECT agent_member_id FROM agent_connection_requests WHERE id = ${requestId} AND polling_token_hash = ${hashToken(pollingToken)} FOR UPDATE`;
+    if (!rows.length) throw new HiveError("Connection request not found.", 403);
+    await tx`UPDATE agent_connection_requests SET expires_at = now() WHERE id = ${requestId}`;
+    if (rows[0].agent_member_id) {
+      await tx`UPDATE agent_credentials SET revoked_at = coalesce(revoked_at, now()) WHERE agent_member_id = ${rows[0].agent_member_id}`;
+      await tx`UPDATE members SET disabled_at = coalesce(disabled_at, now()) WHERE id = ${rows[0].agent_member_id}`;
+      await tx`DELETE FROM web_sessions WHERE member_id = ${rows[0].agent_member_id}`;
+      await tx`UPDATE hive_join_capabilities SET revoked_at = now() WHERE agent_member_id = ${rows[0].agent_member_id}`;
+    }
+  });
+}
+
 export async function authenticateAgentCredential(token: string): Promise<HiveContext | null> {
   if (!/^ha_[A-Za-z0-9_-]{43}$/.test(token)) return null;
   const rows = await getSql()`SELECT c.agent_member_id, c.owner_member_id FROM agent_credentials c JOIN members a ON a.id = c.agent_member_id JOIN members o ON o.id = c.owner_member_id WHERE c.token_hash = ${hashToken(token)} AND c.revoked_at IS NULL AND a.disabled_at IS NULL AND o.disabled_at IS NULL AND (NOT o.provisional OR o.provisional_expires_at > now())`;

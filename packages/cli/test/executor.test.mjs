@@ -128,3 +128,11 @@ test('Executor leaves a different existing server intact and handles a partial A
   assert.ok(result.link.includes('/integrations/add/mcp'));
   assert.ok(!f.calls.some(call => call.includes('registerDynamic')));
 });
+
+test('agent setup keeps its bearer private in a local proxy and uses a user connection without OAuth', async () => {
+  const {installExecutorBearer}=await import('../dist/executor.js');
+  const calls=[],logs=[];
+  const run=(_command,args)=>{calls.push(args);if(args[0]==='--version')return {status:0,stdout:'executor v1.0.0',stderr:''};const input=JSON.parse(args.at(-1));if(args.includes('addServer')){assert.equal(input.transport,'stdio');assert.ok(input.args[0].endsWith('agent-proxy.mjs'));assert.ok(!JSON.stringify(input).includes('Authorization'));return {status:0,stdout:JSON.stringify({ok:true,data:{slug:'hive-agent'}}),stderr:''};}if(args.includes('create')){assert.equal(input.owner,'user');assert.equal(input.template,'none');return {status:0,stdout:JSON.stringify({ok:true,data:{}}),stderr:''};}return {status:1,stdout:'',stderr:''};};
+  assert.equal(installExecutorBearer({home:'/fixture',run,log:line=>logs.push(line)}),true);
+  assert.ok(!calls.some(args=>args.includes('oauth')));assert.ok(logs.join('\n').includes('private agent credential'));
+});

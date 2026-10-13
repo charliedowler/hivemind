@@ -22,23 +22,10 @@ describe("agent onboarding instructions", () => {
     expect(response.headers.get("x-robots-tag")).toBeNull();
     expect(await response.text()).toBe(agentInstructions);
     expect(agentInstructions.split("\n").length).toBeLessThan(60);
-    expect(agentInstructions).toContain(
-      "Sign in with Google in the tab that just opened.",
-    );
-    expect(agentInstructions).toContain(
-      "Continue when `gohive status` reports signed in.",
-    );
-    expect(agentInstructions).toContain(
-      "only when no person is at the keyboard",
-    );
-    expect(agentInstructions).toContain("--identity agent");
-    expect(agentInstructions).toContain(
-      "Never create an AgentMail inbox for a person.",
-    );
-    expect(agentInstructions).toContain("Installing Hive for Claude Code");
-    expect(agentInstructions).toContain("Installing Hive for Codex");
-    expect(agentInstructions).toContain("--client all");
-    expect(agentInstructions).not.toContain("Installing Hive for Claude Code and Codex:");
+    for (const text of ["--email <address>", "No browser opens", "Ask with the harness's question/picker tool when one exists; otherwise a numbered list.", "AskUserQuestion", "multiSelect", "request_user_input", "github.com/<org>/*", "Yes (everything selected, now and in future)", "Choose projects", "Not now", "hive_share_with", "min-release-age", "https://github.com/charliedowler/hivemind", "never the installer", "Never announce installation or print the join prompt outside an actual install", "retry once with the version status printed"]) expect(agentInstructions).toContain(text);
+    expect(agentInstructions).not.toContain("--identity agent");
+    expect(agentInstructions).not.toContain("AgentMail");
+    expect(agentInstructions).not.toContain("--no-install");
     expect(await markdown().text()).toBe(agentInstructions);
     expect(
       GET(

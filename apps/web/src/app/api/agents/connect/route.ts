@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pollAgentConnection } from "@/server/identity/agent-credentials";
+import { pollAgentConnection, cancelAgentConnection } from "@/server/identity/agent-credentials";
 import { rateLimit } from "@/server/identity/rate-limit";
 import { httpError, readJson } from "@/lib/http";
 export async function POST(request: Request) {
@@ -7,5 +7,13 @@ export async function POST(request: Request) {
     const data = z.strictObject({ requestId: z.string().min(1).max(80), pollingToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).parse(await readJson(request));
     await rateLimit("agent-connect-poll", data.requestId, 60, 60);
     return Response.json(await pollAgentConnection(data.requestId, data.pollingToken), { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return httpError(error); }
+}
+export async function DELETE(request: Request) {
+  try {
+    const data = z.strictObject({ requestId: z.string().min(1).max(80), pollingToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).parse(await readJson(request));
+    await rateLimit("agent-connect-cancel", data.requestId, 10, 60);
+    await cancelAgentConnection(data.requestId, data.pollingToken);
+    return Response.json({ cancelled: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return httpError(error); }
 }

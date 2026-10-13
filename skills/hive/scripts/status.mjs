@@ -27,12 +27,12 @@ async function main() {
     if (state.attempt) updateSignIn({ joinedPhrase: phrase, teamName: joined.teamName });
     console.log(joined.teamName ? `You're in ${joined.teamName}.` : 'Your hive membership is ready.');
   }
-  console.log(state.phase === 'native-waiting' ? 'Signed in. Finish the native MCP connection in the open tab, then run gohive status.' : state.phase === 'native-incomplete' ? 'Signed in. Run codex mcp login hive to finish the native connection.' : 'Signed in. Hive is ready.');
+  console.log(state.phase === 'native-waiting' ? 'Signed in. Finish the native MCP connection in the open tab, then run gohive status.' : state.phase === 'native-incomplete' ? 'Signed in. Run codex mcp login hive to finish the native connection.' : 'Installed. Signed in. Hive is ready.');
   let agents = state.agents;
   try { agents = JSON.parse(readFileSync(join(homeDirectory(), '.hive/install.json'), 'utf8')).agents; } catch {}
   if (state.identity === 'human' && agents?.includes('claude')) console.log('If Hive tools are not loaded in Claude Code, run /mcp to reconnect Hive.');
   if (state.phase === 'native-waiting' && state.url) console.log(`Open ${state.url}`);
-  try {
+  if (process.env.HIVE_INSTALL_ANNOUNCEMENT === '1') try {
     const result = payload(await callTool('hive_invite_link', {}, { token, signal: AbortSignal.timeout(2500) }));
     const links = result.invitations ?? result.links ?? (result.joinUrl ? [result] : []);
     for (const invitation of links) {

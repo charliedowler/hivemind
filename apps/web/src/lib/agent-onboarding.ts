@@ -1,47 +1,47 @@
 export const setupPrompt =
   "Set me up on Hive: read https://gohive.dev/agent and follow it.";
 
-export const signInGuidance =
-  "If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard.";
+export const signInGuidance = "Your agent starts a personal hive with your email. Claim it with one click when you’re ready.";
 
 export const agentInstructions = `# Set up Hive
 
-Before running the installer, name exactly the selected clients in one line: “Installing Hive for <clients>: the MCP server, a skill, and capture hooks that only act on projects you choose; your config is backed up first.”
+Run \`npx --yes gohive@latest install\` from the current repo.
 CLAUDECODE selects Claude Code; CODEX_* session markers (except CODEX_HOME) select Codex. Claude Code wins if both are present.
-Use “Installing Hive for Claude Code” in Claude Code and “Installing Hive for Codex” in Codex; mention capture hooks only for Claude Code.
-Without session markers, install configures the clients detected on the machine and announces “(detected on this machine)”.
-Use \`--client claude\`, \`--client codex\`, \`--client all\` or \`--client claude,codex\` only when the person selects them explicitly.
-Run \`npx gohive@latest install\` from the current repo.
-If the setup prompt includes a join link, add \`--join-url <joinUrl>\` to the install command.
-If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard.
-It opens a browser tab. Tell the person: “Sign in with Google in the tab that just opened.”
-Continue when \`gohive status\` reports signed in.
-Use agent identity only when no person is at the keyboard: \`npx gohive@latest install --identity agent\`.
-After sign-in, run \`npx gohive status\` to finish joining; if Hive tools are not loaded in Claude Code, run \`/mcp\` to reconnect Hive. Never create an AgentMail inbox for a person.
-Keep MCP OAuth continuation and the hook connection the installer configures.
-If Hive is already installed and signed in, reuse that setup.
-Read the current project selection with \`hive_share_projects { revision: 0 }\`.
-If a selection exists, keep it and skip the project question.
-Otherwise list candidates from cwd, Git remotes and known Git worktrees only.
-Ask once: “Which of these should Hive learn from? <list>. Anything else stays private.”
-Save the answer with \`hive_share_projects\`, supplying include, exclude,
-revision from the read, and humanInstruction containing the human’s answer.
-Use canonical host/namespace/repo patterns. Do not scan home directories or transcripts.
-Without a human answer or an existing selection, capture nothing.
-Selected projects may be captured into the owner’s personal hive.
-Save a cell with \`hive_push\` as soon as you learn a fix, decision, pitfall or measured friction.
-Supply the repo and the evidence that supports it.
-Hive saves when something is learned, not when a session ends.
-Use session-end and compaction sweeps as a safety net; avoid duplicate cells.
-Project selection does not publish cells to an organisation.
-If the setup prompt includes a join link, take its phrase from /j/<phrase>.
-Call \`hive_join { phrase: "<phrase>" }\` after project selection.
-On \`needs_human\`, say exactly one line: “Open <joinUrl> to join <team>”.
-Use the team name supplied by the human’s prompt; never guess one from the phrase.
-A human token or human-granted capability may complete joining immediately.
-Do not ask the human to sign up. Do not create an organisation.
-Do not widen project selection or publish cells without human authority.
-Report completed setup in one line. Report a genuine blocker in one line.
+Without markers, configure only detected clients. Use --client only when the person selects other clients.
+If the prompt includes a join link, add \`--join-url <joinUrl>\`.
+The installer reads Git email and returns needs_email without changing config.
+Ask with the harness's question/picker tool when one exists; otherwise a numbered list.
+Use Claude Code's AskUserQuestion with options; use multiSelect for projects. In Codex use request_user_input or its question UI.
+Ask "Use <detected email>?" with Yes / Type a different one; if none was found, ask which email to use.
+Rerun install with \`--email <address>\` from the human's answer and the supplied join URL.
+Hive issues an agent bearer credential. No browser opens in this path.
+The installer announces the exact clients, backs up config, installs MCP and the skill, and adds capture hooks only for Claude Code.
+A new owner starts privately while claim is pending. The email link claims the account and connects its agents to the owner's hives.
+For an existing verified owner say "Click the link in your email to connect this machine"; status finishes after that click.
+Run \`npx --yes gohive@latest status\` after claim to read join state.
+A person who prefers OAuth can use \`gohive login\`.
+If Hive is already installed and signed in, reuse it; never reinstall to join.
+If tools are absent outside requested setup, run status once, never the installer.
+If installed and signed in say exactly: "Hive is set up but not loaded in this session; restart Codex (or run /mcp in Claude Code) to use it" and continue without Hive.
+If not installed, offer setup in one line and do nothing else.
+Never announce installation or print the join prompt outside an actual install.
+If latest resolves to a missing version, retry once with the version status printed, then give up quietly.
+If npm's min-release-age blocks gohive, ask the person before overriding it, and point them at the public source: https://github.com/charliedowler/hivemind
+Read \`hive_share_projects { revision: 0 }\`; if selected, skip the project question.
+Otherwise detect cwd, Git remotes and known worktrees only. Do not scan home directories or transcripts.
+Include "everything under github.com/<org>" choices when remotes share an organisation, using github.com/<org>/*.
+Ask once with the native multi-select picker: "Which projects should Hive learn from? Anything else stays private."
+Save include/exclude and humanInstruction at the read revision. Without an answer or existing selection, capture nothing.
+Joining never publishes. Read \`hive_agent_status\` after claim.
+For each completed join ask once with the native picker: "Share your learnings with <Team>?"
+Options: Yes (everything selected, now and in future), Choose projects, Not now.
+Choose projects uses a multi-select list with cell counts, never pre-ticked.
+Use \`hive_share_with\` with mode all_selected, projects, or not_now and the humanInstruction.
+Originals stay personal; Yes covers future selected projects too.
+During setup only, call hive_invite_link and give the team prompt once.
+Save a proven fix, decision, pitfall or measured friction immediately through hive_push with repo and evidence.
+Keep the Jev gate; avoid duplicates and sensitive data. Stop is a safety net.
+Never ask the human to sign up, create an organisation, or add authority steps.
 `;
 
 export function teamInvitePrompt(team: string, joinUrl: string) {

@@ -76,15 +76,7 @@ async function main() {
     if (!registration.client_id) throw new Error('Hive did not register the hook client');
     const authorizationUrl = new URL(trustedUrl(discovery.authorization_endpoint));
     authorizationUrl.search = new URLSearchParams({ client_id: registration.client_id, redirect_uri: redirectUri, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state, resource, scope }).toString();
-    const loginUrl = process.env.HIVE_IDENTITY === 'agent' ? new URL('/api/auth/agentid/start', baseUrl) : authorizationUrl;
-    if (process.env.HIVE_IDENTITY === 'agent') {
-      loginUrl.search = authorizationUrl.search;
-      if (process.env.HIVE_AGENT_INBOX) loginUrl.searchParams.set('login_hint', process.env.HIVE_AGENT_INBOX);
-      if (process.env.HIVE_AGENT_NAME) loginUrl.searchParams.set('agent_name', process.env.HIVE_AGENT_NAME);
-      if (!background) approval = setTimeout(() => console.log(process.env.HIVE_AGENT_INBOX
-        ? `If AgentID is waiting, run agentmail inboxes authorize --inbox-id ${process.env.HIVE_AGENT_INBOX} --auth-token <token shown at https://auth.agentid.com>`
-        : 'If AgentID is waiting, choose an inbox you control and run the approval command shown at https://auth.agentid.com'), 5000);
-    }
+    const loginUrl = authorizationUrl;
     if (!background) console.log(`Open ${loginUrl.href}`);
     if (background) updateSignIn({ phase: 'waiting', url: loginUrl.href });
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';

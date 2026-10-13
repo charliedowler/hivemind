@@ -16,8 +16,8 @@ test('join links accept only the Hive origin and a three-word phrase', () => {
   assert.throws(() => joinPhrase('https://other.test/j/amber-honey-fox'));
   assert.throws(() => joinPhrase('https://gohive.dev/j/../../secret'));
 });
-for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${scenario} install returns while OAuth waits; status resumes and joins with its own human credential`, async t => {
-  const identity = scenario === 'human' ? 'human' : 'agent';
+for (const scenario of ['human', 'token-error', 'declined']) test(`${scenario} install returns while OAuth waits; status resumes and joins with its own human credential`, async t => {
+  const identity = 'human';
   const home = mkdtempSync(join(tmpdir(), 'gohive-background-'));
   const fixtureBin=join(home,'fixture-bin');
   mkdirSync(fixtureBin);
@@ -53,9 +53,8 @@ for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${sc
   process.env.HIVE_URL=baseUrl; process.env.HIVE_NO_BROWSER='1';
   t.after(() => { const state=signInState(home); try { process.kill(state.pid); } catch {} server.close(); for(const [key,value] of Object.entries(previous)) value===undefined?delete process.env[key]:process.env[key]=value; });
   const logs=[];
-  if (identity === 'human') await beginSignIn({home,agents:[],identity:'agent',log:()=>{}});
   const start=Date.now();
-  const installed=await exec(process.execPath,[bin,'install','--client','claude','--home',home,'--join-url','https://gohive.dev/j/amber-honey-fox',...(identity==='agent'?['--identity','agent']:[])],{env:{...fixtureEnv,HIVE_URL:baseUrl,HIVE_NO_BROWSER:'1'},timeout:20000});
+  const installed=await exec(process.execPath,[bin,'login','--client','claude','--home',home,'--join-url','https://gohive.dev/j/amber-honey-fox',...(identity==='agent'?['--identity','agent']:[])],{env:{...fixtureEnv,HIVE_URL:baseUrl,HIVE_NO_BROWSER:'1'},timeout:20000});
   logs.push(...installed.stdout.trim().split('\n'));
   assert.equal(logs[0],`gohive ${version}`);
   assert.ok(Date.now()-start<20000);
@@ -70,7 +69,7 @@ for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${sc
   const pending=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(pending.stdout.includes('Open '));
   assert.ok(pending.stdout.includes(identity === 'human' ? 'Sign in with Google in the tab that just opened; run `npx gohive status` when done.' : 'Approve this sign-in as the agent'));
-  if (identity === 'human') {
+  if (scenario === 'human') {
     await new Promise(resolve=>setTimeout(resolve,60000));
     process.kill(state.pid,0);
     const later=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
@@ -85,7 +84,7 @@ for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${sc
   assert.equal(rejected.headers.get('location'), 'https://gohive.dev/signed-in?error=1');
   if (scenario === 'declined') { callback.searchParams.delete('code'); callback.searchParams.set('error', 'private-error-fixture'); }
   const callbackPending=fetch(callback, { redirect: 'manual' });
-  if (identity === 'human') {
+  if (scenario === 'human') {
     for(let i=0;i<100&&!releaseExchange;i++) await new Promise(resolve=>setTimeout(resolve,20));
     assert.ok(releaseExchange);
     const finishing=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
@@ -108,8 +107,8 @@ for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${sc
   const complete=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(complete.stdout.includes("You're in Lightdash."));
   if (identity === 'human') assert.ok(complete.stdout.includes('run /mcp to reconnect Hive'));
-  assert.ok(complete.stdout.includes('Team prompt fixture'));
-  assert.ok(complete.stdout.includes('https://gohive.dev/j/amber-honey-fox'));
+  assert.ok(!complete.stdout.includes('Team prompt fixture'));
+  assert.ok(!complete.stdout.includes('Team prompt fixture'));
   assert.equal(lastPhrase,'amber-honey-fox');
   assert.ok(verifier.length>=32);
   assert.equal(createHash('sha256').update(verifier).digest('base64url'),new URL(state.url).searchParams.get('code_challenge'));
@@ -118,11 +117,4 @@ for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${sc
   await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.equal(signInState(home).attempt,state.attempt);
   assert.equal(calls.filter(name=>name==='hive_join').length,1);
-});
-
-
-test('an interactive harness requires an explicit agent identity flag even with headless', async () => {
-  const home=mkdtempSync(join(tmpdir(),'gohive-guard-'));
-  await assert.rejects(exec(process.execPath,[bin,'install','--headless','--home',home,'--client','claude'],{env:{...process.env,CLAUDECODE:'1'},timeout:20000}),error=>error.stdout.startsWith(`gohive ${version}\n`)&&error.stderr.includes('explicitly --identity agent'));
-  assert.equal(signInState(home),undefined);
 });
