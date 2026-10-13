@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { redactSecrets, type CaptureRuleInput } from "@hivemind/core";
+import { humanizeTimeText, redactSecrets, type CaptureRuleInput } from "@hivemind/core";
 import type { SlackTool, SlackToolContext, SlackToolResult } from "./index";
 import { getSql } from "@/server/db/client";
 import { HiveError } from "@/server/errors";
@@ -15,7 +15,7 @@ async function actor(ctx: SlackToolContext) {
 }
 
 function escapedCopy(text: string) {
-  return slackEscape(redactSecrets(text).text
+  return slackEscape(humanizeTimeText(redactSecrets(text).text)
     .replace(/\b(anthropic|openai|claude|sonnet|codex|jev|typesafe|chatgpt|gemini|deepseek|grok|xai|mistral|qwen|kimi|gpt(?:-[a-z0-9.]+)?)\b/gi, "the model")
     .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D\u20E3]/gu, "")
     .replace(/:[a-z0-9_+-]+:/gi, "")

@@ -22,6 +22,9 @@ vi.mock("@/server/capture-rules", () => ({
   createCaptureRule: createRule,
 }));
 vi.mock("@/server/db/client", () => ({ getSql: () => sql }));
+vi.mock("@/server/digests/connection", () => ({
+  slackMemberTimezone: async () => "Europe/London",
+}));
 vi.mock("@anthropic-ai/sdk", () => ({
   default: vi.fn(function () {
     return { messages: { create: route } };
@@ -268,6 +271,13 @@ describe("Slack direct capture instructions", () => {
     const result = await setTool.handler(ctx, { text: "Exclude private captures" });
     expect(result.text).toContain("The scan stopped because the rule or permissions changed.");
     expect(result.text).not.toMatch(/complete|finished/i);
+  });
+  it("formats timestamps in DM replies and blocks as readable times", async () => {
+    set.mockResolvedValue(saved({ restatement: "Hive skips the selected captures from 2026-10-13T09:00:00.000Z.", counts: undefined }));
+    const result = await setTool.handler({ ...ctx, channelId: "D_FIXTURE" }, { text: "Exclude private captures" });
+    expect(JSON.stringify(result)).not.toContain("2026-10-13T09:");
+    expect(JSON.stringify(result)).not.toContain("Reply undo");
+    expect(result.text).toMatch(/13 Oct|9am/);
   });
 
   it("escapes DM questions and undo restatements", async () => {
