@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { beginSignIn, signInState, joinPhrase } from '../dist/onboarding.js';
@@ -17,6 +17,10 @@ test('join links accept only the Hive origin and a three-word phrase', () => {
 });
 for (const identity of ['human', 'agent']) test(`${identity} install returns while OAuth waits; status resumes and joins with its own human credential`, async t => {
   const home = mkdtempSync(join(tmpdir(), 'gohive-background-'));
+  const fixtureBin=join(home,'fixture-bin');
+  mkdirSync(fixtureBin);
+  writeFileSync(join(fixtureBin,'claude'),'#!/bin/sh\nexit 0\n',{mode:0o755});
+  const fixtureEnv={...process.env,PATH:fixtureBin+':'+process.env.PATH,CI:'true',CLAUDECODE:'1'};
   let baseUrl, redirect, verifier, lastPhrase, releaseExchange;
   const calls = [];
   const server = createServer(async (request, response) => {
@@ -49,7 +53,7 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
   const logs=[];
   if (identity === 'human') await beginSignIn({home,agents:[],identity:'agent',log:()=>{}});
   const start=Date.now();
-  const installed=await exec(process.execPath,[bin,'install','--client','claude','--home',home,'--join-url','https://gohive.dev/j/amber-honey-fox',...(identity==='agent'?['--identity','agent']:[])],{env:{...process.env,CI:'true',CLAUDECODE:'1'},timeout:20000});
+  const installed=await exec(process.execPath,[bin,'install','--client','claude','--home',home,'--join-url','https://gohive.dev/j/amber-honey-fox',...(identity==='agent'?['--identity','agent']:[])],{env:{...fixtureEnv,HIVE_URL:baseUrl,HIVE_NO_BROWSER:'1'},timeout:20000});
   logs.push(...installed.stdout.trim().split('\n'));
   assert.equal(logs[0],'gohive 0.1.8');
   assert.ok(Date.now()-start<20000);
