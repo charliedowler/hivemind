@@ -6,7 +6,7 @@ import { Button, Card, Sprite } from "@hivemind/design-system";
 import { errorMessage, requestJson } from "@/lib/client";
 import { ErrorPanel, LoadingPanel } from "./primitives";
 
-export function KnowledgeBrowser() {
+export function KnowledgeBrowser({ exportOnly = false }: { exportOnly?: boolean }) {
   const [location, setLocation] = useState({ path: "", read: false });
   const [snapshot, setSnapshot] = useState<{
     url?: string;
@@ -29,8 +29,8 @@ export function KnowledgeBrowser() {
     }
   }
   return (
-    <section className="stack dashboard" aria-label="Knowledge tree">
-      <div className="page-heading">
+    <section className="stack dashboard" aria-label={exportOnly ? "Export archive" : "Knowledge tree"}>
+      {!exportOnly ? <div className="page-heading">
         <div>
           <h1>Knowledge tree</h1>
           <p className="muted">
@@ -39,14 +39,14 @@ export function KnowledgeBrowser() {
           </p>
         </div>
         <Sprite name="cell-full" scale={3} />
-      </div>
+      </div> : null}
       <div className="row wrap">
         <Button
           variant="secondary"
           disabled={snapshot.pending}
           onClick={() => void download()}
         >
-          {snapshot.pending ? "Preparing a snapshot" : "Prepare a snapshot"}
+          {snapshot.pending ? "Preparing archive" : "Export archive"}
         </Button>
         {snapshot.url ? (
           <a
@@ -55,7 +55,7 @@ export function KnowledgeBrowser() {
             download="hive.tar.gz"
             referrerPolicy="no-referrer"
           >
-            Download read-only archive
+            Download archive
           </a>
         ) : null}
         {snapshot.expiresAt ? (
@@ -65,7 +65,7 @@ export function KnowledgeBrowser() {
         ) : null}
       </div>
       {snapshot.error ? <ErrorPanel message={snapshot.error} /> : null}
-      <Card className="stack tree-card">
+      {!exportOnly ? <Card className="stack tree-card">
         <nav className="row wrap tree-breadcrumbs" aria-label="Knowledge path">
           <button
             type="button"
@@ -114,7 +114,7 @@ export function KnowledgeBrowser() {
           {...location}
           onNavigate={(path, read) => setLocation({ path, read })}
         />
-      </Card>
+      </Card> : null}
     </section>
   );
 }

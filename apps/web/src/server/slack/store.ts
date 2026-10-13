@@ -89,6 +89,9 @@ export async function storeMessage(
 }
 export async function slackSettings(ctx: HiveContext) {
   await requireAdmin(ctx);
+  return teamSlackSettings(ctx);
+}
+export async function teamSlackSettings(ctx: HiveContext) {
   const sql = getSql();
   const [inst, channels, decisions] = await Promise.all([
     sql`SELECT workspace_name,workspace_id,active FROM slack_installations WHERE team_id=${ctx.teamId}`,

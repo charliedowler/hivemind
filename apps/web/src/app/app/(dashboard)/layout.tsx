@@ -4,7 +4,7 @@ import { getAuth } from "@/server/better-auth";
 import type { ReactNode } from "react";
 import { forbidden, redirect } from "next/navigation";
 import { getWebContext } from "@/server/auth";
-import { requireAdmin } from "@/server/identity/access";
+import { getSql } from "@/server/db/client";
 import { Navigation } from "@/components/navigation";
 export const dynamic = "force-dynamic";
 export default async function DashboardLayout({
@@ -21,15 +21,13 @@ export default async function DashboardLayout({
     if (!session.user.emailVerified) return <AuthErrorPage reason="email_not_verified" />;
     forbidden();
   }
-  const isAdmin = await requireAdmin(ctx)
-    .then(() => true)
-    .catch(() => false);
+  const [membership] = await getSql()`SELECT count(DISTINCT team_id)::int AS count FROM members WHERE id = ${ctx.memberId} AND removed_at IS NULL`;
   return (
     <>
       <Navigation
         teamName={ctx.teamName}
         memberName={ctx.memberName}
-        isAdmin={isAdmin}
+        teamCount={membership.count}
       />
       <main className="page">{children}</main>
     </>

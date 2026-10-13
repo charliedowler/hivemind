@@ -1,0 +1,21 @@
+.team {
+  gap: 40px;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  scroll-margin-top: 24px;
+}
+.section h1 {
+  display: none;
+}
+.controls {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.controls:disabled {
+  opacity: 0.75;
+}

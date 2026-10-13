@@ -28,7 +28,7 @@ Sign in at https://gohive.dev/app/login with email and password, Google or Slack
    ```
    Switch to the dashboard. Within 5 seconds a new cell fills in and "Fresh nectar" shows the arrival with a teal Codex badge.
 6. **Nobody asked (20 seconds).** In "Fresh nectar", point at "Stop hook demo's Claude brought nectar from billing-cutoff". That session was only asked to fix a failing test. The Stop hook asked it once, before it stopped, what a teammate would otherwise have to rediscover.
-7. **Install (25 seconds).** Open https://gohive.dev/app/install. Copy the OAuth command. Sign in through the browser and allow access to your hive. That is the whole setup for a teammate.
+7. **Install (25 seconds).** Open https://gohive.dev/app/connect. Copy the OAuth command. Sign in through the browser and allow access to your hive. That is the whole setup for a teammate.
 8. **Close (15 seconds).** Open a cell and vote it useful or outdated. The hive ranks on that feedback.
 
 Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/screenshots).
@@ -88,6 +88,8 @@ Both install paths were run for real against production on 12 October 2026: Code
 | `hive_snapshot` | Returns a private read-only tarball link that expires after 15 minutes. |
 | `hive_feedback` | Votes a learning `up`, `down` or `outdated`.                                                                                                                                                                                                                 |
 
+Signed-in navigation has Hive, Team, Connect and an avatar menu. Team holds Members, Slack, What Hive keeps and Export. Account and Sign out are in the avatar menu. `/app/install` redirects to `/app/connect`; `/app/members` redirects to `/app/team`; `/app/settings/slack` and `/app/settings/capture` redirect to the Slack and What Hive keeps sections. The other dashboard pages remain reachable by URL.
+
 ## Architecture
 
 ```
@@ -102,7 +104,7 @@ Both install paths were run for real against production on 12 October 2026: Code
 |  /api/mcp          Better Auth MCP OAuth, mcp-handler 2.x            |
 |  /api/app/*        JSON routes for the dashboard           |
 |  /api/early-access landing form                            |
-|  /, /app, /app/members, /app/install                       |
+|  /, /app, /app/team, /app/connect                         |
 |                          |                                 |
 |                          v                                 |
 |  src/server/auth.ts   keys and sessions -> HiveContext     |

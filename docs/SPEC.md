@@ -224,8 +224,11 @@ Tool results are compact Markdown with cell IDs. Tool errors use isError and a o
 - `/app/consent`: verifies the signed OAuth query before displaying the client, hive, identity, scopes and requested profile claims. Allow and Cancel complete the Better Auth flow.
 - `/app`: the comb, one hexagonal cell per learning (title, repo, whose agent, time, votes, status, push count), polling every 5 seconds; a cell opens the full learning with kind, tags, paths, feedback and a copyable id. Status is outdated when outdated votes outnumber up votes, confirmed when it has up votes or more than one push, otherwise fresh. Search box whose result cards show the score and every ranking signal. Asking is available through MCP, with Slack bot support in progress. The dashboard has no question input or answer history. "Fresh nectar" lists the latest arrivals with the agent that brought them.
 - All UI comes from `@hivemind/design-system`. `design/system/readme.md` sets the vocabulary and the voice.
-- `/app/members`: members, the invite code with a copy button.
-- `/app/install`: keyless Claude and Codex OAuth commands, instructions and Stop hook first; headless key commands last. Key creation and management live only on `/app/account`.
+- Signed-in navigation: Hive (`/app`), Team (`/app/team`), Connect (`/app/connect`) and the avatar menu. The menu shows the member and team names, Account and Sign out. Switch team appears only for more than one active membership and signs out before sign-in. The current account model has one team per member.
+- `/app/team`: Members, Slack, What Hive keeps and Export, in that order. Members can read the sections; team admins manage them. Export uses the existing archive control. Capture settings use the current component until the team-only view lands.
+- `/app/connect`: keyless Claude and Codex OAuth commands, instructions and Stop hook first; headless key commands last. Key creation and management live on `/app/account`, reached from the avatar menu.
+- Redirects: `/app/members` to `/app/team`, `/app/settings/slack` to `/app/team#slack`, `/app/settings/capture` to `/app/team#keeps`, and `/app/install` to `/app/connect`.
+- `/app/account`, `/app/conflicts`, `/app/tree`, `/app/admin/analytics` and `/app/settings/slack/digests` remain reachable by URL. They are absent from the dashboard navigation. `/app/switch-account` is removed; access-error pages offer Sign out directly.
 - Web API routes live under `/api/app/*` and authenticate with the session cookie. They call the same service functions as the MCP tools.
 
 ## Web HTTP API

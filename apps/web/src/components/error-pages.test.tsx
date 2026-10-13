@@ -8,6 +8,7 @@ import { POST as errorBeacon } from "@/app/api/analytics/error/route";
 import { browserAuthResponse } from "@/server/auth-error-response";
 
 vi.mock("@/lib/measurement-consent", () => ({ useMeasurementConsent: () => false }));
+vi.mock("@/app/app/actions", () => ({ signOutAndContinue: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({ session: vi.fn(), recordEvent: vi.fn() }));
 vi.mock("@/server/auth", () => ({ getWebContext: mocks.session }));
@@ -47,6 +48,12 @@ describe("error pages", () => {
   });
   it("does not echo arbitrary callback error text", () => {
     expect(renderToStaticMarkup(<AuthErrorPage reason="secret-from-query" />)).not.toContain("secret-from-query");
+  });
+  it.each(["unknown_org", "access_changed"])("lets %s sign out without a deleted page", (reason) => {
+    const html = renderToStaticMarkup(<AuthErrorPage reason={reason} />);
+    expect(html).toContain("<form");
+    expect(html).toContain(">Sign out</button>");
+    expect(html).not.toContain("/app/switch-account");
   });
   it.each([GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS])("returns JSON for unknown API paths", async (handler) => {
     const response = handler();

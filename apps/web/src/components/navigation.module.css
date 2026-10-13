@@ -1,0 +1,109 @@
+.header {
+  border-bottom: var(--outline-ink);
+  background: var(--wax);
+}
+.inner {
+  width: min(1200px, calc(100% - 64px));
+  margin-inline: auto;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 16px;
+}
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-family: var(--font-display);
+  color: var(--ink);
+  text-decoration: none;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+}
+.link[aria-current="page"] {
+  border-color: var(--ink);
+  background: var(--honey-400);
+  box-shadow: var(--shadow-hard-sm);
+}
+.account {
+  position: relative;
+  margin-left: auto;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-round);
+  background: transparent;
+  cursor: pointer;
+}
+.avatar:hover,
+.avatar[aria-expanded="true"] {
+  background: var(--honey-400);
+  border-color: var(--ink);
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 20;
+  width: min(280px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: var(--outline-ink);
+  border-radius: var(--radius-xl);
+  background: var(--wax);
+  box-shadow: var(--shadow-hard-sm);
+  overflow-wrap: anywhere;
+}
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--wax-200);
+}
+.item {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.item:hover {
+  background: var(--honey-400);
+}
+@media (max-width: 760px) {
+  .inner {
+    width: calc(100% - 32px);
+    gap: 8px;
+    padding-block: 12px;
+    min-height: 72px;
+  }
+  .nav {
+    gap: 4px;
+  }
+  .link {
+    padding: 8px;
+    font-size: 13px;
+  }
+}

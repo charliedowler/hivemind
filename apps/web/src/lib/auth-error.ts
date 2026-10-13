@@ -17,6 +17,6 @@ export function authError(reason: string) {
   if (code === "key_revoked")
     return { title: "This key is no longer active.", next: "Create a new key in your account and reconnect your agent.", href: "/app/install", label: "Manage keys" };
   if (["unknown_org", "access_changed"].includes(code))
-    return { title: "You do not have access to this hive.", next: "Switch to an account that has access.", href: "/app/switch-account", label: "Switch account" };
+    return { title: "You do not have access to this hive.", next: "Sign out, then sign in with an account that has access.", href: "/app/login", label: "Sign out" };
   return { title: "Sign-in could not finish.", next: "Start again from the sign-in page.", href: "/app/login", label: "Sign in" };
 }
