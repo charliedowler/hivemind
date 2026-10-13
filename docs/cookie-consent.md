@@ -20,7 +20,7 @@ Hive uses hosted c15t 3.0.0. The install adds one consent root, a banner, a pref
 
 The backend URL comes verbatim from `inth project get`. It contains no management credential. CLI credentials stay outside the repository and browser bundle. No billing or plan settings change.
 
-The intended trusted origins are `gohive.dev`, `www.gohive.dev`, `hivemind-hq.vercel.app` and `localhost:3000`. Charlie requests no preview wildcards. The saved setup previously included `*.vercel.app` and additional local ports. Current verification and removal of the wildcard require renewed Inth access. The hosted policy stays at its default.
+Trusted origins are `gohive.dev`, `www.gohive.dev`, `hivemind-hq.vercel.app` and `localhost:3000`. The activation round removes the preview wildcard and obsolete local test ports, as Charlie requests. The hosted policy stays at its default.
 
 `withConsentManifest` fetches the public policy during the build. `resolveConsent` resolves each request from that snapshot and streams it to `ConsentRoot`. Each route under the root is dynamic. The browser sends choices to the hosted `/subjects` endpoint. `reportSessions: false` disables detached server consent-session reports. Rebuild after a hosted policy change. A missing manifest fails the production build by default.
 
