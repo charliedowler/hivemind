@@ -383,7 +383,7 @@ test('PostToolUse never nudges an unselected project or an ambiguous result', as
 for (const [name, text, rules] of [
   ['personal', 'Discovered that the contact email is person@example.test for the database config.', []],
   ['credential-only', 'Discovered the password is mango-canyon-private.', []],
-  ['customer-rule', 'Fixed the database connection for Example Customer.', [{ id: 'rule_fixture', kind: 'keyword', enabled: true, action: 'drop', pattern: 'Example Customer', regex: false }]],
+  ['customer-rule', 'Fixed the database connection for Example Customer.', [{ id: 'rule_fixture', name: 'Exclude customer names', kind: 'keyword', enabled: true, action: 'drop', pattern: 'Example Customer', regex: false }]],
 ]) test(`local privacy refusal prevents ${name} upload and transcript hash persistence`, async t => {
   const hive = await captureHive(t, {rules});
   const home = scratchRepo();
