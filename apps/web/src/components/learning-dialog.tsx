@@ -28,6 +28,7 @@ import { CopyButton, ErrorPanel, LoadingPanel } from "./primitives";
 import { CellCitation } from "./cell-citation";
 import { LearningHistory } from "./learning-history";
 import { Markdown } from "./markdown";
+import { CellSharing } from "./cell-sharing";
 import { CaptureCellNote } from "./capture-cell-note";
 
 export function LearningDetail({
@@ -109,6 +110,11 @@ export function LearningDetail({
       <FrictionDetails learning={learning} />
       <Markdown text={learning.body} />
       <CellMetadata learning={learning} />
+      <CellSharing
+        key={`sharing:${learning.id}`}
+        id={learning.id}
+        revision={learning.revision ?? 1}
+      />
       <LearningFooter
         learning={learning}
         votes={votes}
@@ -619,8 +625,8 @@ function LifecycleNotice({ learning }: { learning: LearningView }) {
       ) : null}
       {learning.lifecycle === "retracted" ? (
         <p className="cell-warning">
-          Hive removed this cell. It stays in the history and is excluded
-          from current guidance.
+          Hive removed this cell. It stays in the history and is excluded from
+          current guidance.
         </p>
       ) : null}
       {learning.verifyBeforeUse ? (

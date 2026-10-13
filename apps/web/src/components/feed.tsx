@@ -150,7 +150,10 @@ function useHiveFeed() {
   return { state, setState, list };
 }
 
-export function Feed() {
+export function Feed({
+  teamName,
+  personal = false,
+}: { teamName?: string; personal?: boolean } = {}) {
   const { state, setState, list } = useHiveFeed();
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
@@ -180,7 +183,7 @@ export function Feed() {
     <div className="stack dashboard">
       <div className="page-heading">
         <div>
-          <h1>Hive</h1>
+          <h1>{teamName ? `${teamName} hive` : "Hive"}</h1>
           <p className="muted">
             Open a cell to read the learning and see who saved it.
           </p>
@@ -246,6 +249,12 @@ export function Feed() {
           )}
         </div>
       </section>
+      {personal && state.loaded && !cells.length ? (
+        <p>
+          Working with others?{" "}
+          <Link href="/app/create-hive">Create a hive for your team.</Link>
+        </p>
+      ) : null}
       {selected ? (
         <LearningDialog
           key={selected}

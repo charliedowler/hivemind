@@ -35,9 +35,18 @@ import {
   currentOrigin,
 } from "./analytics/events";
 import { createHash } from "node:crypto";
-import { deriveCaptureDetails, evidenceText, cleanEvidence } from "./llm/capture";
+import {
+  deriveCaptureDetails,
+  evidenceText,
+  cleanEvidence,
+} from "./llm/capture";
 import { frictionSummary, frictionAnswer, isFrictionAsk } from "./friction";
-import { classifyPush, classifyAsk, classificationJson, frictionAreaForTopic } from "./classify";
+import {
+  classifyPush,
+  classifyAsk,
+  classificationJson,
+  frictionAreaForTopic,
+} from "./classify";
 import { learningView as view } from "./learning-view";
 import {
   lockLearningWrites,
@@ -60,8 +69,16 @@ import {
   ensureKnowledge,
 } from "./knowledge-tree";
 import { enforceCaptureRules } from "./capture-rules";
-import { audienceCellsSql, learningVisibleSql, visibleSupersededBySql } from "./capture-visibility";
-import { requireSelectedProject, lockCapturePolicy, refreshProjectPublications } from "./project-sharing";
+import {
+  audienceCellsSql,
+  learningVisibleSql,
+  visibleSupersededBySql,
+} from "./capture-visibility";
+import {
+  requireSelectedProject,
+  lockCapturePolicy,
+  refreshProjectPublications,
+} from "./project-sharing";
 import { after } from "next/server";
 import { z } from "zod";
 import { getSql, hasEmbeddingColumn } from "./db/client";
@@ -108,10 +125,25 @@ export async function pushLearning(
 ): Promise<PushResult> {
   if (!["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "")) {
     const data = validate(hivePushInput, input);
-    const project = {...data.context, ...Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))};
-    if (data.context && (data.context.repo != null || data.context.remote != null)) {
-      const nested = projectFromContext({...data.context, remote: data.context.remote ?? project.remote});
-      if (!nested || nested !== projectFromContext(project)) throw new HiveError("Supply one consistent repository context before capture.", 403);
+    const project = {
+      ...data.context,
+      ...Object.fromEntries(
+        Object.entries(data).filter(([, value]) => value !== undefined),
+      ),
+    };
+    if (
+      data.context &&
+      (data.context.repo != null || data.context.remote != null)
+    ) {
+      const nested = projectFromContext({
+        ...data.context,
+        remote: data.context.remote ?? project.remote,
+      });
+      if (!nested || nested !== projectFromContext(project))
+        throw new HiveError(
+          "Supply one consistent repository context before capture.",
+          403,
+        );
     }
     ctx = (await requireSelectedProject(ctx, project)).personal;
   }
@@ -123,44 +155,146 @@ async function pushLearningAction(
   input: HivePushInput,
 ): Promise<PushResult> {
   const supplied = validate(hivePushInput, input);
-  const envelope: HivePushInput = {...supplied.context, ...Object.fromEntries(Object.entries(supplied).filter(([, value]) => value !== undefined))};
-  const source = supplied.source ?? (envelope.agent === "codex" ? "codex" : envelope.agent === "claude-code" ? "claude-code" : "manual");
-  let data: HivePushInput & {source: LearningView["source"]; tags: string[]; paths: string[]; confidence: number} = {...envelope, source, tags: supplied.tags ?? [], paths: envelope.paths ?? [], confidence: supplied.confidence ?? 0.7};
-  const organisationCapture = ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
-  if (organisationCapture && !(await getSql()`SELECT id FROM teams WHERE id = ${ctx.teamId} AND personal_owner_member_id IS NULL`).length)
+  const envelope: HivePushInput = {
+    ...supplied.context,
+    ...Object.fromEntries(
+      Object.entries(supplied).filter(([, value]) => value !== undefined),
+    ),
+  };
+  const source =
+    supplied.source ??
+    (envelope.agent === "codex"
+      ? "codex"
+      : envelope.agent === "claude-code"
+        ? "claude-code"
+        : "manual");
+  let data: HivePushInput & {
+    source: LearningView["source"];
+    tags: string[];
+    paths: string[];
+    confidence: number;
+  } = {
+    ...envelope,
+    source,
+    tags: supplied.tags ?? [],
+    paths: envelope.paths ?? [],
+    confidence: supplied.confidence ?? 0.7,
+  };
+  const organisationCapture = ["slack", "scheduled"].includes(
+    currentOrigin()?.entrypoint ?? "",
+  );
+  if (
+    organisationCapture &&
+    !(
+      await getSql()`SELECT id FROM teams WHERE id = ${ctx.teamId} AND personal_owner_member_id IS NULL`
+    ).length
+  )
     throw new HiveError("Slack capture requires an organisation hive.", 403);
-  const selection = organisationCapture ? null : await requireSelectedProject(ctx, data);
+  const selection = organisationCapture
+    ? null
+    : await requireSelectedProject(ctx, data);
   if (selection) {
     ctx = selection.personal;
-    data = {...data, repo: selection.project, remote: undefined};
+    data = { ...data, repo: selection.project, remote: undefined };
   }
   const rawBody = data.body ?? data.observation!;
-  const sidecar = [data.observation, data.workaround, ...data.tags, ...data.paths, data.repo, data.remote, data.cwd, data.home, data.branch, data.agent, data.sessionType, data.sessionRef, evidenceText(data.evidence)].filter((value): value is string => Boolean(value));
-  const capture = await enforceCaptureRules(ctx, {
-    title: data.title ?? "",
-    body: rawBody,
-    repo: data.repo,
-    remote: data.remote,
-    cwd: data.cwd,
-    paths: data.paths,
-    home: data.home,
-    agent: data.agent ?? data.source,
-    sessionType: data.sessionType,
-  }, undefined, sidecar);
+  const sidecar = [
+    data.observation,
+    data.workaround,
+    ...data.tags,
+    ...data.paths,
+    data.repo,
+    data.remote,
+    data.cwd,
+    data.home,
+    data.branch,
+    data.agent,
+    data.sessionType,
+    data.sessionRef,
+    evidenceText(data.evidence),
+  ].filter((value): value is string => Boolean(value));
+  const capture = await enforceCaptureRules(
+    ctx,
+    {
+      title: data.title ?? "",
+      body: rawBody,
+      repo: data.repo,
+      remote: data.remote,
+      cwd: data.cwd,
+      paths: data.paths,
+      home: data.home,
+      agent: data.agent ?? data.source,
+      sessionType: data.sessionType,
+    },
+    undefined,
+    sidecar,
+  );
   if (capture.action === "drop") {
-    const matched = capture.matches.find(match => match.action === "drop");
-    if (!matched) throw new HiveError("Hive could not check what to keep. Try again.", 503);
-    return {dropped: true, rule: matched.kind};
+    const matched = capture.matches.find((match) => match.action === "drop");
+    if (!matched)
+      throw new HiveError("Hive could not check what to keep. Try again.", 503);
+    return { dropped: true, rule: matched.kind };
   }
   const captureRedacted = capture.redacted;
   const captureFlagged = capture.flagged;
-  const captureRuleIds = capture.matches.map(match => match.ruleId);
-  const captureContext = captureRedacted ? {} : Object.fromEntries(Object.entries({remote: data.remote, cwd: data.cwd, home: data.home, agent: data.agent ?? data.source, sessionType: data.sessionType, branch: data.branch}).filter(([, value]) => value !== undefined).map(([key, value]) => [key, redactSecrets(value!).text]));
-  data = {...data, title: capture.title || undefined, body: capture.body, observation: data.observation ? capture.body : undefined, context: undefined, evidence: cleanEvidence(data.evidence)};
-  if (captureRedacted) data = {...data, repo: undefined, remote: undefined, cwd: undefined, home: undefined, branch: undefined, agent: undefined, sessionType: undefined, paths: [], tags: [], evidence: undefined, sessionRef: undefined, workaround: undefined};
-  const repo = selection && !captureRedacted ? selection.project : normalizeRepo(data.repo ? redactSecrets(data.repo).text : data.remote ? redactSecrets(data.remote).text.replace(/^git@[^:]+:|^ssh:\/\/git@[^/]+\//, "") : undefined);
+  const captureRuleIds = capture.matches.map((match) => match.ruleId);
+  const captureContext = captureRedacted
+    ? {}
+    : Object.fromEntries(
+        Object.entries({
+          remote: data.remote,
+          cwd: data.cwd,
+          home: data.home,
+          agent: data.agent ?? data.source,
+          sessionType: data.sessionType,
+          branch: data.branch,
+        })
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => [key, redactSecrets(value!).text]),
+      );
+  data = {
+    ...data,
+    title: capture.title || undefined,
+    body: capture.body,
+    observation: data.observation ? capture.body : undefined,
+    context: undefined,
+    evidence: cleanEvidence(data.evidence),
+  };
+  if (captureRedacted)
+    data = {
+      ...data,
+      repo: undefined,
+      remote: undefined,
+      cwd: undefined,
+      home: undefined,
+      branch: undefined,
+      agent: undefined,
+      sessionType: undefined,
+      paths: [],
+      tags: [],
+      evidence: undefined,
+      sessionRef: undefined,
+      workaround: undefined,
+    };
+  const repo =
+    selection && !captureRedacted
+      ? selection.project
+      : normalizeRepo(
+          data.repo
+            ? redactSecrets(data.repo).text
+            : data.remote
+              ? redactSecrets(data.remote).text.replace(
+                  /^git@[^:]+:|^ssh:\/\/git@[^/]+\//,
+                  "",
+                )
+              : undefined,
+        );
   const tags = normalizeTags(data.tags.map((tag) => redactSecrets(tag).text));
-  const paths = [...new Set(data.paths.map((path) => redactSecrets(path.trim()).text).filter(Boolean))];
+  const paths = [
+    ...new Set(
+      data.paths.map((path) => redactSecrets(path.trim()).text).filter(Boolean),
+    ),
+  ];
   const body = redactSecrets(data.body!.trim());
   let title = redactSecrets(data.title?.trim() ?? "");
   let workaround = redactSecrets(data.workaround ?? "");
@@ -198,15 +332,54 @@ async function pushLearningAction(
     );
   }
   const kind = decision.kind;
-  const details = !title.text || kind === "friction"
-    ? await deriveCaptureDetails(body.text, evidence)
-    : {title: title.text, cost: null, blocked: null, workaround: null};
+  const details =
+    !title.text || kind === "friction"
+      ? await deriveCaptureDetails(body.text, evidence)
+      : { title: title.text, cost: null, blocked: null, workaround: null };
   if (!title.text) title = redactSecrets(details.title);
-  const inferredArea = kind === "friction" ? frictionAreaForTopic(decision.tags[0]) : undefined;
-  data = {...data, title: title.text, body: body.text, area: data.area ?? inferredArea, blocked: data.blocked !== undefined ? data.blocked : kind === "friction" ? details.blocked : null, cost: data.cost !== undefined ? data.cost : kind === "friction" ? details.cost : null, workaround: data.workaround !== undefined ? data.workaround : kind === "friction" ? details.workaround : null};
+  const inferredArea =
+    kind === "friction" ? frictionAreaForTopic(decision.tags[0]) : undefined;
+  data = {
+    ...data,
+    title: title.text,
+    body: body.text,
+    area: data.area ?? inferredArea,
+    blocked:
+      data.blocked !== undefined
+        ? data.blocked
+        : kind === "friction"
+          ? details.blocked
+          : null,
+    cost:
+      data.cost !== undefined
+        ? data.cost
+        : kind === "friction"
+          ? details.cost
+          : null,
+    workaround:
+      data.workaround !== undefined
+        ? data.workaround
+        : kind === "friction"
+          ? details.workaround
+          : null,
+  };
   workaround = redactSecrets(data.workaround ?? "");
-  if (supplied.tags === undefined) tags.push(...decision.tags.filter(tag => !tags.includes(tag)));
-  const captureKey = supplied.observation && !data.supersedes ? createHash("sha256").update(JSON.stringify({body: body.text.trim().toLowerCase().replace(/\s+/g, " "), repo, session: data.sessionRef ? redactSecrets(data.sessionRef).text : null})).digest("hex") : null;
+  if (supplied.tags === undefined)
+    tags.push(...decision.tags.filter((tag) => !tags.includes(tag)));
+  const captureKey =
+    supplied.observation && !data.supersedes
+      ? createHash("sha256")
+          .update(
+            JSON.stringify({
+              body: body.text.trim().toLowerCase().replace(/\s+/g, " "),
+              repo,
+              session: data.sessionRef
+                ? redactSecrets(data.sessionRef).text
+                : null,
+            }),
+          )
+          .digest("hex")
+      : null;
   const sql = getSql();
   const supportsVector = await hasEmbeddingColumn();
   const embedding = supportsVector
@@ -226,7 +399,8 @@ async function pushLearningAction(
       revision: row.revision,
     })),
   );
-  if (supplied.tags === undefined) tags.push(...judgment.tags.filter((tag) => !tags.includes(tag)));
+  if (supplied.tags === undefined)
+    tags.push(...judgment.tags.filter((tag) => !tags.includes(tag)));
   const prepared = data.supersedes
     ? []
     : await prepareConflicts(
@@ -265,14 +439,27 @@ async function pushLearningAction(
       if (selection) {
         await lockCapturePolicy(tx, selection.ownerId);
         const live = await requireSelectedProject(ctx, data, tx);
-        if (live.policy.revision !== selection.policy.revision) throw new HiveError("The project selection changed while Hive checked this capture. Retry it.", 409);
+        if (live.policy.revision !== selection.policy.revision)
+          throw new HiveError(
+            "The project selection changed while Hive checked this capture. Retry it.",
+            409,
+          );
       }
       await lockLearningWrites(tx, ctx);
       if (captureKey) {
-        const replay = await tx`SELECT l.*, m.name AS author_name, p.id AS push_id FROM learning_pushes p JOIN learnings l ON l.id = p.learning_id AND l.team_id = p.team_id JOIN members m ON m.id = l.member_id WHERE p.team_id = ${ctx.teamId} AND p.member_id = ${ctx.memberId} AND p.capture_key = ${captureKey} AND ${learningVisibleSql(ctx)}`;
+        const replay =
+          await tx`SELECT l.*, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name, p.id AS push_id FROM learning_pushes p JOIN learnings l ON l.id = p.learning_id AND l.team_id = p.team_id JOIN members m ON m.id = l.member_id WHERE p.team_id = ${ctx.teamId} AND p.member_id = ${ctx.memberId} AND p.capture_key = ${captureKey} AND ${learningVisibleSql(ctx)}`;
         if (replay[0]) {
           const learning = view(replay[0], ctx);
-          return {id: learning.id, pushId: replay[0].push_id as string, merged: true, replayed: true, pushCount: learning.pushCount, redactions: 0, learning};
+          return {
+            id: learning.id,
+            pushId: replay[0].push_id as string,
+            merged: true,
+            replayed: true,
+            pushCount: learning.pushCount,
+            redactions: 0,
+            learning,
+          };
         }
       }
       const current =
@@ -294,7 +481,9 @@ async function pushLearningAction(
             )
               return false;
             return (
-              ((supplied.observation || normalize(row.title) === normalizedTitle) && normalize(row.body) === normalize(body.text)) ||
+              ((supplied.observation ||
+                normalize(row.title) === normalizedTitle) &&
+                normalize(row.body) === normalize(body.text)) ||
               (kind === "friction" &&
                 normalize(row.title) === normalizedTitle) ||
               (relation?.relation === "same" && relation.confidence >= 0.9)
@@ -392,15 +581,19 @@ async function pushLearningAction(
       }
       await refreshProjectPublications(tx, ctx, id);
       const rows =
-        await tx`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND (NOT l.capture_flagged OR l.member_id = ${ctx.memberId})`;
+        await tx`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name FROM learnings l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND l.team_id = ${ctx.teamId} AND (NOT l.capture_flagged OR l.member_id = ${ctx.memberId})`;
       const stored = view(rows[0], ctx);
-      const learning = organisationCapture && stored.captureFlagged ? {...stored, title: "Kept private", body: ""} : stored;
+      const learning =
+        organisationCapture && stored.captureFlagged
+          ? { ...stored, title: "Kept private", body: "" }
+          : stored;
       return {
         id,
         pushId,
         merged,
         pushCount: learning.pushCount,
-        redactions: title.count + body.count + workaround.count + Number(captureRedacted),
+        redactions:
+          title.count + body.count + workaround.count + Number(captureRedacted),
         learning,
       };
     }),
@@ -427,27 +620,50 @@ async function pushLearningAction(
   await Promise.all(
     applied.map((decision) => recordConflictEvent(ctx, decision)),
   );
-  const retried = captureFlagged ? [] : await retryRelatedConflicts(
-    ctx,
-    result.id,
-    applied.map((record) => record.edgeId),
-  );
+  const retried = captureFlagged
+    ? []
+    : await retryRelatedConflicts(
+        ctx,
+        result.id,
+        applied.map((record) => record.edgeId),
+      );
   if (retried.length) {
     result.learning = (await getLearning(ctx, result.id)) ?? result.learning;
     result.pushCount = result.learning.pushCount;
   }
-  if (!classification && supplied.tags === undefined) scheduleTags(ctx, result.learning);
+  if (!classification && supplied.tags === undefined)
+    scheduleTags(ctx, result.learning);
   scheduleKnowledge(ctx);
-  const replacements = await sql`SELECT s.older_id FROM learning_supersessions s JOIN learnings l ON l.id = s.older_id AND l.team_id = s.team_id WHERE s.team_id = ${ctx.teamId} AND s.newer_id = ${result.id} AND s.status = 'accepted' AND ${learningVisibleSql(ctx)}`;
+  const replacements =
+    await sql`SELECT s.older_id FROM learning_supersessions s JOIN learnings l ON l.id = s.older_id AND l.team_id = s.team_id WHERE s.team_id = ${ctx.teamId} AND s.newer_id = ${result.id} AND s.status = 'accepted' AND ${learningVisibleSql(ctx)}`;
   return {
     ...result,
-    correction: {tool: "hive_correct", id: result.id, revision: result.learning.revision!},
+    correction: {
+      tool: "hive_correct",
+      id: result.id,
+      revision: result.learning.revision!,
+    },
     inferred: {
-      title: result.learning.title, kind: result.learning.kind, tags: result.learning.tags, area: result.learning.area, blocked: result.learning.blocked, workaround: result.learning.workaround, cost: result.learning.cost, confidence: result.learning.confidence, repo: result.learning.repo, source: result.learning.source, sessionRef: result.learning.sessionRef, paths: result.learning.paths, verifyAfter: result.learning.verifyAfter, supersededBy: result.learning.supersededBy,
+      title: result.learning.title,
+      kind: result.learning.kind,
+      tags: result.learning.tags,
+      area: result.learning.area,
+      blocked: result.learning.blocked,
+      workaround: result.learning.workaround,
+      cost: result.learning.cost,
+      confidence: result.learning.confidence,
+      repo: result.learning.repo,
+      source: result.learning.source,
+      sessionRef: result.learning.sessionRef,
+      paths: result.learning.paths,
+      verifyAfter: result.learning.verifyAfter,
+      supersededBy: result.learning.supersededBy,
       context: captureContext,
       relations: judgment.relations,
-      supersedes: replacements.map(row => String(row.older_id)),
-      overrides: Object.keys(supplied).filter(key => !["observation", "evidence", "context"].includes(key)),
+      supersedes: replacements.map((row) => String(row.older_id)),
+      overrides: Object.keys(supplied).filter(
+        (key) => !["observation", "evidence", "context"].includes(key),
+      ),
     },
     decisions: [...applied, ...retried].map(
       ({ id, decision, reason, confidence, model }) => ({
@@ -489,9 +705,9 @@ async function searchLearningsAction(
   const excludeFlagged = options.excludeFlagged ?? ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
   const filter = sql`${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND ${retrievalEligibleSql(data.include_history)} AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND (${!options.publicOnly} OR l.source <> 'slack' OR EXISTS(SELECT 1 FROM slack_channels sc WHERE sc.team_id=l.team_id AND sc.private=false AND sc.bot_member=true AND l.session_ref LIKE '%' || '/archives/' || sc.channel_id || '/%'))`;
   const ftsRows =
-    await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
+    await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
-    ? await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
+    ? await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
     : [];
   const candidates = new Map<
     string,
@@ -506,7 +722,11 @@ async function searchLearningsAction(
   for (const row of vectorRows) {
     const vector = Number(row.vector);
     if (vector >= minimumVectorSimilarity || candidates.has(row.id))
-      candidates.set(row.id, { ...view(row, ctx), vector, fts: Number(row.fts) });
+      candidates.set(row.id, {
+        ...view(row, ctx),
+        vector,
+        fts: Number(row.fts),
+      });
   }
   let prefixUsed = false;
   if (!candidates.size) {
@@ -515,7 +735,7 @@ async function searchLearningsAction(
       prefixUsed = true;
       const prefix = words.map((word) => `${word}:*`).join(" & ");
       const rows =
-        await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
+        await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
       for (const row of rows)
         candidates.set(row.id, {
           ...view(row, ctx),
@@ -595,7 +815,7 @@ async function askHiveAction(
   const frictionEligible = friction?.count ? await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs WHERE l.id = ANY(${friction.cells.map(cell => cell.id)}::text[]) AND ${retrievalEligibleSql()}` : [];
   if (friction && friction.count && frictionEligible.length === friction.cells.length) {
     const cells =
-      await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
+      await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
     const result = appendLifecycleContext(
       frictionAnswer(friction),
       await retrievalLifecycleContext(ctx, cells.map(row => view(row, ctx)), data.include_history),
@@ -636,7 +856,7 @@ async function askHiveAction(
         limit: 8,
         include_history: data.include_history,
       },
-      {...options, excludeFlagged: true},
+      { ...options, excludeFlagged: true },
     ),
     {includeHistory: data.include_history},
   );
@@ -748,17 +968,19 @@ async function recentLearningsAction(
   }
   const repo = normalizeRepo(data.repo);
   const canonicalRepo = data.repo ? canonicalProject(data.repo) : null;
-  const excludeFlagged = ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
+  const excludeFlagged = ["slack", "scheduled"].includes(
+    currentOrigin()?.entrypoint ?? "",
+  );
   const rows =
-    await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND ${retrievalEligibleSql(data.include_history)} AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo} OR l.repo = ${canonicalRepo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
+    await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND ${retrievalEligibleSql(data.include_history)} AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo} OR l.repo = ${canonicalRepo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
   await recordEvent({
     name: "recent.performed",
     properties: { resultCount: rows.length, kind: data.kind },
   });
-  return rows.map(row => view(row, ctx));
+  return rows.map((row) => view(row, ctx));
 }
 
-export {recordFeedback} from "./feedback";
+export { recordFeedback } from "./feedback";
 
 export async function getLearning(
   ctx: HiveContext,
@@ -766,7 +988,7 @@ export async function getLearning(
 ): Promise<LearningStanding | null> {
   if (id.startsWith("slk_")) return getSlackMessage(ctx, id);
   const rows =
-    await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`;
+    await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`;
   return rows[0] ? view(rows[0], ctx) : null;
 }
 

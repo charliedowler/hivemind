@@ -21,7 +21,12 @@ export function learningView(
     paths: row.paths as string[],
     confidence: Number(row.confidence),
     source: row.source as LearningView["source"],
-    author: { id: String(row.member_id), name: String(row.author_name) },
+    author: {
+      id: String(row.member_id),
+      name: String(row.author_name),
+      actorType: row.author_actor_type as "human" | "agent" | undefined,
+      ownerName: row.owner_name as string | null | undefined,
+    },
     pushCount: Number(row.push_count),
     votes: {
       up: Number(row.up_votes),

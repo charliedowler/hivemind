@@ -5,7 +5,10 @@ import { CaptureRules } from "@/components/capture-rules";
 import { ExportArchive } from "@/components/export-archive";
 import { publicUrl } from "@/lib/public-url";
 import { getWebContext } from "@/server/auth";
-import { memberPage } from "@/server/identity/member-page";
+import { webMemberPage } from "@/server/web-member-page";
+import { adminJoinPhrase } from "@/server/identity/join-phrases";
+import { hiveChoices } from "@/server/identity/onboarding-web";
+import { HiveInvite } from "@/components/hive-invite";
 import { teamSlackSettings } from "@/server/slack/store";
 import { listCaptureRules } from "@/server/capture-rules";
 import styles from "./team.module.css";
@@ -19,17 +22,30 @@ export default async function Page({
 }) {
   const ctx = await getWebContext();
   if (!ctx) redirect("/app/login");
+  const choices = await hiveChoices(ctx);
+  if (choices.find((hive) => hive.teamId === ctx.teamId)?.personal)
+    redirect("/app/account");
   const [baseUrl, members, slack, rules, query] = await Promise.all([
     publicUrl(),
-    memberPage(ctx),
+    webMemberPage(ctx),
     teamSlackSettings(ctx),
     listCaptureRules(ctx),
     searchParams,
   ]);
   const isAdmin = members.overview.role === "admin";
+  const phrase = isAdmin ? await adminJoinPhrase(ctx) : null;
   return (
     <div className={`stack ${styles.team}`}>
-      <h1>Team</h1>
+      <h1>{ctx.teamName}</h1>
+      {isAdmin ? (
+        <HiveInvite
+          teamId={ctx.teamId}
+          teamName={ctx.teamName}
+          baseUrl={baseUrl}
+          initial={phrase}
+          initialDomains={members.overview.domains}
+        />
+      ) : null}
       <section
         id="members"
         className={styles.section}

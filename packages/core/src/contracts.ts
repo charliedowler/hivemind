@@ -71,7 +71,12 @@ export type LearningView = {
   paths: string[];
   confidence: number;
   source: LearningSource;
-  author: { id: string; name: string };
+  author: {
+    id: string;
+    name: string;
+    actorType?: "human" | "agent";
+    ownerName?: string | null;
+  };
   pushCount: number;
   votes: VoteCounts;
   lifecycle?: LearningLifecycle;
@@ -114,21 +119,23 @@ export type SearchHit = LearningView & {
   signals: SearchSignals;
 };
 
-export type PushResult = { dropped: true; rule: CaptureRuleInput["kind"] } | {
-  dropped?: false;
-  id: string;
-  merged: boolean;
-  pushCount: number;
-  redactions: number;
-  learning: LearningView;
-  inferred?: CaptureMetadata;
-  correction?: { tool: "hive_correct"; id: string; revision: number };
-  replayed?: boolean;
-  decisions?: Pick<
-    ConflictDecisionRecord,
-    "id" | "decision" | "reason" | "confidence" | "model"
-  >[];
-};
+export type PushResult =
+  | { dropped: true; rule: CaptureRuleInput["kind"] }
+  | {
+      dropped?: false;
+      id: string;
+      merged: boolean;
+      pushCount: number;
+      redactions: number;
+      learning: LearningView;
+      inferred?: CaptureMetadata;
+      correction?: { tool: "hive_correct"; id: string; revision: number };
+      replayed?: boolean;
+      decisions?: Pick<
+        ConflictDecisionRecord,
+        "id" | "decision" | "reason" | "confidence" | "model"
+      >[];
+    };
 
 export const askConfidenceLevels = ["high", "medium", "low"] as const;
 export type AskConfidence = (typeof askConfidenceLevels)[number];
@@ -150,10 +157,26 @@ export type AskResult = {
   synthesized: boolean;
 };
 
-export type CaptureMetadata = Pick<LearningView, "title" | "kind" | "tags" | "area" | "blocked" | "workaround" | "cost" | "confidence" | "repo" | "source" | "sessionRef" | "paths" | "verifyAfter" | "supersededBy"> & {
+export type CaptureMetadata = Pick<
+  LearningView,
+  | "title"
+  | "kind"
+  | "tags"
+  | "area"
+  | "blocked"
+  | "workaround"
+  | "cost"
+  | "confidence"
+  | "repo"
+  | "source"
+  | "sessionRef"
+  | "paths"
+  | "verifyAfter"
+  | "supersededBy"
+> & {
   context: Record<string, unknown>;
   supersedes: string[];
-  relations: {id: string; relation: string; confidence: number}[];
+  relations: { id: string; relation: string; confidence: number }[];
   overrides: string[];
 };
 export type FeedbackResult = {

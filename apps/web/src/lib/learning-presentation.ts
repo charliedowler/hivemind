@@ -26,8 +26,14 @@ export function learnedBy(
   learning: Pick<LearningView, "author" | "source">,
 ): string {
   if (learning.source === "slack") return `${learning.author.name} via Slack`;
+  if (learning.author.actorType === "agent")
+    return learning.author.ownerName
+      ? `${learning.author.ownerName} · ${learning.author.name}`
+      : learning.author.name;
   const agent = agentKind(learning.source);
-  return `${learning.author.name}'s ${agent === "claude" ? "Claude" : agent === "codex" ? "Codex" : "learning"}`;
+  return agent
+    ? `${learning.author.name} · ${agent === "claude" ? "Claude" : "Codex"}`
+    : learning.author.name;
 }
 
 export function kindLabel(kind: LearningView["kind"]) {

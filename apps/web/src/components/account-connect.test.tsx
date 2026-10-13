@@ -52,6 +52,7 @@ async function render(node: ReactNode, stored?: string) {
   });
   for (const name of [
     "window",
+    "self",
     "document",
     "FormData",
     "Event",

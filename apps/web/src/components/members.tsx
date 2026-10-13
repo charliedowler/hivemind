@@ -1,12 +1,16 @@
 "use client";
-import { formatHumanDate } from "@hivemind/core";
+import { memberGroups } from "@/lib/member-groups";
 import { useState } from "react";
 import type { MemberView, TeamOverview } from "@hivemind/core";
-import { Button, Card, MemberBee, Sprite } from "@hivemind/design-system";
+import { Button, Card, MemberBee } from "@hivemind/design-system";
 import { errorMessage, relativeTime, requestJson } from "@/lib/client";
-import { CopyButton, ErrorPanel } from "./primitives";
+type Member = MemberView & {
+  actorType?: string;
+  ownerId?: string | null;
+  ownerName?: string | null;
+};
 type Data = {
-  members: (MemberView & { actorType?: string; ownerName?: string | null })[];
+  members: Member[];
   overview: TeamOverview;
   memberId: string;
   keys: {
@@ -17,26 +21,17 @@ type Data = {
     revoked_at: string | null;
   }[];
 };
-export function Members({
-  baseUrl,
-  initial,
-}: {
-  baseUrl: string;
-  initial: Data;
-}) {
+export function Members({ initial }: { baseUrl: string; initial: Data }) {
   const [data, setData] = useState(initial);
-  const [invite, setInvite] = useState("");
-  const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  async function act(action: string, id?: string) {
-    setError("");
+  const [error, setError] = useState("");
+  const admin = data.overview.role === "admin";
+  const groups = memberGroups(data.members);
+  async function remove(id: string) {
     setPending(true);
+    setError("");
     try {
-      const result = await requestJson<{ inviteCode?: string }>(
-        "/api/app/admin",
-        { action, id },
-      );
-      if (result.inviteCode) setInvite(result.inviteCode);
+      await requestJson("/api/app/admin", { action: "remove", id });
       setData(await requestJson("/api/app/members"));
     } catch (error) {
       setError(errorMessage(error));
@@ -44,126 +39,97 @@ export function Members({
       setPending(false);
     }
   }
-  const { members, overview } = data;
-  const admin = overview.role === "admin";
   return (
     <div className="stack members-page">
-      <div className="page-heading">
-        <div>
-          <h1>Members</h1>
-          <p className="muted">
-            {overview.teamName}: {overview.memberCount} members,{" "}
-            {overview.learningCount} cells, {overview.repos.length} repos.
-          </p>
-        </div>
-        <Sprite name="bee-carry" scale={4} />
-      </div>
-      {error ? <ErrorPanel message={error} /> : null}
-      {admin ? (
-        <Card className="stack">
-          <h2>Invite teammates</h2>
-          <p className="muted">
-            Invites expire after seven days. Rotating the invite invalidates the
-            outstanding invite without removing current members. Save the new
-            code now. Hive shows it once.
-          </p>
-          <Button onClick={() => void act("invite")} loading={pending}>
-            Rotate invite
-          </Button>
-          {invite ? (
-            <div className="stack">
-              <code className="breakable">{invite}</code>
-              <CopyButton
-                text={`${baseUrl}/app/login?invite=${encodeURIComponent(invite)}`}
-                label="Copy join link"
-              />
-            </div>
-          ) : (
-            <p className="small">
-              Current invite expires {formatHumanDate(overview.inviteExpiresAt)}
-              . The hive cannot show the code again.
-            </p>
-          )}
-          <h2>Work domains</h2>
-          <p className="muted">
-            Allow your verified work domain so teammates can join with their
-            email. Public email domains cannot use this option.
-          </p>
-          <p>
-            {overview.domains.length
-              ? overview.domains.join(", ")
-              : "No domains allowed yet."}
-          </p>
-          <Button
-            variant="secondary"
-            onClick={() => void act("domain")}
-            loading={pending}
-          >
-            Allow my verified domain
-          </Button>
-        </Card>
-      ) : null}
+      <p className="muted">
+        {data.overview.teamName}: {groups.owners.length}{" "}
+        {groups.owners.length === 1 ? "person" : "people"},{" "}
+        {data.members.length - groups.owners.length} agents,{" "}
+        {data.overview.learningCount} cells.
+      </p>
       <div className="member-grid">
-        {members.map((member) => (
-          <Card key={member.id} className="member-card stack">
-            <MemberBee
-              name={member.actorType === "agent" ? `${member.name} · ${member.ownerName ? `agent of ${member.ownerName}` : "agent"}` : member.name}
-              detail={`${member.learningCount} cells · ${member.role === "admin" ? "Team admin" : "Member"}`}
-              size="lg"
-            />
-            <p className="small breakable">
-              {member.email ?? "No email yet"} ·{" "}
-              {member.emailVerified ? "Verified" : "Not verified"}. Removing a member ends their access to this hive.
-            </p>
-            <dl className="member-facts">
-              <div>
-                <dt>Joined</dt>
-                <dd>{formatHumanDate(member.joinedAt)}</dd>
-              </div>
-              <div>
-                <dt>Last seen</dt>
-                <dd>
-                  {member.lastSeenAt
-                    ? relativeTime(member.lastSeenAt)
-                    : "No visit yet"}
-                </dd>
-              </div>
-            </dl>
-            {admin ? (
-              <>
-                <div className="stack">
-                  {data.keys
-                    .filter((key) => key.member_id === member.id)
-                    .map((key) => (
-                      <div className="stack key-row" key={key.id}>
-                        <code className="small">
-                          {key.label} · {key.prefix}. Revoking this key stops the agent using it from accessing this hive.
-                        </code>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={pending || Boolean(key.revoked_at)}
-                          onClick={() => void act("revoke", key.id)}
-                        >
-                          {key.revoked_at ? "Revoked" : "Revoke key"}
-                        </Button>
-                      </div>
-                    ))}
+        {groups.owners.map(({ human, agents }) => {
+          const count = agents.reduce(
+            (total, agent) => total + agent.learningCount,
+            human.learningCount,
+          );
+          const seen = [human, ...agents]
+            .flatMap((member) => (member.lastSeenAt ? [member.lastSeenAt] : []))
+            .sort()
+            .at(-1);
+          return (
+            <Card key={human.id} className="member-card stack">
+              <MemberBee
+                name={human.name}
+                detail={`${count} cells · ${human.role === "admin" ? "Team admin" : "Member"}`}
+                size="lg"
+              />
+              <p className="small breakable">{human.email ?? "No email yet"}</p>
+              <p className="small">
+                Last seen {seen ? relativeTime(seen) : "no visit yet"}
+              </p>
+              {agents.map((agent) => (
+                <div className="row between wrap member-agent" key={agent.id}>
+                  <div>
+                    <p>
+                      {agent.name} · last seen{" "}
+                      {agent.lastSeenAt
+                        ? relativeTime(agent.lastSeenAt)
+                        : "no visit yet"}
+                    </p>
+                    <p className="small muted">{agent.learningCount} cells</p>
+                  </div>
+                  {admin ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={pending}
+                      onClick={() => void remove(agent.id)}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
                 </div>
-                {member.id !== data.memberId ? (
-                  <Button
-                    variant="secondary"
-                    disabled={pending}
-                    onClick={() => void act("remove", member.id)}
-                  >
-                    Remove member
-                  </Button>
-                ) : null}
-              </>
-            ) : null}
-          </Card>
-        ))}
+              ))}
+              {admin && human.id !== data.memberId ? (
+                <Button
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() => void remove(human.id)}
+                >
+                  Remove member
+                </Button>
+              ) : null}
+            </Card>
+          );
+        })}
       </div>
+      {groups.ownerless.length ? (
+        <section className="stack">
+          <h3>Agents without an owner</h3>
+          {groups.ownerless.map((agent) => (
+            <Card key={agent.id} className="row between wrap">
+              <p>
+                {agent.name} · last seen{" "}
+                {agent.lastSeenAt
+                  ? relativeTime(agent.lastSeenAt)
+                  : "no visit yet"}
+              </p>
+              {admin ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() => void remove(agent.id)}
+                >
+                  Remove
+                </Button>
+              ) : null}
+            </Card>
+          ))}
+        </section>
+      ) : null}
+      {error ? <p role="alert">{error}</p> : null}
     </div>
   );
 }

@@ -60,6 +60,7 @@ beforeEach(async () => {
     url: "http://localhost/app",
   });
   vi.stubGlobal("window", dom.window);
+  vi.stubGlobal("self", dom.window);
   vi.stubGlobal("document", dom.window.document);
   vi.stubGlobal("HTMLElement", dom.window.HTMLElement);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -72,7 +73,11 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 async function render(decisions = [record], learning = cell) {
-  vi.mocked(requestJson).mockResolvedValue({ decisions });
+  vi.mocked(requestJson).mockImplementation(async (url) =>
+    url.endsWith("/sharing")
+      ? { owner: false, organisations: [] }
+      : { decisions },
+  );
   await act(async () => root.render(<LearningDetail learning={learning} />));
 }
 function button(label: string) {
@@ -123,6 +128,8 @@ it("reverses once with the default reason, refreshes the cell, and allows a late
     older: { ...record.older, lifecycle: "fresh" as const },
   };
   vi.mocked(requestJson).mockImplementation(async (url, body) => {
+    if (url.endsWith("/sharing")) return { owner: false, organisations: [] };
+    if (url.startsWith("/api/app/conflicts?")) return { decisions: [reversed] };
     if (url.startsWith("/api/app/learnings/")) return cell;
     if (body && (body as { action: string }).action === "reason")
       return { record: { ...reversed, reason: "The example still applies." } };

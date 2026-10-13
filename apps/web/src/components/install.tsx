@@ -1,4 +1,6 @@
 "use client";
+import { PromptBlock } from "./prompt-block";
+import { setupPrompt } from "@/lib/agent-onboarding";
 
 import { useId, useState, useSyncExternalStore, type FormEvent } from "react";
 import { formatHumanDate } from "@hivemind/core";
@@ -329,11 +331,17 @@ export function InstallPage({
         <div>
           <h1>Add your agent</h1>
           <p className="muted">
-            Connect Claude Code, Codex or Executor to your team's hive.
+            Paste the prompt into Claude Code or Codex. Your agent signs in as
+            itself.
           </p>
         </div>
         <Sprite name="bee-carry" scale={4} />
       </div>
+      <PromptBlock text={setupPrompt} />
+      <p className="small muted">
+        Separate inboxes appear as separate agents under you. Your agents share
+        your project selection.
+      </p>
       <section className="stack" aria-labelledby="installer-heading">
         <div className="stack">
           <h2 id="installer-heading">Connect your agent</h2>

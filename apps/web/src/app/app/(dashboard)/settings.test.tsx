@@ -1,4 +1,6 @@
-vi.mock("@/server/project-sharing", () => ({ownerCapturePolicy: async () => ({include: [], exclude: [], revision: 0})}));
+vi.mock("@/server/project-sharing", () => ({
+  ownerCapturePolicy: async () => ({ include: [], exclude: [], revision: 0 }),
+}));
 import { JSDOM } from "jsdom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -20,7 +22,17 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
 vi.mock("@/server/auth", () => ({ getWebContext: mocks.context }));
-vi.mock("@/server/identity/member-page", () => ({ memberPage: mocks.members }));
+vi.mock("@/server/web-member-page", () => ({ webMemberPage: mocks.members }));
+vi.mock("@/server/identity/onboarding-web", () => ({
+  hiveChoices: async () => [{ teamId: "team_test", personal: false }],
+}));
+vi.mock("@/server/identity/join-phrases", () => ({
+  adminJoinPhrase: async () => null,
+}));
+vi.mock("@/server/web-sharing", () => ({ projectShareState: async () => [] }));
+vi.mock("@/components/hive-invite", () => ({
+  HiveInvite: () => <p>Invite control</p>,
+}));
 vi.mock("@/server/identity/access", () => ({ account: mocks.account }));
 vi.mock("@/server/slack/store", () => ({ teamSlackSettings: mocks.slack }));
 vi.mock("@/server/capture-rules", () => ({ listCaptureRules: mocks.rules }));

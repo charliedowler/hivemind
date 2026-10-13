@@ -10,8 +10,6 @@ import { learningStatus } from "@/lib/learning-presentation";
 import { Login } from "./login";
 import { enabledSignInProviders } from "@/lib/auth-providers";
 
-
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push() {}, refresh() {} }),
 }));
@@ -75,13 +73,18 @@ describe("dashboard components", () => {
   it.each([
     { initialEmailOpen: true },
     { initialError: "Your email is not verified." },
-  ])("opens email sign-in for an explicit request or email error: %j", (props) => {
-    const html = renderToStaticMarkup(<Login invite="" providers={["google"]} {...props} />);
-    expect(html).toMatch(/<details[^>]* open=""/);
-    expect(html).toContain('name="email"');
-    expect(html).toContain('name="password"');
-    expect(html).toContain("Set or reset your password");
-  });
+  ])(
+    "opens email sign-in for an explicit request or email error: %j",
+    (props) => {
+      const html = renderToStaticMarkup(
+        <Login invite="" providers={["google"]} {...props} />,
+      );
+      expect(html).toMatch(/<details[^>]* open=""/);
+      expect(html).toContain('name="email"');
+      expect(html).toContain('name="password"');
+      expect(html).toContain("Set or reset your password");
+    },
+  );
   it("renders a keyboard reachable cell with attribution, status and repeat pushes", () => {
     const html = renderToStaticMarkup(
       <CombGrid columns={4}>
@@ -91,7 +94,7 @@ describe("dashboard components", () => {
     expect(html).toContain("hm-comb-4");
     expect(html).toContain('type="button" class="hm-cell hm-cell-confirmed"');
     expect(html).toContain('aria-label="Linked worktrees share one stash"');
-    expect(html).toContain("Maya&#x27;s Claude");
+    expect(html).toContain("Maya · Claude");
     expect(html).toContain("Seen 3 times");
     expect(html).toContain('data-sprite="cell-filling"');
   });
@@ -131,7 +134,7 @@ describe("dashboard components", () => {
     ])
       expect(html).toContain(signal);
     expect(html).toContain("worktrees");
-    expect(html).toContain("Maya&#x27;s Claude");
+    expect(html).toContain("Maya · Claude");
   });
 
   it("renders full markdown, paths, kind, votes and a copyable id inside a learning", () => {
@@ -212,12 +215,17 @@ describe("dashboard components", () => {
     expect(html).toContain("Show history");
   });
 
-
   it("leads with the npm installer and keeps manual setup available", () => {
-    const html = renderToStaticMarkup(<InstallPage baseUrl="https://hive.example" />);
-    expect(html.indexOf("npx gohive install")).toBeLessThan(html.indexOf("claude mcp add"));
+    const html = renderToStaticMarkup(
+      <InstallPage baseUrl="https://hive.example" />,
+    );
+    expect(html.indexOf("npx gohive install")).toBeLessThan(
+      html.indexOf("claude mcp add"),
+    );
     expect(html).toContain("npx gohive install");
-    expect(html).not.toContain("Install from Git while the npm package is awaiting publication");
+    expect(html).not.toContain(
+      "Install from Git while the npm package is awaiting publication",
+    );
     expect(html).not.toContain("github:charliedowler/hivemind gohive install");
     expect(html).toContain("skills/hive/SKILL.md");
     expect(html).toContain("Manual setup for Claude Code, Codex or Executor");

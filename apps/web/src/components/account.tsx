@@ -1,4 +1,7 @@
 "use client";
+import Link from "next/link";
+import { ProjectSharing } from "./project-sharing";
+import type { projectShareState } from "@/server/web-sharing";
 import type { OwnerCapturePolicy, CaptureRule } from "@hivemind/core";
 import { CaptureRules } from "./capture-rules";
 import { useState, type FormEvent } from "react";
@@ -16,16 +19,19 @@ type AccountData = {
     role: string;
   };
 };
+const emptySharing: Awaited<ReturnType<typeof projectShareState>> = [];
 export function Account({
   initial,
   hasPassword,
   rules,
   policy,
+  sharing = emptySharing,
 }: {
   initial: AccountData;
   hasPassword: boolean;
   rules: CaptureRule[];
   policy?: OwnerCapturePolicy;
+  sharing?: Awaited<ReturnType<typeof projectShareState>>;
 }) {
   const [data, setData] = useState(initial);
   const [token, setToken] = useState("");
@@ -154,6 +160,8 @@ export function Account({
         initial={{ rules, policy, isAdmin: data.member.role === "admin" }}
         scope="personal"
       />
+      {policy ? <ProjectSharing policy={policy} initial={sharing} /> : null}
+      <Link href="/app/create-hive">Create a hive for your team</Link>
       <Button
         variant="ghost"
         loading={pending}

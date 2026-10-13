@@ -1,3 +1,4 @@
+import { joinTools } from "./join";
 import { decisionTools } from "./decisions";
 export { reactToSlack } from "./react";
 export type { SlackReactResult } from "./react";
@@ -53,6 +54,7 @@ const save = z.strictObject({
   wholeThread: z.boolean(),
 });
 export const slackTools: SlackTool[] = [
+  ...joinTools,
   ...decisionTools,
   ...digestTools,
   ...captureRuleTools,
