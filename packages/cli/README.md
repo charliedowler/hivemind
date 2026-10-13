@@ -51,4 +51,4 @@ Setup references: [Executor account connections](https://executor.sh/docs/connec
 
 ## License
 
-[MIT](../../LICENSE) © 2026 Charlie Dowler.
+[MIT](LICENSE) © 2026 Charlie Dowler.

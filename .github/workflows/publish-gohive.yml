@@ -47,9 +47,6 @@ jobs:
           fi
       - name: Publish with OIDC trusted publishing
         if: steps.release.outputs.publish == 'true'
-        # Provenance needs a public source repository. While the repository is
-        # private, trusted publishing runs without a provenance attestation.
-        # Set this to "true" (or remove it) once the repository is public.
         env:
-          NPM_CONFIG_PROVENANCE: "false"
+          NPM_CONFIG_PROVENANCE: "true"
         run: npm publish ./packages/cli --access public

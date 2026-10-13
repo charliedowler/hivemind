@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { beginSignIn, signInState, joinPhrase } from '../dist/onboarding.js';
 const exec = promisify(execFile);
 const bin = new URL('../dist/bin.js', import.meta.url).pathname;
+const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 test('join links accept only the Hive origin and a three-word phrase', () => {
   assert.equal(joinPhrase('https://gohive.dev/j/amber-honey-fox'), 'amber-honey-fox');
   assert.throws(() => joinPhrase('https://other.test/j/amber-honey-fox'));
@@ -55,7 +56,7 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
   const start=Date.now();
   const installed=await exec(process.execPath,[bin,'install','--client','claude','--home',home,'--join-url','https://gohive.dev/j/amber-honey-fox',...(identity==='agent'?['--identity','agent']:[])],{env:{...fixtureEnv,HIVE_URL:baseUrl,HIVE_NO_BROWSER:'1'},timeout:20000});
   logs.push(...installed.stdout.trim().split('\n'));
-  assert.equal(logs[0],'gohive 0.1.8');
+  assert.equal(logs[0],`gohive ${version}`);
   assert.ok(Date.now()-start<20000);
   const state=signInState(home);
   assert.equal(state.phase,'waiting');
@@ -109,6 +110,6 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
 
 test('an interactive harness requires an explicit agent identity flag even with headless', async () => {
   const home=mkdtempSync(join(tmpdir(),'gohive-guard-'));
-  await assert.rejects(exec(process.execPath,[bin,'install','--headless','--home',home,'--client','claude'],{env:{...process.env,CLAUDECODE:'1'},timeout:20000}),error=>error.stdout.startsWith('gohive 0.1.8\n')&&error.stderr.includes('explicitly --identity agent'));
+  await assert.rejects(exec(process.execPath,[bin,'install','--headless','--home',home,'--client','claude'],{env:{...process.env,CLAUDECODE:'1'},timeout:20000}),error=>error.stdout.startsWith(`gohive ${version}\n`)&&error.stderr.includes('explicitly --identity agent'));
   assert.equal(signInState(home),undefined);
 });

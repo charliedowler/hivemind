@@ -72,7 +72,7 @@ codex mcp add hive --url https://hive.example.com/api/mcp
 
 - `.github/workflows/ci.yml` runs typecheck, tests and a build against a disposable Postgres service. Set the repository variable `C15T_BACKEND_URL` (Settings, Secrets and variables, Actions, Variables) to your c15t backend URL; the build needs it.
 - `.github/workflows/publish-gohive.yml` publishes `packages/cli` to npm when its version changes on `main`. It uses npm trusted publishing (OIDC): no npm token is stored. Configure a trusted publisher on npmjs.com for your package with this repository, the workflow file name `publish-gohive.yml` and the environment `npm`.
-- Provenance attestations need a public repository. The workflow sets `NPM_CONFIG_PROVENANCE: "false"` while the repository is private. Remove that line (or set it to `"true"`) once the repository is public.
+- The workflow enables npm provenance with `NPM_CONFIG_PROVENANCE: "true"`. Provenance links each release to its source commit and GitHub Actions build. It requires a public source repository.
 - To publish under a different name, change `name` in `packages/cli/package.json`; the workflow reads it from there.
 
 ## Checks
