@@ -1,12 +1,13 @@
+import { decisionTools } from "./decisions";
 export { reactToSlack } from "./react";
 export type { SlackReactResult } from "./react";
 export { slackToolReply } from "./reply";
-import { captureTools } from "./capture";
 import { decideDecisiveness } from "@/server/slack/decisiveness";
 import { undoLastAction } from "@/server/slack/actions";
 export { decideDecisiveness } from "@/server/slack/decisiveness";
 export { runReversibleAction } from "@/server/slack/actions";
 import { digestTools } from "./digests";
+import { captureRuleTools, isCaptureUndoInstruction, dispatchCaptureUndo } from "./capture-rules";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { HiveError } from "@/server/errors";
@@ -53,15 +54,25 @@ const save = z.strictObject({
   wholeThread: z.boolean(),
 });
 export const slackTools: SlackTool[] = [
+  ...decisionTools,
   ...digestTools,
-  ...captureTools,
+  ...captureRuleTools,
   {
     name: "undo_last_action",
     description:
-      "Undo the last reversible admin action in this thread within an hour when the admin asks to undo. Only its author may undo it. Never select for questions about undo.",
+      "Undo the last capture instruction or reversible admin action in this thread within an hour when its author asks to undo. Members can undo their own member capture rules; team rules and schedules need a current admin. Never select for questions about undo.",
     input_schema: z.toJSONSchema(empty) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       empty.parse(args);
+      if (isCaptureUndoInstruction(ctx.instructionText ?? "")) {
+        try {
+          const capture = await dispatchCaptureUndo(ctx);
+          if (capture) return capture;
+        } catch (error) {
+          if (error instanceof HiveError) return { text: error.message };
+          throw error;
+        }
+      }
       if (
         await (
           await import("@/server/digests/instructions")

@@ -1,6 +1,7 @@
 import { withOrigin, originFor, recordEvent } from "@/server/analytics/events";
 import { z } from "zod";
 import { withHiveBearerAuth } from "@/server/bearer-auth";
+import { HiveError } from "@/server/errors";
 import { enforceCaptureRules } from "@/server/capture-rules";
 import { classifyCapture } from "@/server/classify";
 import { rateLimit } from "@/server/identity/rate-limit";
@@ -31,8 +32,10 @@ export async function POST(request: Request) {
     const result = await withOrigin(originFor(ctx, "hook", claims ? "oauth" : "api_key"), async () => {
       const capture = await enforceCaptureRules(ctx, {title: "", body: input.text, repo: input.repo, remote: input.remote, cwd: input.cwd, home: input.home, paths: input.paths, agent: input.agent ?? "claude-code", sessionType: input.sessionType}, "hook", [input.branch, input.sessionRef].filter((value): value is string => Boolean(value)));
       if (capture.action === "drop") {
+        const matched = capture.matches.find(match => match.action === "drop");
+        if (!matched) throw new HiveError("The capture rule could not be evaluated. Try again.", 503);
         await recordEvent({name: "hook.fired", outcome: "skip", reasonCode: "capture_rule", properties: {hookKind: "stop", gateDecision: "skip", pushedCount: null}});
-        return {decision: "skip" as const, dropped: true, rule: capture.matches.find(match => match.action === "drop")!.kind, classification: null};
+        return {decision: "skip" as const, dropped: true, rule: matched.kind, classification: null};
       }
       const result = await classifyCapture({...input, text: capture.body});
       await recordEvent({

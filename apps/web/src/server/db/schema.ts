@@ -293,6 +293,7 @@ export const captureRulePreviews = pgTable("capture_rule_previews", {
 
 export const captureRuleApplications = pgTable("capture_rule_applications", {
   id: text("id").primaryKey(),
+  instructionId: text("instruction_id"),
   teamId: text("team_id").notNull(),
   ruleId: text("rule_id").notNull(),
   learningId: text("learning_id").notNull(),
@@ -378,6 +379,32 @@ export const slackDigestProposals = pgTable("slack_digest_proposals", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   confirmedScheduleId: text("confirmed_schedule_id"),
   createdAt: createdAt(),
+});
+
+export const captureRuleInstructions = pgTable("capture_rule_instructions", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull().references(() => teams.id),
+  memberId: text("member_id").notNull(),
+  source: text("source").notNull(),
+  channelId: text("channel_id"),
+  threadTs: text("thread_ts"),
+  decision: jsonb("decision").notNull(),
+  outcome: text("outcome").notNull(),
+  ruleId: text("rule_id"),
+  ruleRevision: integer("rule_revision"),
+  ruleSnapshot: jsonb("rule_snapshot"),
+  restatement: text("restatement").notNull(),
+  naturalText: text("natural_text").notNull(),
+  question: text("question"),
+  jobStatus: text("job_status").notNull().default("complete"),
+  jobCursor: text("job_cursor"),
+  undoCursor: text("undo_cursor"),
+  counts: jsonb("counts").notNull().default({scanned: 0, matched: 0, applied: 0, skipped: 0, restored: 0, retained: 0}),
+  undoUntil: timestamp("undo_until", {withTimezone: true}),
+  undoStartedAt: timestamp("undo_started_at", {withTimezone: true}),
+  undoneAt: timestamp("undone_at", {withTimezone: true}),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", {withTimezone: true}).notNull().defaultNow(),
 });
 
 export const slackToolActions = pgTable("slack_tool_actions", {

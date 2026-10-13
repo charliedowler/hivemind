@@ -119,7 +119,7 @@ export function InstallPage({ baseUrl }: { baseUrl: string }) {
           </div>
           <pre tabIndex={0} aria-label="Hive installer"><code>npx gohive install</code></pre>
         </Card>
-        <p className="muted">Sign in through your browser and allow access to your hive. Your existing settings are backed up. Run <code>npx gohive doctor</code> to check the connection.</p>
+        <p className="muted">The installer opens supported sign-in flows automatically and checks each connection. Choose your account and allow access in the browser. Claude Code uses <code>/mcp</code> for its agent sign-in. Use <code>--yes</code> or a terminal without interactive input to print the sign-in commands. Your existing settings are backed up. Run <code>npx gohive doctor</code> to check the connection.</p>
         <p><a href={skillUrl}>Read the Hive skill</a> to see when your agent searches, saves and cites team learnings.</p>
       </section>
       <details className="install-fallback">
