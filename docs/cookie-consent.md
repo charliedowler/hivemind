@@ -57,7 +57,7 @@ Therefore the unchanged default policy cannot provide a working worldwide opt-in
 
 The default opt-in and opt-out regions retain the normal dialog. The strict hook prevents tracking before an explicit grant in every region. Charlie owns any later decision to change the hosted policy or plan. The account's ability to edit policies is unverified: the dashboard requires a separate login, and its consent read endpoint returns HTTP 401 in the available browser session. No billing action is taken.
 
-## Verification on 13 October 2026
+## Earlier local verification on 13 October 2026
 
 Checks use a production Next.js build, an incognito browser session and network/storage inspection. A temporary, uncommitted page mounts the real beacon and logs fetch/sendBeacon calls before hydration. The temporary page, instrumentation and country override are removed before the final build and commit.
 
@@ -78,6 +78,30 @@ Checks use a production Next.js build, an incognito browser session and network/
 The build-time manifest removes the browser initialization request, so an unavailable backend does not prevent the tested first page from resolving its bundled policy. Blocking the save endpoint exercises actual hosted submission failure separately.
 
 Typecheck and production build pass. Tests pass: 59 core tests and 119 web tests. The 34 database integration tests are skipped because no isolated test database is configured. React Doctor reports no diagnostics on touched files; four warnings in untouched scripts/server code predate this change. No merge or manual deployment occurs.
+
+## Live activation, round 4, 13 October 2026
+
+The consent landing is `ebaf7404ad3de56a7ea86054358d20856b6e84e3` on main. Vercel deployment `dpl_FKEZgVHYmnSiss2LRU7HDJLBMi7v` is Ready. The live health endpoint returns that hash before later main changes deploy. The renewed Inth CLI confirms the backend URL and exactly the four trusted origins above. No environment, policy or billing change is needed in this round.
+
+Checks pass with the hosted URL: workspace typecheck, workspace tests (217 core, 50 CLI and 425 web passed; 210 web skipped), and the web production build.
+
+Live checks use fresh automation contexts, separate from the user's Chrome. A request-header proxy selects Germany/Berlin with `x-c15t-country: DE` and `x-c15t-region: BE`. The first proxy forwards production over a local port. The final headless run uses Playwright request interception as the header proxy on the real `https://gohive.dev` origin. Curl confirms the resolved DE country and Europe opt-in policy. This tests the deployed app and hosted saves, not a local build or a real German IP.
+
+| Check | Live evidence |
+| --- | --- |
+| Policy manifest | Hosted `/manifest` returns 200 with revision `1f6437c2038fba736495fa81698a2de473153ecf90aad76ed769ec521945e4af`; the page receives the resolved Europe opt-in state |
+| Before choice | Beehive banner visible; empty consent storage; zero optional vendor or analytics requests |
+| Reject and reload | Hosted `POST /subjects` returns 200; measurement stays false; banner stays hidden; no beacon |
+| Accept and reload | Hosted `POST /subjects` returns 200; measurement stays true; production page beacon returns 204 |
+| Withdrawal | Hosted save returns 200; automatic reload restores measurement denial; later pages send no beacon |
+| Footer routes | Preferences open on `/`, `/privacy`, `/terms`, `/app/login`, signed-out `/app/install` (redirects to login), and a confirmed 404 route |
+| Global error | Injecting error state into the deployed app's Next.js global boundary renders the 500 page and footer; preferences open; no error beacon while denied |
+
+Screenshots are saved and viewed at `/tmp/c15t/hive-live-banner.png`, `/tmp/c15t/hive-live-prefs.png` and `/tmp/c15t/hive-live-global-error.png`. Results and request records are in `/tmp/c15t/hive-round4-live-results.json` and `/tmp/c15t/hive-round4-live.har`.
+
+The local forward proxy's accepted beacon receives 403 from the app's origin check. The real production-origin run returns 204 after acceptance. Hosted saves return 200 in both cases. The final run does not claim a browser `/init` request for normal pages.
+
+The global error check injects browser boundary state and does not cause a server outage. An extra acceptance/save attempt after this artificial injection times out; an undefined error-prop console exception appears during injection. A granted global-error beacon is not claimed. Authenticated install/cell ingestion, backend outages and worldwide preferences are not retested. The unchanged default no-banner policy limitation still applies. Unit tests cover cell and error consent gates.
 
 ## Sources
 
