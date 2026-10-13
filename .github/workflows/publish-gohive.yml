@@ -44,6 +44,10 @@ jobs:
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
-      - name: Publish with OIDC and provenance
+      - name: Publish with OIDC trusted publishing
         if: steps.release.outputs.publish == 'true'
-        run: npm publish ./packages/cli --access public --provenance
+        # Provenance needs a public source repository; hivemind is private, so
+        # trusted publishing runs without a provenance attestation.
+        env:
+          NPM_CONFIG_PROVENANCE: "false"
+        run: npm publish ./packages/cli --access public
