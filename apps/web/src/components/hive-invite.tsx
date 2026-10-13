@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import type { HiveJoinPhrase } from "@hivemind/core";
-import { Button, Card } from "@hivemind/design-system";
+import { Button, Card, Input } from "@hivemind/design-system";
 import { teamInvitePrompt } from "@/lib/agent-onboarding";
 import { requestJson, errorMessage } from "@/lib/client";
+import { useRouter } from "next/navigation";
 import { PromptBlock } from "./prompt-block";
 export function InviteTeam({
   teamName,
@@ -69,6 +70,7 @@ export function HiveInvite({
   }
   return (
     <Card className="stack">
+      <RenameHive key={teamName} teamId={teamId} teamName={teamName} />
       {state.phrase ? (
         <>
           <h2 className="breakable">{state.phrase.phrase}</h2>
@@ -128,4 +130,18 @@ export function HiveInvite({
       {error ? <p role="alert">{error}</p> : null}
     </Card>
   );
+}
+
+function RenameHive({teamId, teamName}: {teamId: string; teamName: string}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = String(new FormData(event.currentTarget).get("name"));
+    setPending(true); setError("");
+    try {await requestJson("/api/app/organisation", {teamId, name}); router.refresh();}
+    catch (error) {setError(errorMessage(error));} finally {setPending(false);}
+  }
+  return <details><summary>Hive name</summary><form className="stack" onSubmit={event => void save(event)}><Input label="Hive name" name="name" defaultValue={teamName} maxLength={80} required /><Button type="submit" loading={pending}>Save name</Button>{error ? <p role="alert">{error}</p> : null}</form></details>;
 }

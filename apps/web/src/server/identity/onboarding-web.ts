@@ -10,7 +10,6 @@ import {
   joinByPhrase,
 } from "./join-phrases";
 import { ownerCapturePolicy, publishProject } from "../project-sharing";
-import { rateLimit } from "./rate-limit";
 
 export { joinFailure } from "@/lib/onboarding-copy";
 
@@ -71,7 +70,9 @@ export async function createOrganisation(ctx: HiveContext, requestKey: string) {
         teamName: String(prior[0].name),
         paused: Boolean(prior[0].join_paused),
       };
-    await rateLimit("create-organisation", ctx.memberId, 5, 3600);
+    const bucket = `create-organisation:${hashToken(ctx.memberId)}`;
+    const attempts = await tx`INSERT INTO rate_limits (bucket, window_start, count) VALUES (${bucket}, now(), 1) ON CONFLICT (bucket) DO UPDATE SET count = CASE WHEN rate_limits.window_start < now() - interval '1 hour' THEN 1 ELSE rate_limits.count + 1 END, window_start = CASE WHEN rate_limits.window_start < now() - interval '1 hour' THEN now() ELSE rate_limits.window_start END RETURNING count`;
+    if (Number(attempts[0].count) > 5) throw new HiveError("Too many attempts. Please try later.", 429);
     const domain = emailDomain(String(actors[0].email));
     const workDomain = domain && !isPublicDomain(domain) ? domain : null;
     const name = (

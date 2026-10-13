@@ -29,7 +29,7 @@ vi.mock("@/server/identity/onboarding-web", () => ({
 vi.mock("@/server/identity/join-phrases", () => ({
   adminJoinPhrase: async () => null,
 }));
-vi.mock("@/server/web-sharing", () => ({ projectShareState: async () => [] }));
+vi.mock("@/server/web-sharing", () => ({ projectShareState: async () => [], ownerAgentChoices: async () => [] }));
 vi.mock("@/components/hive-invite", () => ({
   HiveInvite: () => <p>Invite control</p>,
 }));

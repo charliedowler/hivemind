@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { ProjectDelegation } from "./project-delegation";
 import { ProjectSharing } from "./project-sharing";
 import type { projectShareState } from "@/server/web-sharing";
 import type { OwnerCapturePolicy, CaptureRule } from "@hivemind/core";
@@ -19,6 +20,7 @@ type AccountData = {
     role: string;
   };
 };
+const emptyAgents: {id: string; name: string}[] = [];
 const emptySharing: Awaited<ReturnType<typeof projectShareState>> = [];
 export function Account({
   initial,
@@ -26,16 +28,16 @@ export function Account({
   rules,
   policy,
   sharing = emptySharing,
+  agents = emptyAgents,
 }: {
   initial: AccountData;
   hasPassword: boolean;
+  agents?: {id: string; name: string}[];
   rules: CaptureRule[];
   policy?: OwnerCapturePolicy;
   sharing?: Awaited<ReturnType<typeof projectShareState>>;
 }) {
   const [data, setData] = useState(initial);
-  const [editedPolicy, setEditedPolicy] = useState<OwnerCapturePolicy>();
-  const currentPolicy = editedPolicy && editedPolicy.revision >= (policy?.revision ?? 0) ? editedPolicy : policy;
   const [token, setToken] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
   const [error, setError] = useState("");
@@ -158,12 +160,7 @@ export function Account({
           </Card>
         </details>
       ) : null}
-      <CaptureRules
-        initial={{ rules, policy: currentPolicy, isAdmin: data.member.role === "admin" }}
-        onPolicySaved={setEditedPolicy}
-        scope="personal"
-      />
-      {currentPolicy ? <ProjectSharing policy={currentPolicy} initial={sharing} /> : null}
+      <AccountProjectChoices policy={policy} rules={rules} sharing={sharing} agents={agents} isAdmin={data.member.role === "admin"} />
       <Link href="/app/create-hive">Create a hive for your team</Link>
       <Button
         variant="ghost"
@@ -185,4 +182,18 @@ export function Account({
       </Button>
     </div>
   );
+}
+
+function AccountProjectChoices({policy, rules, sharing, agents, isAdmin}: {policy?: OwnerCapturePolicy; rules: CaptureRule[]; sharing: Awaited<ReturnType<typeof projectShareState>>; agents: {id: string; name: string}[]; isAdmin: boolean}) {
+  const [editedPolicy, setEditedPolicy] = useState<OwnerCapturePolicy>();
+  const currentPolicy = editedPolicy && editedPolicy.revision >= (policy?.revision ?? 0) ? editedPolicy : policy;
+  return <>
+      <CaptureRules
+        initial={{ rules, policy: currentPolicy, isAdmin }}
+        onPolicySaved={setEditedPolicy}
+        scope="personal"
+      />
+      {currentPolicy ? <ProjectSharing policy={currentPolicy} initial={sharing} /> : null}
+      {currentPolicy ? <ProjectDelegation key={currentPolicy.revision} policy={currentPolicy} agents={agents} /> : null}
+  </>;
 }

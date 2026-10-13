@@ -78,15 +78,11 @@ describe.skipIf(!process.env.DATABASE_URL)(
     });
     it("creates one hive for concurrent retries and publishes selected grants without moving originals", async () => {
       const key = randomUUID();
-      const results = await Promise.all([
-        createOrganisation(owner, key),
-        createOrganisation(owner, key),
-        createOrganisation(owner, key),
-      ]);
+      const results = await Promise.all(Array.from({length: 8}, () => createOrganisation(owner, key)));
       teamId = results[0].teamId;
       expect(new Set(results.map((row) => row.teamId)).size).toBe(1);
       expect(results[0].paused).toBe(false);
-      expect((await createOrganisation(owner, key)).teamId).toBe(teamId);
+      for (let retry = 0; retry < 8; retry++) expect((await createOrganisation(owner, key)).teamId).toBe(teamId);
       expect(
         (
           await sql`SELECT count(*)::int AS n FROM teams WHERE id = ${teamId}`

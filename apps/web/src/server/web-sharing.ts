@@ -40,3 +40,8 @@ export async function cellShareState(ctx: HiveContext, id: string) {
       })),
   };
 }
+
+export async function ownerAgentChoices(ctx: HiveContext) {
+  const rows = await getSql()`SELECT DISTINCT m.id, m.name FROM agent_owner_bindings b JOIN auth_accounts a ON a.owner_sub = b.owner_sub AND a.provider_id = 'agentid' AND a.owner_email_verified JOIN members m ON m.id = a.user_id JOIN hive_memberships h ON h.member_id = m.id AND h.owner_member_id = b.owner_member_id AND h.removed_at IS NULL WHERE b.issuer = 'https://auth.agentid.com' AND b.owner_member_id = ${ctx.memberId} AND m.actor_type = 'agent' AND m.disabled_at IS NULL AND NOT m.provisional ORDER BY m.name, m.id`;
+  return rows.map(row => ({id: String(row.id), name: String(row.name)}));
+}

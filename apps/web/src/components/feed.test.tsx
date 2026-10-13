@@ -176,7 +176,7 @@ describe("feed interactions", () => {
     expect(
       vi
         .mocked(requestJson)
-        .mock.calls.every(([path]) => path === "/api/app/feed"),
+        .mock.calls.every(([path]) => path === "/api/app/feed?include_history=true"),
     ).toBe(true);
   });
   it("highlights new cells for one poll update", async () => {

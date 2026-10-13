@@ -7,11 +7,13 @@ import { HiveInvite, InviteTeam } from "./hive-invite";
 import { Members } from "./members";
 import { CellSharing } from "./cell-sharing";
 import { LearningCard } from "./learning-card";
+import { ProjectDelegation } from "./project-delegation";
 import { Feed } from "./feed";
 import { PromptBlock } from "./prompt-block";
 import { setupPrompt } from "@/lib/agent-onboarding";
 import { renderWelcome } from "@/server/identity/welcome-template";
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
+vi.mock("next/navigation", () => ({useRouter: () => ({refresh: vi.fn()})}));
 vi.mock("@/lib/client", () => ({
   requestJson: mocks.request,
   errorMessage: (e: Error) => e.message,
@@ -252,5 +254,17 @@ it("shows excluded cells only when history is enabled", async () => {
     expect(host.textContent).toContain("Marked unhelpful by 2");
     await act(async () => host.querySelector<HTMLInputElement>('input[role="switch"]')!.click());
     expect(host.textContent).not.toContain("Hidden cell");
+  } finally {await close();}
+});
+
+it("grants one named agent only the exact project selection at the current revision", async () => {
+  mocks.request.mockResolvedValue({id: "delegation"});
+  const {host, close} = await mount(<ProjectDelegation policy={{include: ["github.com/team/platform"], exclude: ["github.com/team/private"], revision: 4}} agents={[{id: "agent", name: "Codex on laptop"}]} />);
+  try {
+    const select = host.querySelector<HTMLSelectElement>("select")!;
+    await act(async () => {select.value = "agent"; select.dispatchEvent(new window.Event("change", {bubbles: true}));});
+    await act(async () => host.querySelector("form")!.dispatchEvent(new window.Event("submit", {bubbles: true, cancelable: true})));
+    expect(mocks.request).toHaveBeenLastCalledWith("/api/app/project-selection/delegate", {agentId: "agent", selection: {include: ["github.com/team/platform"], exclude: ["github.com/team/private"], revision: 4}});
+    expect(host.textContent).toContain("Allowed Codex on laptop to save these projects once within 15 minutes.");
   } finally {await close();}
 });
