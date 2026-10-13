@@ -62,6 +62,8 @@ export async function rotateInvite(ctx: HiveContext) {
 export async function allowDomain(ctx: HiveContext): Promise<void> {
   await requireAdmin(ctx);
   const sql = getSql();
+  const organisations = await sql`SELECT id FROM teams WHERE id = ${ctx.teamId} AND personal_owner_member_id IS NULL`;
+  if (!organisations.length) throw new HiveInputError("Work domains belong to organisation hives.");
   const rows =
     await sql`SELECT m.email FROM members m JOIN hive_memberships h ON h.member_id = m.id WHERE m.id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND m.email_verified AND h.removed_at IS NULL AND m.disabled_at IS NULL`;
   const domain = rows[0] && emailDomain(rows[0].email);

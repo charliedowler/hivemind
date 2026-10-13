@@ -13,7 +13,7 @@ import { bindVerifiedOwner, agentIdIssuer } from "./owner-bindings";
 import { enrollAgent } from "./agent-enrollment";
 import { enrollMember, memberContext } from "./enrollment";
 import { joinPageState } from "./join-page";
-import { removeMember, requireAdmin, revokeJoinCapability } from "./access";
+import { allowDomain, removeMember, requireAdmin, revokeJoinCapability } from "./access";
 import { adminJoinPhrase, generateJoinPhrase, issueJoinCapability, joinByPhrase, joinPhraseEntropyBits, lookupJoinPhrase, normaliseJoinPhrase, pauseJoinPhrase, randomJoinPhrase, rotateJoinPhrase } from "./join-phrases";
 
 vi.mock("server-only", () => ({}));
@@ -137,7 +137,12 @@ describe.skipIf(!process.env.DATABASE_URL)("multi-hive identities", () => {
         expect((await tx`SELECT token_hash FROM web_sessions WHERE id = 'session_1'`)[0].token_hash).toBe(hashToken("session-1"));
         await tx.unsafe(await readFile(new URL("0027_multi_hive.sql", directory), "utf8"));
         expect((await tx`SELECT count(*)::int AS count FROM teams`)[0].count).toBe(7);
-        await tx.unsafe(await readFile(new URL("rollback/0027_multi_hive.sql", directory), "utf8"));
+        const undo = await readFile(new URL("rollback/0027_multi_hive.sql", directory), "utf8");
+        await tx`INSERT INTO knowledge_snapshots (token_hash, member_id, team_id, revision, object_key, expires_at) VALUES ('fixture-snapshot', 'human_1', 'team_personal_human_1', 1, 'fixture-private-object', now() + interval '1 day')`;
+        await expect(tx.savepoint(sp => sp.unsafe(undo))).rejects.toThrow(/Refuse lossy/);
+        expect((await tx`SELECT object_key FROM knowledge_snapshots WHERE token_hash = 'fixture-snapshot'`)[0].object_key).toBe("fixture-private-object");
+        await tx`DELETE FROM knowledge_snapshots WHERE token_hash = 'fixture-snapshot'`;
+        await tx.unsafe(undo);
         expect((await tx`SELECT count(*)::int AS count FROM teams`)[0].count).toBe(3);
         expect((await tx`SELECT count(*)::int AS count FROM pg_constraint WHERE contype = 'f' AND confrelid = 'members'::regclass AND cardinality(confkey) = 2`)[0].count).toBe(oldFks[0].count);
         throw rollback;
@@ -239,6 +244,7 @@ describe.skipIf(!process.env.DATABASE_URL)("multi-hive identities", () => {
     const phrase = await generateJoinPhrase(admin);
     expect(phrase.paused).toBe(true);
     await expect(pauseJoinPhrase(admin, false)).rejects.toThrow(/could not be joined/);
+    await expect(allowDomain(owner)).rejects.toThrow(/organisation hives/);
     await expect(lookupJoinPhrase(owner, phrase.phrase, options())).rejects.toThrow(/could not be joined/);
     await expect(adminJoinPhrase({ ...owner, teamId: admin.teamId })).rejects.toThrow(/admin/);
     await sql`INSERT INTO team_domains (team_id, domain, created_by) VALUES (${admin.teamId}, ${domain}, ${admin.memberId})`;

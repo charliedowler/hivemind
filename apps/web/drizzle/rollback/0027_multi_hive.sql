@@ -9,6 +9,10 @@ DO $$ BEGIN
     OR EXISTS (SELECT 1 FROM capture_rules c JOIN teams t ON t.id = c.team_id WHERE t.personal_owner_member_id IS NOT NULL AND (c.id NOT LIKE 'crule_default_%' OR NOT c.enabled OR c.revision <> 1))
     OR EXISTS (SELECT 1 FROM web_sessions s JOIN teams t ON t.id = s.team_id WHERE t.personal_owner_member_id IS NOT NULL)
     OR EXISTS (SELECT 1 FROM api_keys k JOIN teams t ON t.id = k.team_id WHERE t.personal_owner_member_id IS NOT NULL)
+    OR EXISTS (SELECT 1 FROM knowledge_snapshots s JOIN teams t ON t.id = s.team_id WHERE t.personal_owner_member_id IS NOT NULL)
+    OR EXISTS (SELECT 1 FROM auth_oauth_consent c JOIN teams t ON t.id = c.reference_id WHERE t.personal_owner_member_id IS NOT NULL)
+    OR EXISTS (SELECT 1 FROM auth_oauth_refresh_token c JOIN teams t ON t.id = c.reference_id WHERE t.personal_owner_member_id IS NOT NULL)
+    OR EXISTS (SELECT 1 FROM auth_oauth_access_token c JOIN teams t ON t.id = c.reference_id WHERE t.personal_owner_member_id IS NOT NULL)
   THEN RAISE EXCEPTION 'Refuse lossy multi-hive rollback'; END IF;
 END $$;
 DROP TRIGGER IF EXISTS hive_selected_membership ON members;
