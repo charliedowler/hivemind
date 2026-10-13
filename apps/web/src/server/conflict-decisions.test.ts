@@ -151,7 +151,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const old = await push(a, title, "The setting accepts writes.");
       vi.mocked(judgeMemory).mockImplementation(async (_, candidates) => ({
         tags: [],
-        relations: candidates.map((cell) => ({
+        relations: candidates.filter((cell) => cell.id === old.id).map((cell) => ({
           id: cell.id,
           revision: cell.revision,
           relation: "contradiction",
@@ -201,7 +201,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(pushes[0].merged).toBe(true);
         }
         if (decision === "mark_outdated") {
-          expect(oldCell?.verifyBeforeUse).toBe(true);
+          const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(oldCell!.verifyAfter!) + 1);
+          try {
+            expect((await getLearning(a, old.id))?.verifyBeforeUse).toBe(true);
+          } finally {
+            clock.mockRestore();
+          }
           expect(newCell?.lifecycle).toBe("outdated");
         }
         if (decision === "retract_new")
@@ -288,7 +293,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(result.text).toBe("Decision reversed.");
       expect((await getLearning(a, old.id))?.lifecycle).toBe("fresh");
       expect(await runReversibleAction(context, "hive_reverse_decision", async () => { throw new Error("A replay must not mutate"); })).toEqual(result);
-      expect(await undoLastAction(context)).toEqual({ text: "Decision reapplied." });
+      expect(await undoLastAction(context)).toEqual({ react: "white_check_mark", text: "Decision reapplied." });
       expect((await getLearning(a, old.id))?.lifecycle).toBe("superseded");
       expect((await undoLastAction(context)).text).toContain("already undone");
     });

@@ -2,12 +2,11 @@ import { decisionTools } from "./decisions";
 export { reactToSlack } from "./react";
 export type { SlackReactResult } from "./react";
 export { slackToolReply } from "./reply";
-import { decideDecisiveness } from "@/server/slack/decisiveness";
-import { undoLastAction } from "@/server/slack/actions";
+import { undoThreadAction } from "./undo";
 export { decideDecisiveness } from "@/server/slack/decisiveness";
 export { runReversibleAction } from "@/server/slack/actions";
 import { digestTools } from "./digests";
-import { captureRuleTools, isCaptureUndoInstruction, dispatchCaptureUndo } from "./capture-rules";
+import { captureRuleTools } from "./capture-rules";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { HiveError } from "@/server/errors";
@@ -64,51 +63,7 @@ export const slackTools: SlackTool[] = [
     input_schema: z.toJSONSchema(empty) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       empty.parse(args);
-      if (isCaptureUndoInstruction(ctx.instructionText ?? "")) {
-        try {
-          const capture = await dispatchCaptureUndo(ctx);
-          if (capture) return capture;
-        } catch (error) {
-          if (error instanceof HiveError) return { text: error.message };
-          throw error;
-        }
-      }
-      if (
-        await (
-          await import("@/server/digests/instructions")
-        ).isDigestFollowup(
-          ctx.teamId,
-          ctx.memberId,
-          ctx.channelId,
-          ctx.threadTs,
-        )
-      ) {
-        try {
-          return await (
-            await import("@/server/digests/instructions")
-          ).digestInstruction(
-            ctx,
-            ctx.instructionText ?? "undo",
-            await (
-              await import("@/server/digests/connection")
-            ).slackMemberTimezone(ctx.teamId, ctx.memberId),
-          );
-        } catch (error) {
-          if (error instanceof HiveError) return { text: error.message };
-          throw error;
-        }
-      }
-      const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
-        ...ctx,
-        actionType: "undo",
-      });
-      if (!judgment.act) return { text: judgment.reason };
-      try {
-        return await undoLastAction(ctx);
-      } catch (error) {
-        if (error instanceof HiveError) return { text: error.message };
-        throw error;
-      }
+      return undoThreadAction(ctx);
     },
   },
   {
@@ -173,7 +128,24 @@ export const slackTools: SlackTool[] = [
       );
       return {
         text: slackCaptureReply(result),
+        ...(!result || (!result.dropped && !result.learning.captureFlagged)
+          ? { react: "white_check_mark" }
+          : {}),
       };
+    },
+  },
+  {
+    name: "react",
+    description:
+      "Acknowledge with a real reaction instead of text when the entire reply would be done, agreed, noted or no change. Use +1 for done or agreed, eyes for noted or looking, white_check_mark for saved. Do not use instead of executing an admin instruction or asking for a missing detail.",
+    input_schema: z.toJSONSchema(
+      z.strictObject({ emoji: z.enum(["+1", "eyes", "white_check_mark"]) }),
+    ) as Anthropic.Tool.InputSchema,
+    async handler(_ctx, args) {
+      const input = z
+        .strictObject({ emoji: z.enum(["+1", "eyes", "white_check_mark"]) })
+        .parse(args);
+      return { react: input.emoji };
     },
   },
   {

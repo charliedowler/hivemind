@@ -142,6 +142,20 @@ describe("Slack reply placement", () => {
       expect(root).not.toHaveBeenCalled();
     },
   );
+  it.each(["undo", "cancel that", "revert", "What time is that in London?"])("handles an unmentioned follow-up in Hive's active thread: %s", async (text) => {
+    query.mockImplementation(async (strings: TemplateStringsArray) => {
+      const sql = strings.join(" ");
+      if (sql.includes("SELECT question,answer")) return [{ question: "Set a digest", answer: "Acknowledged with a reaction." }];
+      if (sql.includes("INSERT INTO slack_jobs")) return [{ id: "job_fixture", payload: null }];
+      if (sql.includes("SELECT delivery")) return [{ delivery: "reserved" }];
+      return [];
+    });
+    respond.mockResolvedValue({ react: "white_check_mark" });
+    await handleMessage("team_fixture", { type: "message", channel: "C123", user: "UCHARLIE", ts: "1800000000.002", thread_ts: "1800000000.001", text });
+    expect(respond).toHaveBeenCalledWith(expect.objectContaining({ threadTs: "1800000000.001" }), text, "1800000000.002", expect.arrayContaining([expect.objectContaining({question: "Set a digest"})]));
+    expect(post).not.toHaveBeenCalled();
+    expect(react).toHaveBeenCalledWith(expect.objectContaining({ messageTs: "1800000000.002" }), "white_check_mark");
+  });
   it("executes a sibling react outcome without posting text", async () => {
     respond.mockResolvedValue({ react: "white_check_mark" });
     await handleMessage("team_fixture", {
@@ -169,7 +183,7 @@ describe("Slack reply placement", () => {
     expect(post).not.toHaveBeenCalled();
     expect(react).toHaveBeenCalledWith(
       { teamId: "team_fixture", channelId: "C123", messageTs: "1800000000.1" },
-      "+1",
+      "eyes",
     );
   });
   it("reads human thread answers for the gate without indexing the context", async () => {

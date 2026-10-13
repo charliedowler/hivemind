@@ -5,7 +5,7 @@ import {
   digestZone,
   digestScheduleInput,
 } from "@hivemind/core";
-import type { SlackToolContext } from "@/slack/tools";
+import type { SlackToolContext, SlackToolResult } from "@/slack/tools";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { HiveError } from "../errors";
@@ -36,7 +36,7 @@ export async function digestInstruction(
   ctx: SlackToolContext,
   text: string,
   timezone: string,
-) {
+): Promise<SlackToolResult> {
   const member = await proposalContext(ctx.teamId, ctx.memberId);
   if (!ctx.messageTs)
     throw new HiveError("Ask Hive in a new message to change a schedule.", 400);
@@ -108,7 +108,9 @@ export async function digestInstruction(
   if (decision === "refuse")
     return { text: "Only hive admins can change digest schedules." };
   if (decision === "clarify")
-    return { text: questions[proposal.missing ?? "intent"] };
+    return proposal.missing === "intent"
+      ? { react: "eyes" }
+      : { text: questions[proposal.missing ?? "intent"] };
   return applyDigestInstruction(ctx, proposal);
 }
 export async function applyDigestInstruction(
@@ -203,13 +205,7 @@ export async function applyDigestInstruction(
         : action === "disable"
           ? `Stopped. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}).`
           : `Set. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}). ${saved.enabled ? `${old ? "Next update" : "First update"} ${next}.` : "The schedule is paused."}`;
-    const reaction =
-      action === "set" &&
-      !proposal.defaultedDetails &&
-      saved.enabled &&
-      new Date(saved.nextDueAt).getTime() - Date.now() <= 48 * 3600000
-        ? "+1"
-        : null;
+    const reaction = "+1";
     await tx`INSERT INTO slack_digest_instructions(id,team_id,member_id,channel_id,thread_ts,message_ts,action,schedule_id,before_schedule,after_revision,reply,reaction) VALUES(${newId("dgi")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},${action},${saved.id},${old ? tx.json(digestScheduleInput.parse(scheduleView(old))) : null},${revision},${reply},${reaction})`;
     if (reversed)
       await tx`UPDATE slack_digest_instructions SET reversed_at=now() WHERE id=${String(reversed.id)} AND team_id=${ctx.teamId}`;

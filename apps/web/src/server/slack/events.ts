@@ -1,5 +1,5 @@
 import { reactToSlack } from "@/slack/tools/react";
-import { hasThreadAction } from "./actions";
+import { latestThreadAction } from "@/slack/tools/undo";
 import { z } from "zod";
 import { redactSecrets, type HiveContext } from "@hivemind/core";
 import { getSql } from "../db/client";
@@ -259,19 +259,9 @@ export async function handleMessage(
         message.user!,
         direct,
       );
-      const undoRequest =
-        /^(?:please\s+)?undo(?:\s+(?:that|it|the last action|please))?[.!]?$/i.test(
-          message.text.trim(),
-        ) &&
-        !!message.thread_ts &&
-        (await hasThreadAction(teamId, channel, thread));
-      const digestFollowup =
-        actor && thread !== message.ts
-          ? await (
-              await import("../digests/instructions")
-            ).isDigestFollowup(teamId, actor.memberId, channel, thread)
-          : false;
-      const prompted = mentioned || direct || undoRequest || digestFollowup;
+      const threadFollowup = actor && !!message.thread_ts &&
+        (prior.length > 0 || Boolean(await latestThreadAction({ teamId, channelId: channel, threadTs: thread })));
+      const prompted = mentioned || direct || Boolean(threadFollowup);
       const cells =
         actor && !prompted
           ? (
@@ -345,11 +335,10 @@ export async function handleMessage(
       }
       if (decision.decision === "stay_silent") return;
       if (decision.decision === "react_only") {
-        await slackCall(inst.token, "reactions.add", {
-          channel,
-          timestamp: message.ts,
-          name: "+1",
-        });
+        await reactToSlack(
+          { teamId, channelId: channel, messageTs: message.ts },
+          "+1",
+        );
         await getSql()`UPDATE slack_decisions SET delivery='sent' WHERE team_id=${teamId} AND id=${decision.id}`;
         return;
       }
@@ -388,8 +377,23 @@ export async function handleMessage(
             });
       if (reply.silent && mentioned)
         reply = {
-          text: "",
-          react: "+1",
+          react: /^(?:thanks|thank you|cheers)\b/i.test(stripped)
+            ? "+1"
+            : "eyes",
+        };
+      if (
+        !reply.react &&
+        /^(?:no change made|done|agreed|noted|looking|saved)[.!]?$/i.test(
+          reply.text?.trim() ?? "",
+        )
+      )
+        reply = {
+          ...reply,
+          react: /^(?:noted|looking|no change)/i.test(reply.text ?? "")
+            ? "eyes"
+            : /^saved/i.test(reply.text ?? "")
+              ? "white_check_mark"
+              : "+1",
         };
       await sql`UPDATE slack_jobs SET payload=${sql.json({ decision, reply } as never)} WHERE team_id=${teamId} AND id=${receipt[0].id}`;
       if (reply.react) {
