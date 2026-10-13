@@ -280,3 +280,5 @@ HIVE_DIGEST_TEST_DATABASE_URL=postgres://hivemind:hivemind@127.0.0.1:54329/hive_
 ```
 
 Reviewed screenshots are `docs/screenshots/digests-1280.png` and `docs/screenshots/digests-390.png`. They show synthetic schedules in the dedicated local database.
+
+Digest dates use each schedule’s timezone and readable weekday, date and clock text. Clear Slack schedule instructions act immediately; members can list schedules. Admins can undo their latest change in its thread within one hour. New schedule undo removes it from the schedule list while keeping post history.
