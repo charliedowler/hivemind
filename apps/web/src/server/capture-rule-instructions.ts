@@ -96,7 +96,7 @@ async function replaySlackInstruction(tx: Parameters<typeof lockLearningWrites>[
     throw new HiveError("This Slack instruction does not match its action receipt.", 409);
   if (row.outcome === "question") return {status: "question", restatement: row.restatement, question: row.question};
   if (row.rule_snapshot.scope === "team" && role !== "admin") throw new HiveError("A team admin is needed to access a team capture instruction.", 403);
-  if (row.undo_started_at) return {status: "undone", restatement: "Removed the capture rule. Later changes and other rules are preserved.", counts: counts(row)};
+  if (row.undo_started_at) return {status: "undone", restatement: "Removed your choice. Later changes and other choices still apply.", counts: counts(row)};
   return {status: "saved", rule: row.rule_snapshot, restatement: row.restatement, counts: counts(row), undoUntil: new Date(row.undo_until).toISOString()};
 }
 
@@ -130,8 +130,8 @@ function isRequiredDetailQuestion(proposed: string | null) {
 }
 
 function requiredQuestion(judgement: Judgement, proposed: string | null) {
-  if (!judgement.clearInstruction) return "Which exact capture rule should Hive add?";
-  if (!judgement.allowedScope) return "What capture rule should apply to your own captures?";
+  if (!judgement.clearInstruction) return "What should Hive keep, exclude or keep private?";
+  if (!judgement.allowedScope) return "What should Hive keep from your agents?";
   if (proposed && isRequiredDetailQuestion(proposed)) {
     const first = proposed.split("?")[0].trim().slice(0, 499);
     if (first) return `${first}?`;
@@ -163,7 +163,7 @@ function scheduleInstruction(ctx: HiveContext, id: string) {
 export async function setCaptureRuleFromText(ctx: HiveContext, text: string, context: CaptureRuleInstructionContext): Promise<CaptureRuleInstructionResult> {
   const location = instructionContext(context);
   const request = z.string().trim().min(1).max(4000).safeParse(text);
-  if (!request.success) throw new HiveInputError("Describe the rule in 4000 characters or fewer.");
+  if (!request.success) throw new HiveInputError("Describe what Hive should keep in 4000 characters or fewer.");
   return serializeSlackRequest(ctx, location, () => withActor(ctx, async () => {
     const members = await getSql()`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL`;
     if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
@@ -189,7 +189,7 @@ export async function setCaptureRuleFromText(ctx: HiveContext, text: string, con
     const save = judgement.clearInstruction && judgement.requiredDetails && judgement.allowedScope && proposal.rule && !specificQuestion;
     const id = newId("cinstr");
     const naturalText = redactSecrets(request.data).text;
-    const restatement = save ? redactSecrets(proposal.restatement).text : "No rule was saved.";
+    const restatement = save ? redactSecrets(proposal.restatement).text : "No changes were saved.";
     const question = save ? null : requiredQuestion(judgement, proposal.question);
     const result = await getSql().begin(async tx => {
       if (location.source === "slack") await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`slack-action:${ctx.teamId}:${location.channelId}:${location.threadTs}`}, 0))`;
@@ -200,7 +200,7 @@ export async function setCaptureRuleFromText(ctx: HiveContext, text: string, con
       if (replay) return {replay};
       const rule = save ? await insertCaptureRule(tx, ctx, captureRuleInputSchema.parse({...proposal.rule, enabled: true, source: location.source, naturalText})) : null;
       const rows = await tx`INSERT INTO capture_rule_instructions (id, team_id, member_id, source, channel_id, thread_ts, decision, outcome, rule_id, rule_revision, rule_snapshot, restatement, natural_text, question, job_status, undo_until) VALUES (${id}, ${ctx.teamId}, ${ctx.memberId}, ${location.source}, ${location.channelId}, ${location.threadTs}, ${tx.json({...judgement, engine: fast.decision === "fallback" ? "proposal" : "jev", ...(location.source === "slack" ? {messageTs: location.messageTs} : {})})}, ${rule ? "saved" : "question"}, ${rule?.id ?? null}, ${rule ? 1 : null}, ${rule ? tx.json(rule) : null}, ${restatement}, ${naturalText}, ${question}, ${rule && (rule.scope === "team" || rule.action !== "flag") ? "pending" : "complete"}, ${rule ? tx`clock_timestamp() + interval '1 hour'` : null}) RETURNING *`;
-      if (rule && location.source === "slack") await tx`INSERT INTO slack_tool_actions (id, team_id, member_id, channel_id, thread_ts, message_ts, tool_name, inverse, reply, created_at, expires_at) VALUES (${newId("sact")}, ${ctx.teamId}, ${ctx.memberId}, ${location.channelId}, ${location.threadTs}, ${location.messageTs}, 'hive_set_capture_rule', ${tx.json({kind: "capture_instruction", reversible: true, payload: {instructionId: id}})}, 'Saved your capture rule.', ${rows[0].created_at}, ${rows[0].undo_until})`;
+      if (rule && location.source === "slack") await tx`INSERT INTO slack_tool_actions (id, team_id, member_id, channel_id, thread_ts, message_ts, tool_name, inverse, reply, created_at, expires_at) VALUES (${newId("sact")}, ${ctx.teamId}, ${ctx.memberId}, ${location.channelId}, ${location.threadTs}, ${location.messageTs}, 'hive_set_capture_rule', ${tx.json({kind: "capture_instruction", reversible: true, payload: {instructionId: id}})}, 'Saved what Hive keeps.', ${rows[0].created_at}, ${rows[0].undo_until})`;
       return {row: rows[0], rule};
     });
     if (result.replay) return result.replay;
@@ -292,7 +292,7 @@ export async function undoCaptureRuleInstruction(ctx: HiveContext, context: Capt
     if (!available) throw new HiveInputError("The one-hour undo period has ended.");
     const rules = await tx`SELECT id, revision, created_by FROM capture_rules WHERE id = ${row.rule_id} AND team_id = ${ctx.teamId} FOR UPDATE`;
     if (rules.length && (rules[0].revision !== row.rule_revision || rules[0].created_by !== ctx.memberId))
-      throw new HiveError("The rule changed after this instruction. Review its current state.", 409);
+      throw new HiveError("This choice changed after your instruction. Review what Hive keeps.", 409);
     await tx`DELETE FROM capture_rules WHERE id = ${row.rule_id} AND team_id = ${ctx.teamId} AND created_by = ${ctx.memberId} AND revision = ${row.rule_revision}`;
     const [updated] = await tx`UPDATE capture_rule_instructions SET job_status = 'undo_pending', undo_started_at = clock_timestamp(), updated_at = clock_timestamp() WHERE id = ${row.id} AND team_id = ${ctx.teamId} RETURNING *`;
     if (location.source === "slack") await tx`UPDATE slack_tool_actions SET undone_at = ${updated.undo_started_at} WHERE team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND channel_id = ${location.channelId} AND thread_ts = ${location.threadTs} AND tool_name = 'hive_set_capture_rule' AND inverse->>'kind' = 'capture_instruction' AND inverse->'payload'->>'instructionId' = ${row.id}`;
@@ -303,7 +303,7 @@ export async function undoCaptureRuleInstruction(ctx: HiveContext, context: Capt
   const resultCounts = counts(updated);
   if (resultCounts.pending) scheduleInstruction(ctx, instruction.id);
   await withActor(ctx, () => recordEvent({name: "capture.rule_instruction_undone", key: instruction.id, outcome: "completed", reasonCode: "capture_rule", properties: {captureInstructionId: instruction.id, ruleId: instruction.rule_id, instructionSource: instruction.source, instructionDecision: "undo", scannedCount: resultCounts.scanned, appliedCount: resultCounts.applied, restoredCount: resultCounts.restored, retainedCount: resultCounts.retained, pending: resultCounts.pending}}));
-  return {status: "undone", restatement: "Removed the capture rule. Later changes and other rules are preserved.", counts: resultCounts};
+  return {status: "undone", restatement: "Removed your choice. Later changes and other choices still apply.", counts: resultCounts};
 }
 
 export async function runPendingCaptureRuleInstructions(limit = 10) {

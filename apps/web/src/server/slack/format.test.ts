@@ -79,7 +79,7 @@ describe("Slack answer presentation", () => {
 
 it("never quotes a dropped or owner-private capture", () => {
   expect(slackCaptureReply({ dropped: true, rule: "content_category" })).toBe(
-    "This capture was excluded by a capture rule.",
+    "Hive excluded this cell based on what you or your team chose to keep.",
   );
   const result = {
     id: "lrn_fixture",
@@ -93,7 +93,7 @@ it("never quotes a dropped or owner-private capture", () => {
     },
   } as import("@hivemind/core").PushResult;
   const reply = slackCaptureReply(result);
-  expect(reply).toContain("Kept privately");
+  expect(reply).toContain("Kept private");
   expect(reply).not.toContain("private-marker");
   expect(reply).not.toContain("private-body");
 });

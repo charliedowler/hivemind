@@ -177,7 +177,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
         customAccessTokenClaims: async ({ user, referenceId }) => {
           if (!user) throw new APIError("FORBIDDEN", { message: "A hive member must sign in." });
           const ctx = await memberContext(user.id, referenceId);
-          if (!ctx) throw new APIError("FORBIDDEN", { message: "Join a hive before connecting your forager." });
+          if (!ctx) throw new APIError("FORBIDDEN", { message: "Join a hive before connecting your agent." });
           return { hive_member_id: ctx.memberId, hive_team_id: ctx.teamId };
         },
       }),

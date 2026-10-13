@@ -8,11 +8,11 @@ export async function deliverCode(
   code: string,
   id: string,
 ): Promise<boolean> {
-  return deliverEmail(email, "Your Hive code", `Your Hive code is ${code}.\n\nIt expires in 15 minutes.`, `hive-email-verification/${id}`);
+  return deliverEmail(email, "Your Hive code", `Enter this code in Hive: ${code}.\n\nIt expires in 15 minutes.`, `hive-email-verification/${id}`);
 }
 
 export async function deliverInvite(email: string, teamName: string, url: string, id: string): Promise<boolean> {
-  return deliverEmail(email, `Join ${teamName} on Hive`, `Your agent created ${teamName} on Hive and invited you as its team admin.\n\nSign in with your own account to join:\n${url}\n\nThis invite expires in seven days.`, `hive-owner-invite/${id}`);
+  return deliverEmail(email, `Join ${teamName} on Hive`, `Your agent invited you to manage ${teamName} on Hive.\n\nSign in with your own account to join as a team admin:\n${url}\n\nThis invite expires in seven days.`, `hive-owner-invite/${id}`);
 }
 
 async function deliverEmail(email: string, subject: string, text: string, id: string): Promise<boolean> {

@@ -80,8 +80,8 @@ export function decideInstruction(
       return {
         act: false,
         reason: cadence
-          ? "What time should I post the digest?"
-          : "How often should I post the digest?",
+          ? "What time should I post the weekly update?"
+          : "How often should I post the weekly update?",
       };
     return { act: false, reason: "", react: "eyes" };
   }
@@ -92,7 +92,7 @@ export function decideInstruction(
         reason: "A complete capture instruction, despite the hedge.",
       };
     if (/\b(?:ignore|drop|redact|flag)\b/i.test(request))
-      return { act: false, reason: "Which memories should this rule match?" };
+      return { act: false, reason: "Which cells should Hive keep, exclude or keep private?" };
     return { act: false, reason: "", react: "eyes" };
   }
   if (/^(?:maybe|perhaps|what if|I wonder|we could)\b/i.test(request))
@@ -129,10 +129,10 @@ export function decideInstruction(
       : {
           act: false,
           reason: cadence
-            ? "What time should I post the digest?"
+            ? "What time should I post the weekly update?"
             : time
-              ? "How often should I post the digest?"
-              : "When should I post the digest?",
+              ? "How often should I post the weekly update?"
+              : "When should I post the weekly update?",
         };
   if (actionType === "digest_pause" && /\bdgs_[a-z2-7]{12}\b/.test(request))
     return { act: true, reason: "Explicit pause of an identified schedule." };
@@ -142,7 +142,7 @@ export function decideInstruction(
           act: true,
           reason: "Explicit capture instruction with a named target.",
         }
-      : { act: false, reason: "Which memories should this rule match?" };
+      : { act: false, reason: "Which cells should Hive keep, exclude or keep private?" };
   return null;
 }
 export async function decideDecisiveness(text: string, ctx: SlackToolContext) {

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       const capture = await enforceCaptureRules(ctx, {title: "", body: input.text, repo: input.repo, remote: input.remote, cwd: input.cwd, home: input.home, paths: input.paths, agent: input.agent ?? "claude-code", sessionType: input.sessionType}, "hook", [input.branch, input.sessionRef].filter((value): value is string => Boolean(value)));
       if (capture.action === "drop") {
         const matched = capture.matches.find(match => match.action === "drop");
-        if (!matched) throw new HiveError("The capture rule could not be evaluated. Try again.", 503);
+        if (!matched) throw new HiveError("Hive could not check what to keep. Try again.", 503);
         await recordEvent({name: "hook.fired", outcome: "skip", reasonCode: "capture_rule", properties: {hookKind: "stop", gateDecision: "skip", pushedCount: null}});
         return {decision: "skip" as const, dropped: true, rule: matched.kind, classification: null};
       }

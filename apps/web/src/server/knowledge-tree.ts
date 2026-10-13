@@ -118,7 +118,7 @@ export function renderKnowledgeTree(
         .map(([key, value]) => `${key}: ${JSON.stringify(value ?? null)}`)
         .join(
           "\n",
-        )}\n---\n\n# ${cell.title}\n\n${cell.supersededBy ? `Superseded by ${cell.supersededBy}. Read the replacement before acting.\n\n` : ""}${cell.verifyBeforeUse ? "Verify before use. The verification date has passed.\n\n" : ""}${cell.body}\n`,
+        )}\n---\n\n# ${cell.title}\n\n${cell.supersededBy ? `Replaced by ${cell.supersededBy}. Read the replacement before acting.\n\n` : ""}${cell.verifyBeforeUse ? "Check this is still true. The check date has passed.\n\n" : ""}${cell.body}\n`,
     );
     for (const tag of cell.tags) add(`topics/${slug(tag)}.md`, tag, cell);
     add(`people/${cell.author.id}.md`, `${cell.author.name}'s cells`, cell);
@@ -278,7 +278,7 @@ export async function ensureKnowledge(
     }
   }
   throw new HiveError(
-    "The hive changed during publication. Retry to read the latest tree.",
+    "The hive changed while saving its files. Try again to read the latest cells.",
     409,
   );
 }
@@ -388,12 +388,12 @@ async function snapshotKnowledgeAction(ctx: HiveContext) {
       const content = await readPrivateObject(file.key);
       if (digest(content) !== file.digest)
         throw new HiveUnavailableError(
-          "A snapshot file failed its integrity check.",
+          "An archive file failed its integrity check.",
         );
       bytes += content.length;
       if (bytes > 50 * 1024 * 1024)
         throw new HiveUnavailableError(
-          "This hive needs a streamed snapshot for more than 50 MB.",
+          "This archive exceeds the 50 MB download limit.",
         );
       pack.entry(
         {
@@ -434,10 +434,10 @@ async function snapshotKnowledgeAction(ctx: HiveContext) {
 
 export async function downloadKnowledge(token: string): Promise<Buffer> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token))
-    throw new HiveNotFoundError("Snapshot not found or expired.");
+    throw new HiveNotFoundError("Archive not found or expired.");
   const rows =
     await getSql()`SELECT s.object_key FROM knowledge_snapshots s JOIN members m ON m.id = s.member_id AND m.team_id = s.team_id WHERE s.token_hash = ${digest(token)} AND s.expires_at > now() AND m.removed_at IS NULL`;
   if (!rows.length)
-    throw new HiveNotFoundError("Snapshot not found or expired.");
+    throw new HiveNotFoundError("Archive not found or expired.");
   return readPrivateObject(rows[0].object_key);
 }

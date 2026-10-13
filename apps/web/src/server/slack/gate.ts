@@ -76,7 +76,7 @@ export function decideSlack(
   if (facts.confirmedMatch && signals.answerable >= 0.9 && signals.humans < 0.2)
     return {
       decision: "reply_now",
-      reason: "A confirmed cell directly answers the question.",
+      reason: "A cell with supporting evidence directly answers the question.",
     };
   return { decision: "stay_silent", reason: "No clear question for the hive." };
 }

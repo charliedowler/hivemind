@@ -124,7 +124,7 @@ describe("MCP learning text", () => {
         content: [
           {
             type: "text",
-            text: `- lrn_test: Use pooled connections | fresh | Alice via ${source} | 2h ago | ${learning.repo ?? "no repo"}`,
+            text: `- lrn_test: Use pooled connections | Alice via ${source} | 2h ago | ${learning.repo ?? "no repo"}`,
           },
         ],
       });
@@ -132,7 +132,7 @@ describe("MCP learning text", () => {
         content: [
           {
             type: "text",
-            text: `1. lrn_test: Use pooled connections\nfresh | gotcha | ${learning.repo ?? "no repo"} | tags: database | Alice via ${source} | 2h ago | votes: +0 / -0 / outdated 0 | score 0.75\nConnect with the pool URL.`,
+            text: `1. lrn_test: Use pooled connections\nlearning | ${learning.repo ?? "no repo"} | tags: database | Alice via ${source} | 2h ago | votes: +0 / -0 / outdated 0 | score 0.75\nConnect with the pool URL.`,
           },
         ],
       });
@@ -151,7 +151,7 @@ it("exposes decision reversal by ID and returns the guarded inverse receipt", as
   const call = register.mock.calls.find(([name]) => name === "hive_reverse_decision")?.[2] as ToolCallback<typeof schema>;
   expect(call).toBeDefined();
   vi.mocked(reverseDecision).mockResolvedValue({ id: "dec_inverse", decision: "reversed", reason: "Audit" });
-  expect(await call({ decision_id: "dec_target" }, toolContext)).toMatchObject({ content: [{ text: "dec_inverse: Decision reversed." }] });
+  expect(await call({ decision_id: "dec_target" }, toolContext)).toMatchObject({ content: [{ text: "dec_inverse: Cell change reversed." }] });
   expect(reverseDecision).toHaveBeenCalledWith(context, "dec_target", undefined, undefined, "through MCP");
   vi.mocked(reverseDecision).mockRejectedValue(new HiveError("A cell changes after this decision.", 409));
   expect(await call({ decision_id: "dec_inverse" }, toolContext)).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("changes") }] });

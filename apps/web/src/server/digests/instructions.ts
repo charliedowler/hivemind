@@ -30,7 +30,7 @@ const questions = {
   cadence: "How often should the update run?",
   channel: "Which channel should receive the update?",
   target: "Which schedule should I stop?",
-  intent: "Should I set that digest schedule?",
+  intent: "When should I post the weekly update?",
 };
 export async function digestInstruction(
   ctx: SlackToolContext,
@@ -68,7 +68,7 @@ export async function digestInstruction(
             (s) =>
               `${s.id}: ${restateSchedule(s)} in #${slackEscape(s.channelName)} (${digestZone(s.timezone)}), ${s.enabled ? `next ${digestTime(s.nextDueAt, s.timezone, { relative: true })}` : "stopped"}`,
           )
-          .join("\n") || "No digest schedules yet.",
+          .join("\n") || "No weekly updates set yet.",
     };
   }
   const judged = await judgeDigest(raw, ctx.isAdmin, {
@@ -85,7 +85,7 @@ export async function digestInstruction(
     judged.signals,
   );
   const action = proposal.action;
-  await getSql()`INSERT INTO slack_decisions(id,team_id,channel_id,thread_ts,message_ts,prompted,decision,reason,signals,model,latency_ms,evidence_ids,delivery,policy_version) VALUES(${newId("sdc")},${ctx.teamId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},true,${`digest_${decision}`},${decision === "act" ? "Clear digest instruction with required details." : decision === "refuse" ? "Digest changes require an admin." : "Digest instruction needs one detail."},${getSql().json(
+  await getSql()`INSERT INTO slack_decisions(id,team_id,channel_id,thread_ts,message_ts,prompted,decision,reason,signals,model,latency_ms,evidence_ids,delivery,policy_version) VALUES(${newId("sdc")},${ctx.teamId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},true,${`digest_${decision}`},${decision === "act" ? "Clear weekly update request with required details." : decision === "refuse" ? "Only an admin can change weekly updates." : "The weekly update request needs one detail."},${getSql().json(
     {
       memberId: ctx.memberId,
       source: judged.signals ? "jev" : "model",
@@ -106,7 +106,7 @@ export async function digestInstruction(
     key: `digest:decision:${ctx.teamId}:${ctx.channelId}:${ctx.messageTs!}`,
   });
   if (decision === "refuse")
-    return { text: "Only hive admins can change digest schedules." };
+    return { text: "Only hive admins can change weekly updates." };
   if (decision === "clarify")
     return proposal.missing === "intent"
       ? { react: "eyes" }
@@ -130,7 +130,7 @@ export async function applyDigestInstruction(
       await tx`SELECT role FROM members WHERE team_id=${ctx.teamId} AND id=${ctx.memberId} AND removed_at IS NULL FOR SHARE`
     )[0];
     if (admin?.role !== "admin")
-      throw new HiveError("Only hive admins can change digest schedules.", 403);
+      throw new HiveError("Only hive admins can change weekly updates.", 403);
     const duplicate = (
       await tx`SELECT reply,reaction FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${ctx.messageTs!}`
     )[0];
@@ -148,7 +148,7 @@ export async function applyDigestInstruction(
       )[0];
       if (!reversed)
         throw new HiveError(
-          "There is no digest change from you in this thread to undo within the last hour.",
+          "You have no weekly update changes to undo in this thread from the last hour.",
           410,
         );
       target = String(reversed.schedule_id);
@@ -200,8 +200,8 @@ export async function applyDigestInstruction(
     const reply =
       action === "undo"
         ? removed
-          ? "Removed. The digest schedule is removed."
-          : `Undone. The digest schedule in #${slackEscape(saved.channelName)} is ${saved.enabled ? "restored" : "stopped"}.`
+          ? "Removed the weekly update."
+          : `Undone. The weekly update in #${slackEscape(saved.channelName)} is ${saved.enabled ? "restored" : "stopped"}.`
         : action === "disable"
           ? `Stopped. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}).`
           : `Set. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}). ${saved.enabled ? `${old ? "Next update" : "First update"} ${next}.` : "The schedule is paused."}`;
@@ -245,7 +245,7 @@ export async function undoDigestFromWeb(ctx: HiveContext, id: string) {
   const row = (
     await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND member_id=${ctx.memberId} AND id=${id}`
   )[0];
-  if (!row) throw new HiveError("Digest change not found.", 404);
+  if (!row) throw new HiveError("Weekly update change not found.", 404);
   return applyDigestInstruction(
     {
       teamId: ctx.teamId,

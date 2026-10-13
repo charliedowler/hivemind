@@ -4,7 +4,7 @@ import { HiveUnavailableError } from "./errors";
 function requireStorage() {
   if (!process.env.BLOB_READ_WRITE_TOKEN)
     throw new HiveUnavailableError(
-      "Private storage is unavailable. Connect a private Blob store to publish the hive tree.",
+      "Private storage is unavailable. Connect a private Blob store to export hive files.",
     );
 }
 export async function putPrivateObject(
@@ -26,7 +26,7 @@ export async function readPrivateObject(key: string): Promise<Buffer> {
   const result = await get(key, { access: "private", useCache: false });
   if (!result || result.statusCode !== 200)
     throw new HiveUnavailableError(
-      "The hive file is not available in private storage. Rebuild the tree and try again.",
+      "The hive file is not available in private storage. Rebuild the saved files and try again.",
     );
   return Buffer.from(await new Response(result.stream).arrayBuffer());
 }

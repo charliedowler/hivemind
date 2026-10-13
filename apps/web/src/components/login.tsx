@@ -19,7 +19,7 @@ export function Login({ invite, providers, initialError = "" }: { invite: string
       </div>
       <Card className="login-panel">
         <h2>{mode === "sign-in" ? "Welcome back" : mode === "create" ? "Start your hive" : "Join your hive"}</h2>
-        <p className="muted">{mode === "sign-in" ? "Sign in to your team's shared comb." : mode === "create" ? "Create a hive with your work email." : "Use an invite link or an allowed work email domain."}</p>
+        <p className="muted">{mode === "sign-in" ? "Sign in to your team's hive." : mode === "create" ? "Create a hive with your work email." : "Use an invite link or an allowed work email domain."}</p>
         <Tabs label="Account options" tabs={[{ id: "sign-in", label: "Sign in" }, { id: "create", label: "Create a team" }, { id: "join", label: "Join" }]} value={mode} onChange={(value) => setMode(value as LoginMode)} />
         {initialError ? <ErrorPanel message={initialError} /> : null}
         {providers.length ? <ProviderButtons providers={providers} /> : null}

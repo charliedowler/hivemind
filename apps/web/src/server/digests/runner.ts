@@ -42,7 +42,7 @@ export async function claimDigest(teamId: string, id: string, manual = false) {
       now = rows[0].tick_now as Date;
     if (!manual && (!schedule.enabled || new Date(schedule.nextDueAt) > now))
       return null;
-    await tx`UPDATE slack_digest_posts SET status='uncertain',error='The worker stopped before delivery was confirmed. Check the channel before posting again.' WHERE team_id=${teamId} AND schedule_id=${id} AND status='running' AND started_at < clock_timestamp()-interval '10 minutes'`;
+    await tx`UPDATE slack_digest_posts SET status='uncertain',error='The worker stopped before Hive could check delivery. Check the channel before posting again.' WHERE team_id=${teamId} AND schedule_id=${id} AND status='running' AND started_at < clock_timestamp()-interval '10 minutes'`;
     if (
       (
         await tx`SELECT id FROM slack_digest_posts WHERE team_id=${teamId} AND schedule_id=${id} AND status='running'`
@@ -118,7 +118,7 @@ export async function postDigest(
       await getSql().begin(async (tx) => {
         const rows =
           await tx`UPDATE slack_digest_posts SET status='posted',posted_at=clock_timestamp(),slack_ts=${sent.ts},permalink=${sent.permalink},until_cursor=${new Date(data.until)},counts=${tx.json(digest.counts)},error=NULL WHERE id=${postId} AND team_id=${teamId} AND status='running' RETURNING posted_at`;
-        if (!rows[0]) throw new Error("Digest claim was lost.");
+        if (!rows[0]) throw new Error("Hive could not finish this weekly update.");
         const sourceKeys = [
           ...data.learnings,
           ...data.insights,
@@ -138,8 +138,8 @@ export async function postDigest(
         error instanceof DigestDeliveryError ? error.uncertain : sending;
       const status = uncertain ? "uncertain" : "failed";
       const message = uncertain
-        ? "Delivery could not be confirmed. Check the channel before posting again."
-        : "The update was not posted. Check the Slack connection and channel, then use Post now.";
+        ? "Hive could not check delivery. Check the channel before posting again."
+        : "The update was not posted. Check the Slack connection and channel on Team.";
       await getSql()`UPDATE slack_digest_posts SET status=${status},error=${message} WHERE id=${postId} AND team_id=${teamId} AND status='running'`;
       await recordEvent({
         name: "digest_failed",

@@ -29,3 +29,22 @@ export function learnedBy(
   const agent = agentKind(learning.source);
   return `${learning.author.name}'s ${agent === "claude" ? "Claude" : agent === "codex" ? "Codex" : "learning"}`;
 }
+
+export function kindLabel(kind: LearningView["kind"]) {
+  return kind === "decision" || kind === "friction" ? kind : "learning";
+}
+
+export function cellStateLabel(
+  learning: Pick<
+    LearningView,
+    "votes" | "pushCount" | "adminOutdated" | "lifecycle"
+  >,
+) {
+  if (learning.lifecycle === "superseded") return "Replaced";
+  if (learning.lifecycle === "retracted") return "Removed";
+  const status = learningStatus(learning);
+  if (status === "outdated") return "Outdated";
+  if (status === "confirmed")
+    return `Seen ${learning.pushCount} ${learning.pushCount === 1 ? "time" : "times"}`;
+  return undefined;
+}

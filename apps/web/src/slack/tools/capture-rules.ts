@@ -40,7 +40,7 @@ function ruleSummary(rule: CaptureRuleInput) {
     agent_or_client: "observations from the selected agent or session type",
     keyword: "observations with matching text",
   }[rule.kind];
-  return `Hive now ${action} ${match.replace(/observations/g, "memories")}${rule.action === "flag" ? " privately for review" : ""} ${rule.scope === "team" ? "for the whole team" : "for you"}.`;
+  return `Hive now ${action} ${match.replace(/observations/g, "cells")}${rule.action === "flag" ? " privately for review" : ""} ${rule.scope === "team" ? "for the whole team" : "for you"}.`;
 }
 
 function reply(copy: string): SlackToolResult {
@@ -61,9 +61,9 @@ function reply(copy: string): SlackToolResult {
 function captureCounts(counts: CaptureRuleInstructionCounts | undefined, undone: boolean, action?: CaptureRuleInput["action"]) {
   if (!counts) return "";
   const changed = undone
-    ? `${counts.restored} earlier memories were restored.${counts.retained ? ` ${counts.retained} memories keep later changes or other rules.` : ""}`
-    : `${counts.applied} earlier memories were ${action === "drop" ? "removed" : action === "redact" ? "redacted" : "kept private"}.${counts.skipped ? ` ${counts.skipped} changed memories were skipped.` : ""}`;
-  return ` ${changed}${counts.pending ? " More earlier memories are still being checked." : ""}${counts.stopped ? " The scan stopped because the rule or permissions changed." : ""}`;
+    ? `${counts.restored} earlier cell${counts.restored === 1 ? " was" : "s were"} restored.${counts.retained ? ` ${counts.retained} cell${counts.retained === 1 ? " keeps" : "s keep"} later changes or other saved choices.` : ""}`
+    : `${counts.applied} earlier cell${counts.applied === 1 ? " was" : "s were"} ${action === "drop" ? "removed" : action === "redact" ? "redacted" : "kept private"}.${counts.skipped ? ` ${counts.skipped} changed cell${counts.skipped === 1 ? " was" : "s were"} skipped.` : ""}`;
+  return ` ${changed}${counts.pending ? " More earlier cells are still being checked." : ""}${counts.stopped ? " Hive stopped checking older cells because the saved choice or access changed." : ""}`;
 }
 
 function cleanAcknowledgement(counts: CaptureRuleInstructionCounts | undefined, undone = false) {
@@ -72,16 +72,16 @@ function cleanAcknowledgement(counts: CaptureRuleInstructionCounts | undefined, 
 
 function channelQuestion(question: string | undefined) {
   if (/scope|whole team|for (?:you|everyone)|team or|member/i.test(question ?? ""))
-    return "Should this rule apply to you or the whole team?";
+    return "Should this apply to you or the whole team?";
   if (/owner|organisation|organization|repo|github/i.test(question ?? ""))
     return "Which repository owners should Hive keep captures from?";
   if (/path|directory|folder/i.test(question ?? ""))
-    return "Which paths should this rule match?";
+    return "Which paths should Hive use?";
   if (/agent|client|session/i.test(question ?? ""))
-    return "Which agent or session type should this rule match?";
+    return "Which agent or session type should Hive use?";
   if (/keyword|term|pattern|regex/i.test(question ?? ""))
-    return "Which text should this rule match?";
-  return "Which content should the rule exclude, redact or keep private?";
+    return "Which text should Hive look for?";
+  return "Which content should Hive exclude, remove from cells or keep private?";
 }
 
 const requestInput = z.strictObject({text: z.string().trim().min(1).max(4000)});
@@ -98,10 +98,10 @@ export const captureUndoHandlers: Record<string, (ctx: SlackToolContext, pointer
   async hive_set_capture_rule(ctx, pointer) {
     const member = await actor(ctx);
     if (pointer.member_id !== ctx.memberId)
-      return reply("Only the person who set this capture rule can undo it here.");
+      return reply("Only the person who saved this choice can undo it here.");
     const payload = z.object({ kind: z.literal("capture_instruction"), reversible: z.literal(true), payload: z.object({ instructionId: z.string().regex(/^cinstr_[a-z2-7]{12}$/) }) }).parse(pointer.inverse);
     const result = await undoCaptureRuleInstruction(member, { source: "slack", channelId: ctx.channelId, threadTs: ctx.threadTs }, payload.payload.instructionId);
-    const summary = "Removed your latest capture rule in this conversation.";
+    const summary = "Removed your latest choice about what Hive keeps in this conversation.";
     if (cleanAcknowledgement(result.counts, true)) return { react: "white_check_mark", text: summary };
     return reply(`${summary}${captureCounts(result.counts, true)}`);
   },
@@ -123,25 +123,25 @@ export const captureRuleTools: SlackTool[] = [
       const member = await actor(ctx);
       const location = {source: "slack" as const, channelId: ctx.channelId, threadTs: ctx.threadTs};
       if (input.text.toLowerCase() === "undo" && !isCaptureUndoInstruction(ctx.instructionText ?? input.text))
-        return reply("Which capture rule should Hive change?");
+        return reply("What should Hive change about what it keeps?");
       const result = input.text.toLowerCase() === "undo"
         ? await undoCaptureRuleInstruction(member, location)
         : await setCaptureRuleFromText(member, input.text, {...location, messageTs: ctx.messageTs});
       if (result.status === "question") {
         return reply(ctx.channelId.startsWith("D")
-          ? result.question ?? "Which content should the rule match, and should it exclude, redact or keep that content private?"
+          ? result.question ?? "Which content should Hive exclude, remove from cells or keep private?"
           : channelQuestion(result.question));
       }
       if (result.status === "undone") {
         const summary = ctx.channelId.startsWith("D")
           ? result.restatement
-          : "Removed your latest capture rule instruction in this conversation.";
+          : "Removed your latest choice about what Hive keeps in this conversation.";
         if (cleanAcknowledgement(result.counts, true)) return { react: "white_check_mark", text: escapedCopy(summary) };
         return reply(`${summary}${captureCounts(result.counts, true)}`);
       }
       const summary = ctx.channelId.startsWith("D")
         ? result.restatement
-        : result.rule ? ruleSummary(result.rule) : "Saved your capture rule.";
+        : result.rule ? ruleSummary(result.rule) : "Saved what Hive keeps.";
       if (cleanAcknowledgement(result.counts)) return { react: "white_check_mark", text: escapedCopy(summary) };
       return reply(`${summary}${captureCounts(result.counts, false, result.rule?.action)}`);
     },
@@ -153,16 +153,16 @@ export const captureRuleTools: SlackTool[] = [
     async handler(ctx, args) {
       listInput.parse(args);
       const rules = await effectiveRules(await actor(ctx));
-      if (!rules.length) return reply("You have no enabled capture rules. Hive still removes detected secrets before saving.");
+      if (!rules.length) return reply("You have no saved choices about what Hive keeps. Hive still removes detected secrets before saving.");
       const summaries = rules.map(rule => ruleSummary(rule));
-      const chunks: string[] = ["These enabled capture rules apply to you:"];
+      const chunks: string[] = ["What Hive keeps for you:"];
       for (const summary of summaries) {
         const last = chunks.length - 1;
         if (chunks[last].length + summary.length + 1 > 2500) chunks.push(summary);
         else chunks[last] += `\n${summary}`;
       }
       const visible = chunks.slice(0, 49);
-      if (chunks.length > 49) visible.push("There are more enabled rules. Review the full list in Settings, Capture rules.");
+      if (chunks.length > 49) visible.push("There are more saved choices. Review the full list under What Hive keeps on Team and Account.");
       return {
         text: escapedCopy(visible.join("\n")),
         blocks: visible.map(copy => ({type: "section", text: {type: "mrkdwn", text: escapedCopy(copy), verbatim: true}})),

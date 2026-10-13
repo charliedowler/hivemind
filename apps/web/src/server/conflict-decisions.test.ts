@@ -323,12 +323,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const context = { ...a, isAdmin: true, channelId: "CDECISIONS", threadTs: "1800000000.10", messageTs: "1800000000.11" };
       const result = await runReversibleAction(context, "hive_reverse_decision", async (tx) => {
         const reversed = await reverseDecision(a, record.id, undefined, tx, "from Slack");
-        return { inverse: { kind: "decision_reversed", id: reversed.id }, text: "Decision reversed.", undo: "restore the decision" };
+        return { inverse: { kind: "decision_reversed", id: reversed.id }, text: "Cell change reversed.", undo: "restore the decision" };
       });
-      expect(result.text).toBe("Decision reversed.");
+      expect(result.text).toBe("Cell change reversed.");
       expect((await getLearning(a, old.id))?.lifecycle).toBe("fresh");
       expect(await runReversibleAction(context, "hive_reverse_decision", async () => { throw new Error("A replay must not mutate"); })).toEqual(result);
-      expect(await undoLastAction(context)).toEqual({ react: "white_check_mark", text: "Decision reapplied." });
+      expect(await undoLastAction(context)).toEqual({ react: "white_check_mark", text: "Cell change reapplied." });
       expect((await getLearning(a, old.id))?.lifecycle).toBe("superseded");
       expect((await undoLastAction(context)).text).toContain("already undone");
     });

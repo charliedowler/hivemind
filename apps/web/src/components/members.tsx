@@ -63,9 +63,9 @@ export function Members({
         <Card className="stack">
           <h2>Invite teammates</h2>
           <p className="muted">
-            Invites expire after seven days. A new invite replaces the old one
-            and keeps existing members connected. Save the new code now. The
-            hive shows it once.
+            Invites expire after seven days. Rotating the invite invalidates the
+            outstanding invite without removing current members. Save the new
+            code now. Hive shows it once.
           </p>
           <Button onClick={() => void act("invite")} loading={pending}>
             Rotate invite
@@ -113,7 +113,7 @@ export function Members({
             />
             <p className="small breakable">
               {member.email ?? "No email yet"} ·{" "}
-              {member.emailVerified ? "Verified" : "Not verified"}
+              {member.emailVerified ? "Verified" : "Not verified"}. Removing a member ends their access to this hive.
             </p>
             <dl className="member-facts">
               <div>
@@ -137,7 +137,7 @@ export function Members({
                     .map((key) => (
                       <div className="stack key-row" key={key.id}>
                         <code className="small">
-                          {key.label} · {key.prefix}
+                          {key.label} · {key.prefix}. Revoking this key stops the agent using it from accessing this hive.
                         </code>
                         <Button
                           size="sm"

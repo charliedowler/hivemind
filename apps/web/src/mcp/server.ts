@@ -1,3 +1,4 @@
+import { cellStateLabel, kindLabel } from "@/lib/learning-presentation";
 import {
   withOrigin,
   originFor,
@@ -18,6 +19,7 @@ import {
   hiveRecentInput,
   hiveSearchInput,
   type HiveContext,
+  type LearningView,
 } from "@hivemind/core";
 import {
   askHive,
@@ -55,7 +57,7 @@ type ToolContext = {
 function getContext(ctx: ToolContext): HiveContext {
   const parsed = contextSchema.safeParse(ctx.http?.authInfo?.extra);
   if (!parsed.success)
-    throw new HiveError("Connect your forager to the hive and sign in.", 401);
+    throw new HiveError("Connect your agent to the hive and sign in.", 401);
   const actor = parsed.data;
   if (actor.apiKeyId) bindApiKey(actor, actor.apiKeyId);
   if (actor.role) bindRole(actor, actor.role);
@@ -72,6 +74,15 @@ function age(date: string): string {
     : minutes < 1440
       ? `${Math.floor(minutes / 60)}h ago`
       : `${Math.floor(minutes / 1440)}d ago`;
+}
+
+function cellStatusText(cell: LearningView) {
+  const state = cellStateLabel(cell);
+  const parts = [
+    cell.supersededBy ? `Replaced by ${cell.supersededBy}` : state,
+    cell.verifyBeforeUse ? "Check this is still true" : undefined,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(" | ")} | ` : "";
 }
 
 async function reply(action: () => Promise<string>, ctx: ToolContext) {
@@ -132,9 +143,9 @@ export function registerHiveTools(server: McpServer) {
   server.registerTool(
     "hive_browse",
     {
-      title: "Browse the hive tree",
+      title: "Browse hive files",
       description:
-        "List files and directories in the team's read-only knowledge tree. Start with an empty path.",
+        "List the team's saved cells as files and directories. Start with an empty path.",
       inputSchema: hiveBrowseInput,
     },
     async (input, ctx) =>
@@ -149,7 +160,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Read a hive file",
       description:
-        "Read a Markdown file from the team's tree. Historical cells carry replacement pointers and verification dates.",
+        "Read a Markdown file from the team's saved files. Historical cells carry replacement pointers and verification dates.",
       inputSchema: hiveReadInput,
     },
     async (input, ctx) =>
@@ -161,9 +172,9 @@ export function registerHiveTools(server: McpServer) {
   server.registerTool(
     "hive_snapshot",
     {
-      title: "Download the hive tree",
+      title: "Export hive archive",
       description:
-        "Get a private tar.gz download URL valid for 15 minutes. Unpack it to grep a consistent read-only tree locally. Treat the URL as a credential. Edits go through hive_push.",
+        "Get a private tar.gz download URL valid for 15 minutes. Unpack it to search saved cells locally. Treat the URL as a credential. Edits go through hive_push.",
       inputSchema: z.object({}),
     },
     async (_input, ctx) =>
@@ -199,8 +210,8 @@ export function registerHiveTools(server: McpServer) {
   );
 
   server.registerTool("hive_correct", {
-    title: "Correct or retract your cell",
-    description: "Correct the observation or retract it. Use the saved revision. Authors and team admins can edit; the change preserves audit history.",
+    title: "Correct or remove your cell",
+    description: "Correct the observation or remove the cell. Use the saved revision. Authors and team admins can edit; the change preserves audit history.",
     inputSchema: hiveCorrectInput,
   }, async (input, ctx) => reply(async () => JSON.stringify(await correctLearning(getContext(ctx), input)), ctx));
   server.registerTool("hive_outcome", {
@@ -225,7 +236,7 @@ export function registerHiveTools(server: McpServer) {
         return hits
           .map(
             (hit, index) =>
-              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.permalink ? `Source: slack ${hit.permalink}\n` : ""}${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
+              `${index + 1}. ${hit.id}: ${hit.title}\n${cellStatusText(hit)}${kindLabel(hit.kind)} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.permalink ? `Source: slack ${hit.permalink}\n` : ""}${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
           )
           .join("\n\n");
       }, ctx),
@@ -261,7 +272,7 @@ export function registerHiveTools(server: McpServer) {
           learnings
             .map(
               (learning) =>
-                `- ${learning.id}: ${learning.title} | ${learning.lifecycle ?? "fresh"}${learning.supersededBy ? `, superseded by ${learning.supersededBy}` : ""}${learning.verifyBeforeUse ? ", verify before use" : ""} | ${learning.author.name} via ${learning.source} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
+                `- ${learning.id}: ${learning.title} | ${cellStatusText(learning)}${learning.author.name} via ${learning.source} | ${age(learning.lastPushedAt)} | ${learning.repo ?? "no repo"}`,
             )
             .join("\n") ||
           "No learnings in this time window. Use hive_push once you learn something useful."
@@ -273,13 +284,13 @@ export function registerHiveTools(server: McpServer) {
     "hive_reverse_decision",
     {
       title: "Reverse a decision",
-      description: "Reverse a conflict decision immediately by its decision ID. Requires a team admin and unchanged cells. Returns the new decision ID; reverse that ID to undo. Legacy decisions without snapshots cannot be reversed.",
+      description: "Reverse a cell change immediately by its decision ID. Requires a team admin and unchanged cells. Returns the new decision ID; reverse that ID to undo. Older changes without saved cell copies cannot be reversed.",
       inputSchema: z.object({ decision_id: z.string().min(1).max(100) }),
     },
     async (input, ctx) => reply(async () => {
       const actor = getContext(ctx);
       const result = await reverseDecision(actor, input.decision_id, undefined, undefined, "through MCP");
-      return `${result.id}: ${result.decision === "reversed" ? "Decision reversed." : "Decision reapplied."}`;
+      return `${result.id}: ${result.decision === "reversed" ? "Cell change reversed." : "Cell change reapplied."}`;
     }, ctx),
   );
 

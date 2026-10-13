@@ -503,7 +503,7 @@ export async function handleCommand(
             (c) =>
               `<${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${c.id}|${slackEscape(c.title)}>`,
           )
-          .join("\n") || "No fresh nectar in the last day.",
+          .join("\n") || "No cells saved in the last day.",
         thread,
       );
     }

@@ -167,7 +167,7 @@ it("keeps the change visible when the server refuses stale state", async () => {
   await render();
   vi.mocked(requestJson).mockRejectedValue(
     new Error(
-      "A cell changes after this decision. Hive cannot safely reverse it.",
+      "A cell has changed since then. Hive cannot safely reverse this change.",
     ),
   );
   await click("Reverse");
@@ -206,7 +206,7 @@ it("shows replaced, outdated and retracted related cells only after Show history
   const history = host.querySelector('[aria-label="Historical cells"]')!;
   expect(history.textContent).toContain("Use the old port · Replaced");
   expect(history.textContent).toContain("An outdated port · Outdated");
-  expect(history.textContent).toContain("A merged port · Retracted");
+  expect(history.textContent).toContain("A merged port · Removed");
   await click("Hide history");
   expect(host.querySelector('[aria-label="Historical cells"]')).toBeNull();
 });

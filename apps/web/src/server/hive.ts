@@ -126,7 +126,7 @@ async function pushLearningAction(
   }, undefined, sidecar);
   if (capture.action === "drop") {
     const matched = capture.matches.find(match => match.action === "drop");
-    if (!matched) throw new HiveError("The capture rule could not be evaluated. Try again.", 503);
+    if (!matched) throw new HiveError("Hive could not check what to keep. Try again.", 503);
     return {dropped: true, rule: matched.kind};
   }
   const captureRedacted = capture.redacted;

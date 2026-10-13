@@ -211,7 +211,7 @@ export function SlackSettings({
             </Button>
           </div>
           <p className="muted">
-            Hive stays quiet by default. An unprompted reply needs confirmed
+            Hive stays quiet by default. An unprompted reply needs supporting
             evidence, and each channel gets at most two per hour.
           </p>
           {data.decisions.length ? (
@@ -235,7 +235,7 @@ export function SlackSettings({
                       decision.decision === "stay_silent" ? "outdated" : "asked"
                     }
                   >
-                    {decision.decision.replaceAll("_", " ")}
+                    {decision.decision.replace(/^digest_/, "weekly_update_").replaceAll("_", " ")}
                   </Badge>
                   <span className="small">
                     {decision.delivery} · {decision.latencyMs} ms
@@ -264,7 +264,7 @@ export function SlackSettings({
                         key={id}
                         href={`/app/cells/${id}`}
                       >
-                        Confirmed source
+                        Source cell
                       </a>
                     ))}
                   </div>

@@ -13,7 +13,7 @@ export const decisionTools: SlackTool[] = [
   {
     name: "hive_reverse_decision",
     description:
-      "Reverse a conflict decision now on a clear admin instruction. Supply its exact decision ID from the request or thread. Do not select for musings or questions about reversal. No confirmation is needed.",
+      "Reverse a cell change now on a clear admin instruction. Supply its exact decision ID from the request or thread. Do not select for musings or questions about reversal. No confirmation is needed.",
     input_schema: z.toJSONSchema(input) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       try {
@@ -37,8 +37,8 @@ export const decisionTools: SlackTool[] = [
             );
             return {
               inverse: { kind: "decision_reversed", id: changed.id },
-              text: `${changed.id}: ${changed.decision === "reversed" ? "Decision reversed." : "Decision reapplied."}`,
-              undo: "restore the decision",
+              text: `${changed.id}: ${changed.decision === "reversed" ? "Cell change reversed." : "Cell change reapplied."}`,
+              undo: "restore the cell change",
             };
           },
         );
@@ -48,7 +48,7 @@ export const decisionTools: SlackTool[] = [
         if (error instanceof HiveError) return { text: error.message };
         if (error instanceof z.ZodError)
           return {
-            text: "Which decision should Hive reverse? Include its decision ID.",
+            text: "Which cell change should Hive reverse? Include its decision ID.",
           };
         throw error;
       }

@@ -318,7 +318,7 @@ export async function listDecisions(
     newer: { id: String(row.newer_id), title: String(row.newer_title), lifecycle: row.newer_lifecycle as LearningView["lifecycle"] },
     decision: row.decision as ConflictJudgment["decision"] | "reversed",
     reason: row.capture_redacted
-      ? "A cell was redacted by a capture rule."
+      ? "Hive removed excluded content from a cell."
       : String(row.reason),
     confidence: Number(row.confidence),
     model: String(row.model),
@@ -356,7 +356,7 @@ export async function reverseDecision(
       throw new HiveNotFoundError("Decision not found or already reversed.");
     if (!hasDecisionSnapshots(decision))
       throw new HiveError(
-        "This decision has no reversible cell snapshots.",
+        "Hive has no saved cell copies to restore for this change.",
         409,
       );
     const before = decision.before_state as ReturnType<typeof snapshot>[],
@@ -374,7 +374,7 @@ export async function reverseDecision(
         )
     )
       throw new HiveError(
-        "A cell changes after this decision. Hive cannot safely reverse it.",
+        "A cell has changed since then. Hive cannot safely reverse this change.",
         409,
       );
     const original =

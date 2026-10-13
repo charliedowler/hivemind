@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { LearningVersion, FeedbackHistoryEntry } from "@hivemind/core";
 import { Button } from "@hivemind/design-system";
 import { errorMessage, requestJson } from "@/lib/client";
+import { kindLabel } from "@/lib/learning-presentation";
 import { ErrorPanel } from "./primitives";
 export function LearningHistory({
   id,
@@ -92,10 +93,10 @@ export function LearningHistory({
           {Object.keys(version.diff).length ? (
             Object.entries(version.diff).map(([field, change]) => (
               <div className="stack version-change" key={field}>
-                <strong>{field.replaceAll("_", " ")}</strong>
+                <strong>{historyFieldLabel(field)}</strong>
                 <pre tabIndex={0}>
-                  Before: {JSON.stringify(change.before, null, 2)}
-                  {"\n"}After: {JSON.stringify(change.after, null, 2)}
+                  Before: {historyValue(field, change.before)}
+                  {"\n"}After: {historyValue(field, change.after)}
                 </pre>
               </div>
             ))
@@ -106,4 +107,37 @@ export function LearningHistory({
       ))}
     </section>
   );
+}
+
+function historyFieldLabel(field: string) {
+  return (
+    (
+      {
+        lifecycle: "Cell state",
+        kind: "Cell type",
+        superseded_by: "Replaced by",
+        retracted_at: "Removed at",
+        capture_rule_ids: "What Hive keeps",
+      } as Record<string, string>
+    )[field] ?? field.replaceAll("_", " ")
+  );
+}
+
+function historyValue(field: string, value: unknown) {
+  if (field === "lifecycle" && typeof value === "string") {
+    return (
+      (
+        {
+          fresh: "Saved",
+          confirmed: "Seen again",
+          superseded: "Replaced",
+          retracted: "Removed",
+          outdated: "Outdated",
+        } as Record<string, string>
+      )[value] ?? "Saved"
+    );
+  }
+  if (field === "kind" && typeof value === "string")
+    return kindLabel(value as Parameters<typeof kindLabel>[0]);
+  return JSON.stringify(value, null, 2);
 }

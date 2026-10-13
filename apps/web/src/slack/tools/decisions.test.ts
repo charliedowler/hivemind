@@ -52,7 +52,7 @@ it("acts immediately through the shared decisiveness helper and saves its invers
     await decisionTools[0].handler(context, {
       decision_id: "dec_abcdefghijkl",
     }),
-  ).toEqual({ text: "dec_inverse: Decision reversed." });
+  ).toEqual({ text: "dec_inverse: Cell change reversed." });
   expect(decideDecisiveness).toHaveBeenCalledWith(context.instructionText, {
     ...context,
     actionType: "decision_reverse",

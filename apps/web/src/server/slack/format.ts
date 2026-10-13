@@ -103,10 +103,10 @@ export function slackAnswer(result: AskResult, timeZone?: string) {
 
 export function slackCaptureReply(result: PushResult | null) {
   if (!result) return "That message is already saved.";
-  if (result.dropped) return "This capture was excluded by a capture rule.";
+  if (result.dropped) return "Hive excluded this cell based on what you or your team chose to keep.";
   const url = `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${result.id}`;
   if (result.learning.captureFlagged)
-    return `Kept privately for your review: <${url}|Review cell>. Confirm it before sharing.`;
+    return `Kept private for your review: <${url}|Review cell>. Confirm it before sharing.`;
   return `Saved <${url}|${slackEscape(result.learning.title).replace(/\|/g, "/")}>.`;
 }
 

@@ -56,12 +56,12 @@ async function filterReport(
     [text, evidenceText(evidence)],
   );
   if (capture.action === "drop")
-    throw new HiveError("This outcome was excluded by a capture rule.", 422);
+    throw new HiveError("Hive excluded this result based on what you or your team chose to keep.", 422);
   return {
     cell,
     flagged: capture.flagged,
     text: capture.redacted
-      ? "Outcome redacted by a capture rule."
+      ? "Hive removed excluded content from this result."
       : redactSecrets(text).text,
     evidence: capture.redacted ? undefined : cleanEvidence(evidence),
     redacted: capture.redacted,
@@ -294,5 +294,5 @@ export async function redactFeedback(
   id: string,
 ) {
   await tx`UPDATE feedback SET note = NULL WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
-  await tx`UPDATE feedback_receipts SET outcome = CASE WHEN outcome IS NULL THEN NULL ELSE 'Outcome redacted by a capture rule.' END, evidence = NULL, judgment = NULL WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
+  await tx`UPDATE feedback_receipts SET outcome = CASE WHEN outcome IS NULL THEN NULL ELSE 'Hive removed excluded content from this result.' END, evidence = NULL, judgment = NULL WHERE learning_id = ${id} AND team_id = ${ctx.teamId}`;
 }

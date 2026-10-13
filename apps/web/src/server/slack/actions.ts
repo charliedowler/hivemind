@@ -167,7 +167,7 @@ export async function undoLastAction(ctx: SlackToolContext, expectedActionId?: s
         rules[0].created_by !== ctx.memberId
       )
         throw new HiveError(
-          "The capture rule changed after this action. Review it in Hive settings.",
+          "This choice changed after this action. Review what Hive keeps.",
           409,
         );
       await tx`DELETE FROM capture_rules WHERE team_id=${ctx.teamId} AND id=${inverse.id}`;
@@ -182,7 +182,7 @@ export async function undoLastAction(ctx: SlackToolContext, expectedActionId?: s
             ? inverse.enabled
               ? "Undone. The schedule is enabled again."
               : "Undone. The schedule is paused; any updates already sent remain in Slack."
-            : "Undone. The capture rule is removed; captures already processed keep their current state.",
+            : "Undone. Your choice is removed. Earlier cells stay as they are.",
     };
   });
   if (decisionActor) scheduleKnowledge(decisionActor);

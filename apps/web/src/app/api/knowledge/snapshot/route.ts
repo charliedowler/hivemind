@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     return new Response(new Uint8Array(archive), {
       headers: {
         "Content-Type": "application/gzip",
-        "Content-Disposition": 'attachment; filename="hive-snapshot.tar.gz"',
+        "Content-Disposition": 'attachment; filename="hive-archive.tar.gz"',
         "Cache-Control": "private, no-store",
         "Referrer-Policy": "no-referrer",
       },

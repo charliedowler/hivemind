@@ -12,6 +12,10 @@ This file is the contract between implementation rounds. When code and spec disa
 - Every database query that touches team data takes `teamId` from an authenticated `HiveContext`. No function accepts a team id from user input.
 - UI copy and docs: short sentences, no em dashes, no customer names.
 
+## Human vocabulary
+
+The seven core terms are hive, cell, agent, repo, replaced, outdated and kept private. Signed-in pages and human replies use learning, decision or friction for cell types. Current cells have no state label until repeated, then show Seen N times. Historical cells show Replaced, Outdated or Removed. Privacy controls are What Hive keeps. Slack posts are weekly updates. Human replies describe cell changes directly. Internal tool names, schemas and stored enum values stay unchanged.
+
 ## Layout
 
 ```

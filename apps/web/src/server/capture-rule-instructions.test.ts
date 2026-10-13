@@ -108,7 +108,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     const [pointer] = await actions();
     expect(audit).toMatchObject({source: "slack", channel_id: slack.channelId, thread_ts: slack.threadTs, decision: {messageTs: slack.messageTs}, rule_id: saved.rule!.id});
     expect(saved.rule).toMatchObject({source: "slack", naturalText: "Do not save private-marker"});
-    expect(pointer).toMatchObject({team_id: member.teamId, member_id: member.memberId, channel_id: slack.channelId, thread_ts: slack.threadTs, message_ts: slack.messageTs, tool_name: "hive_set_capture_rule", inverse: {kind: "capture_instruction", reversible: true, payload: {instructionId: audit.id}}, reply: "Saved your capture rule.", undone_at: null});
+    expect(pointer).toMatchObject({team_id: member.teamId, member_id: member.memberId, channel_id: slack.channelId, thread_ts: slack.threadTs, message_ts: slack.messageTs, tool_name: "hive_set_capture_rule", inverse: {kind: "capture_instruction", reversible: true, payload: {instructionId: audit.id}}, reply: "Saved what Hive keeps.", undone_at: null});
     expect(pointer.created_at).toEqual(audit.created_at);
     expect(pointer.expires_at).toEqual(audit.undo_until);
     expect(new Date(pointer.expires_at).getTime() - new Date(pointer.created_at).getTime()).toBeGreaterThan(3590000);
@@ -213,7 +213,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
         const rule = await captureRules.insertCaptureRule(tx, member, input({source: "slack", action: "flag"}));
         const id = newId("cinstr");
         const [audit] = await tx`INSERT INTO capture_rule_instructions (id, team_id, member_id, source, channel_id, thread_ts, decision, outcome, rule_id, rule_revision, rule_snapshot, restatement, natural_text, undo_until) VALUES (${id}, ${member.teamId}, ${member.memberId}, 'slack', ${slack.channelId}, ${slack.threadTs}, ${tx.json({...judgement, messageTs: slack.messageTs})}, 'saved', ${rule.id}, 1, ${tx.json(rule)}, 'Keep matching captures private.', 'Concurrent receipt fixture', clock_timestamp() + interval '1 hour') RETURNING *`;
-        await tx`INSERT INTO slack_tool_actions (id, team_id, member_id, channel_id, thread_ts, message_ts, tool_name, inverse, reply, expires_at) VALUES (${newId("sact")}, ${member.teamId}, ${member.memberId}, ${slack.channelId}, ${slack.threadTs}, ${slack.messageTs}, 'hive_set_capture_rule', ${tx.json({kind: "capture_instruction", reversible: true, payload: {instructionId: id}})}, 'Saved your capture rule.', ${audit.undo_until})`;
+        await tx`INSERT INTO slack_tool_actions (id, team_id, member_id, channel_id, thread_ts, message_ts, tool_name, inverse, reply, expires_at) VALUES (${newId("sact")}, ${member.teamId}, ${member.memberId}, ${slack.channelId}, ${slack.threadTs}, ${slack.messageTs}, 'hive_set_capture_rule', ${tx.json({kind: "capture_instruction", reversible: true, payload: {instructionId: id}})}, 'Saved what Hive keeps.', ${audit.undo_until})`;
       });
       return proposal();
     });
@@ -248,7 +248,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     models.systemOne.mockResolvedValue({answers: answers([0, 1, 1])});
     const result = await setCaptureRuleFromText(member, text, web);
     expect(result.status).toBe("question");
-    expect(result.question).toBe("Which exact capture rule should Hive add?");
+    expect(result.question).toBe("What should Hive keep, exclude or keep private?");
     expect(await captureRules.effectiveRules(member)).toEqual([]);
     expect((await audits())[0].decision.clearInstruction).toBe(false);
   });

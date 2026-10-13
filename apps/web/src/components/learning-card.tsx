@@ -7,6 +7,8 @@ import {
   agentKind,
   learnedBy,
   learningStatus,
+  kindLabel,
+  cellStateLabel,
 } from "@/lib/learning-presentation";
 
 export function LearningCard({
@@ -67,20 +69,9 @@ export function LearningCard({
   );
 }
 
-function kindLabel(kind: LearningView["kind"]) {
-  return kind === "decision" || kind === "friction" ? kind : "learning";
-}
-
 function LifecycleBadge({ learning }: { learning: LearningView }) {
   const status = learningStatus(learning);
-  const label =
-    learning.lifecycle === "superseded"
-      ? "Replaced"
-      : status === "outdated"
-        ? "Outdated"
-        : status === "confirmed"
-          ? `Seen ${learning.pushCount} times`
-          : undefined;
+  const label = cellStateLabel(learning);
   return label ? <Badge tone={status}>{label}</Badge> : null;
 }
 

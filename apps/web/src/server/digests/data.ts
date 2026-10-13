@@ -66,7 +66,7 @@ export async function gatherDigest(
     decisions: decisions.map((r) => ({
       id: String(r.cell_id),
       sourceKey: String(r.id),
-      title: `${String(r.decision).replace(/_/g, " ")}: ${r.title}`,
+      title: `${({ supersede: "Hive replaced an earlier cell with this cell", keep_old: "Hive merged this cell into an earlier cell", mark_outdated: "Hive marked this cell outdated", retract_new: "Hive removed this cell", keep_both: "Hive kept both cells", reversed: "Hive reversed a change to this cell" } as Record<string, string>)[String(r.decision)] ?? "Hive reviewed this cell"}: ${r.title}`,
       author: author(r),
     })),
   };

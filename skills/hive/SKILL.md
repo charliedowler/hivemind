@@ -1,6 +1,6 @@
 ---
 name: hive
-description: Use the team's Hive memory when starting repository work, hitting an unfamiliar error, choosing a library or approach, answering how something works here, or saving a non-obvious fix, gotcha, decision, insight or friction after work. Requires the Hive MCP server. Skip unrelated personal tasks and general knowledge.
+description: Use the team's Hive memory when starting repository work, hitting an unfamiliar error, choosing a library or approach, answering how something works here, or saving a learning, decision or friction after work. Requires the Hive MCP server. Skip unrelated personal tasks and general knowledge.
 metadata:
   triggers: repo-start, unfamiliar-error, approach-choice, team-question, durable-learning, session-end
 ---
@@ -19,7 +19,7 @@ Call `hive_ask` when the question needs several cells joined into an explanation
 
 ## Through Executor
 
-If Hive is connected through Executor, discover the Hive tool with Executor's `tools.search` and inspect it with `tools.describe.tool`. Call the full returned address through `execute`, such as `tools.hive.org.hive.hive_search`, rather than assuming direct MCP tool names. Branch on `result.ok`; read `result.data`. If the platform uses app profiles, use the discovered profile path instead. Keep the same search, privacy, citation and capture rules. Executor's own connection credentials stay inside Executor.
+If Hive is connected through Executor, discover the Hive tool with Executor's `tools.search` and inspect it with `tools.describe.tool`. Call the full returned address through `execute`, such as `tools.hive.org.hive.hive_search`, rather than assuming direct MCP tool names. Branch on `result.ok`; read `result.data`. If the platform uses app profiles, use the discovered profile path instead. Follow the same guidance for searching, privacy, citations and what Hive keeps. Executor's own connection credentials stay inside Executor.
 
 ## Capture an observation
 
@@ -33,7 +33,7 @@ Read the returned saved cell and inferred fields. To fix your capture, call `hiv
 
 Share only material the team is allowed to know. Scrub credentials, personal information, customer identifiers, private conversations and customer ticket links before sending. If the useful fact cannot be separated from sensitive context, leave it out. Skip routine task summaries, broad programming advice and guesses.
 
-If `hive_push` returns `{ dropped: true, rule: <kind> }`, carry on silently. The member or team chose to exclude that memory. Verify cells flagged outdated, superseded, retracted or past their verification date before using them.
+If `hive_push` returns `{ dropped: true, rule: <kind> }`, carry on silently. The member or team chose to exclude that memory. Check outdated, replaced or removed cells, and cells past their check date, before using them.
 
 ## Report a result
 

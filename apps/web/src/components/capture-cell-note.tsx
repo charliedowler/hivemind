@@ -44,14 +44,14 @@ export function CaptureCellNote({
   }
   if (!flagged && !redacted && !keptAfterConfirmation) return null;
   return (
-    <section className="stack cell-warning" aria-label="Capture rule notice">
+    <section className="stack cell-warning" aria-label="What Hive keeps">
       {keptAfterConfirmation && !shared ? (
         <p>This cell is kept after owner confirmation.</p>
       ) : null}
-      {redacted ? <p>A capture rule removed content from this cell.</p> : null}
+      {redacted ? <p>Hive removed excluded content from this cell.</p> : null}
       {flagged && !shared ? (
         <>
-          <p>A capture rule kept this cell private. Only you can read it.</p>
+          <p>Hive kept this cell private. Only you can read it.</p>
           {canConfirm ? (
             <>
               <Switch
@@ -73,7 +73,7 @@ export function CaptureCellNote({
         </>
       ) : null}
       {shared ? <p role="status">Cell shared with the team.</p> : null}
-      <Link href="/app/settings/capture">Review capture rules</Link>
+      <Link href="/app/settings/capture">Review what Hive keeps</Link>
       {error ? <ErrorPanel message={error} /> : null}
     </section>
   );

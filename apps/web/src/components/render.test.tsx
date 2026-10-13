@@ -127,8 +127,8 @@ describe("dashboard components", () => {
       renderToStaticMarkup(
         <LearningDetail learning={{ ...hit, pushCount: 1 }} />,
       ),
-    ).not.toContain("Seen ");
-    expect(html).toContain("gotcha");
+    ).toContain("Seen 1 time");
+    expect(html).toContain("learning");
     expect(html).toContain("src/git.ts");
     expect(html).toContain("<code>git stash pop</code>");
     for (const action of [
@@ -192,9 +192,9 @@ describe("dashboard components", () => {
     };
     const html = renderToStaticMarkup(<LearningDetail learning={cell} />);
     expect(learningStatus(cell)).toBe("outdated");
-    expect(html).toContain("Superseded by");
+    expect(html).toContain("Replaced by");
     expect(html).toContain('href="/app/cells/lrn_replacement"');
-    expect(html).toContain("Verify before use");
+    expect(html).toContain("Check this is still true");
     expect(html).toContain("Show history");
   });
 

@@ -209,7 +209,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const edge = await privacyEdge(older, newer);
       const result = await getSql().begin(tx => applyConflictDecision(tx, c, edge, {decision: "keep_both", reason: "sensitive-original-reason", confidence: 1, model: "claude-sonnet-5-5", jev: null, latencyMs: 0}));
       await getSql()`UPDATE learnings SET capture_redacted = true WHERE id = ${older}`;
-      expect((await listDecisions(a, {repo: "privacy/reasons"})).find(item => item.id === result!.id)?.reason).toBe("A cell was redacted by a capture rule.");
+      expect((await listDecisions(a, {repo: "privacy/reasons"})).find(item => item.id === result!.id)?.reason).toBe("Hive removed excluded content from a cell.");
       expect((await listConflicts(a, true)).find(item => item.id === edge)?.reason).not.toContain("sensitive-original-reason");
       expect(await listDecisions(a, {repo: "privacy/reasons", search: "sensitive-original-reason"})).toEqual([]);
     });

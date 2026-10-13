@@ -69,7 +69,7 @@ export async function acceptSupersession(
   const edges =
     await tx`SELECT * FROM learning_supersessions WHERE id = ${edgeId} AND team_id = ${ctx.teamId} FOR UPDATE`;
   const edge = edges[0];
-  if (!edge) throw new HiveNotFoundError("Conflict not found in your team.");
+  if (!edge) throw new HiveNotFoundError("Cell change not found in your hive.");
   const cells =
     await tx`SELECT l.id, l.revision, l.lifecycle FROM learnings l WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} AND l.id = ANY(${[edge.older_id, edge.newer_id]}::text[]) ORDER BY l.id FOR UPDATE`;
   const older = cells.find((row) => row.id === edge.older_id),
@@ -77,13 +77,13 @@ export async function acceptSupersession(
   if (!older || !newer) throw new HiveNotFoundError();
   if (edge.status === "accepted") return;
   if (edge.status !== "candidate")
-    throw new HiveInputError("This conflict is already resolved.");
+    throw new HiveInputError("Hive has already settled which cell to keep.");
   if (
     older.revision !== edge.older_revision ||
     newer.revision !== edge.newer_revision
   )
     throw new HiveError(
-      "A cell changed after this conflict was proposed. Review a new correction.",
+      "A cell has changed since then. Review a new correction.",
       409,
     );
   if (
@@ -137,7 +137,7 @@ export async function listConflicts(
     relation: row.relation,
     confidence: Number(row.confidence),
     status: row.status,
-    reason: row.capture_redacted ? "A cell was redacted by a capture rule." : row.reason,
+    reason: row.capture_redacted ? "Hive removed excluded content from a cell." : row.reason,
     votes: Number(row.votes),
     voted: row.voted,
     canAdmin: row.can_admin,
@@ -171,9 +171,9 @@ async function resolveConflictAction(
       const edges =
         await tx`SELECT s.status FROM learning_supersessions s JOIN learnings a ON a.id = s.older_id AND a.team_id = s.team_id JOIN learnings b ON b.id = s.newer_id AND b.team_id = s.team_id WHERE s.id = ${id} AND s.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx, "a")} AND ${learningVisibleSql(ctx, "b")} FOR UPDATE OF s, a, b`;
       if (!edges.length)
-        throw new HiveNotFoundError("Conflict not found in your team.");
+        throw new HiveNotFoundError("Cell change not found in your hive.");
       if (edges[0].status !== "candidate")
-        throw new HiveError("This conflict is already resolved.", 409);
+        throw new HiveError("Hive has already settled which cell to keep.", 409);
       if (action === "reject") {
         if (!admin)
           throw new HiveError(
@@ -288,7 +288,7 @@ async function editLearningAction(
     ...Object.values(candidate.capture_context ?? {}).filter((value): value is string => typeof value === "string"),
   ]);
   if (capture.action === "drop" && (data.lifecycle !== "retracted" || data.observation || data.body || data.title))
-    throw new HiveError("This edit was excluded by a capture rule.", 422);
+    throw new HiveError("Hive excluded this edit based on what you or your team chose to keep.", 422);
   const evidence = capture.redacted || capture.action === "drop" ? undefined : cleanEvidence(data.evidence);
   let correctedTitle = redactSecrets(capture.title).text;
   let correctedMetadata: {kind: LearningKind; tags: string[]; area: string | null; blocked: boolean | null; cost: number | null; workaround: string | null; classification: ReturnType<typeof classificationJson> | null} | undefined;

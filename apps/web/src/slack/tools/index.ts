@@ -99,7 +99,7 @@ export const slackTools: SlackTool[] = [
               (cell) =>
                 `<${process.env.PUBLIC_URL ?? "https://gohive.dev"}/app/cells/${cell.id}|${slackEscape(cell.title)}>`,
             )
-            .join("\n") || "No fresh nectar in the last day.",
+            .join("\n") || "No cells saved in the last day.",
       };
     },
   },

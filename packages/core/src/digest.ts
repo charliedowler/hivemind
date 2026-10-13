@@ -113,14 +113,16 @@ export function composeDigest(
           .slice(0, 5)
           .map(
             (item) =>
-              `${link(item.id, item.title, base)} · ${author(item.author)}${item.state === "superseded" ? ` (replaced${item.replacementId ? ` by ${link(item.replacementId, "a newer cell", base)}` : ""})` : item.state === "confirmed" ? " (confirmed)" : ""}`,
+              `${link(item.id, item.title, base)} · ${author(item.author)}${item.state === "superseded" ? ` (replaced${item.replacementId ? ` by ${link(item.replacementId, "a newer cell", base)}` : ""})` : ""}`,
           )
           .join("\n") +
         (entries.length > 5 ? `\nand ${entries.length - 5} more` : ""),
     );
   };
-  if (include.learnings) items("Learnings", data.learnings);
-  if (include.insights) items("Insights", data.insights);
+  items("Learnings", [
+    ...(include.learnings ? data.learnings : []),
+    ...(include.insights ? data.insights : []),
+  ]);
   if (include.friction && data.friction.length) {
     const areas = new Map<string, DigestFriction[]>();
     for (const report of data.friction) {
@@ -137,7 +139,7 @@ export function composeDigest(
         a[1].reduce((n, r) => n + (r.minutes ?? 0), 0),
     );
     section(
-      "*Friction and pain points*\n" +
+      "*Friction*\n" +
         groups
           .slice(0, 5)
           .map(([area, reports]) => {
@@ -161,14 +163,14 @@ export function composeDigest(
         (groups.length > 5 ? `\nand ${groups.length - 5} more areas` : ""),
     );
   }
-  if (include.decisions) items("Conflict decisions", data.decisions);
+  if (include.decisions) items("Cell changes", data.decisions);
   const empty =
     counts.learnings + counts.insights + counts.friction + counts.decisions ===
     0;
   if (empty) section("No changes since the last update.");
   else
     section(
-      `${counts.learnings} learnings, ${counts.insights} insights, ${counts.friction} friction reports, ${counts.decisions} conflict decisions. ${counts.minutes} measured minutes lost, ${counts.blocked} blocked reports${counts.unmeasured ? `, ${counts.unmeasured} without a measured cost` : ""}.\n<${base}/app|Open your hive>`,
+      `${counts.learnings + counts.insights} learnings, ${counts.friction} friction reports, ${counts.decisions} cell changes. ${counts.minutes} measured minutes lost, ${counts.blocked} blocked reports${counts.unmeasured ? `, ${counts.unmeasured} without a measured cost` : ""}.\n<${base}/app|Open your hive>`,
     );
   const bounded: DigestBlock[] = [];
   for (const block of blocks) {

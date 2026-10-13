@@ -16,7 +16,7 @@ export default async function Page({
   return (
     <div className="stack cell-page">
       <Link href="/app" className="text-button">
-        Back to the comb
+        Back to Hive
       </Link>
       <div className="page-heading">
         <div>

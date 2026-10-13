@@ -21,6 +21,8 @@ import {
   agentKind,
   learnedBy,
   learningStatus,
+  kindLabel,
+  cellStateLabel,
 } from "@/lib/learning-presentation";
 import { CopyButton, ErrorPanel, LoadingPanel } from "./primitives";
 import { CellCitation } from "./cell-citation";
@@ -79,13 +81,12 @@ export function LearningDetail({
   return (
     <div className="stack learning-detail">
       <div className="row wrap">
-        <Badge tone={learningStatus({ ...learning, votes })}>
-          {learning.lifecycle ?? learningStatus({ ...learning, votes })}
-        </Badge>
-        <Badge>{learning.kind}</Badge>
-        {learning.pushCount > 1 ? (
-          <span className="small">Seen {learning.pushCount} times</span>
+        {cellStateLabel({ ...learning, votes }) ? (
+          <Badge tone={learningStatus({ ...learning, votes })}>
+            {cellStateLabel({ ...learning, votes })}
+          </Badge>
         ) : null}
+        <Badge>{kindLabel(learning.kind)}</Badge>
       </div>
       <div className="row wrap">
         <MemberBee
@@ -228,7 +229,7 @@ function CellChanges({
           {history ? (
             <div className="stack" aria-label="Historical cells">
               <p className="small muted">
-                Includes replaced, outdated and retracted cells.
+                Includes replaced, outdated and removed cells.
               </p>
               {historical.map((cell) => (
                 <p className="small" key={cell.id}>
@@ -237,7 +238,7 @@ function CellChanges({
                     ? "Replaced"
                     : cell.lifecycle === "outdated"
                       ? "Outdated"
-                      : "Retracted"}
+                      : "Removed"}
                 </p>
               ))}
             </div>
@@ -301,9 +302,9 @@ function ChangeText({
       return <>Hive marked this cell and {citation} outdated</>;
     default:
       return receiving ? (
-        <>Hive retracted this cell after comparing it with {citation}</>
+        <>Hive removed this cell after comparing it with {citation}</>
       ) : (
-        <>Hive retracted {citation} after comparing it with this cell</>
+        <>Hive removed {citation} after comparing it with this cell</>
       );
   }
 }
@@ -570,7 +571,7 @@ function Moderation({ id, onDone }: { id: string; onDone?: () => void }) {
           disabled={pending}
           onClick={() => (confirm ? void act("delete") : setConfirm(true))}
         >
-          {confirm ? "Confirm retraction" : "Retract cell"}
+          {confirm ? "Confirm removal" : "Remove cell"}
         </Button>
         {confirm ? (
           <Button variant="ghost" onClick={() => setConfirm(false)}>
@@ -609,7 +610,7 @@ function LifecycleNotice({ learning }: { learning: LearningView }) {
       {" "}
       {learning.supersededBy ? (
         <div className="cell-warning stack">
-          <strong>Superseded by</strong>
+          <strong>Replaced by</strong>
           <CellCitation id={learning.supersededBy} />
           <p className="small">
             This cell is historical. Use its replacement for current guidance.
@@ -618,18 +619,18 @@ function LifecycleNotice({ learning }: { learning: LearningView }) {
       ) : null}
       {learning.lifecycle === "retracted" ? (
         <p className="cell-warning">
-          This cell is retracted. Hive keeps it in the history and excludes it
+          Hive removed this cell. It stays in the history and is excluded
           from current guidance.
         </p>
       ) : null}
       {learning.verifyBeforeUse ? (
         <p className="cell-warning">
-          Verify before use. This learning passed its verification date{" "}
+          Check this is still true. This cell was due for a check{" "}
           {learning.verifyAfter ? formatHumanDate(learning.verifyAfter) : ""}.
         </p>
       ) : learning.verifyAfter ? (
         <p className="small muted">
-          Verify by {formatHumanDate(learning.verifyAfter)} · Updated{" "}
+          Check by {formatHumanDate(learning.verifyAfter)} · Updated{" "}
           {formatHumanDate(learning.updatedAt)}
         </p>
       ) : null}

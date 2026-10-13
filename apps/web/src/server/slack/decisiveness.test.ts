@@ -64,7 +64,7 @@ describe("Admin instruction decisiveness", () => {
       decideInstruction("how do I change capture rules?", "capture", true)?.act,
     ).toBe(false);
     expect(decideInstruction("Set up a digest", "digest", true)?.reason).toBe(
-      "When should I post the digest?",
+      "When should I post the weekly update?",
     );
     expect(decideInstruction("undo", "undo", false)?.act).toBe(false);
   });
@@ -82,7 +82,7 @@ describe("Admin instruction decisiveness", () => {
         "digest",
         true,
       )?.reason,
-    ).toBe("What time should I post the digest?");
+    ).toBe("What time should I post the weekly update?");
     expect(
       decideInstruction("Maybe we should do something later.", "digest", true)
         ?.react,
