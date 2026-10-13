@@ -43,10 +43,10 @@ export function startUpdate({ home, latest, minimum, installed }) {
 }
 export async function checkForUpdate({ home = homeDirectory(), baseUrl = endpoint(), env = process.env, now = Date.now(), fetcher = fetch, launch = startUpdate } = {}) {
   try {
-    if (optedOut(home, env)) return '';
     const manifest = read(join(home, '.hive/install.json'));
     if (!manifest.agents?.length && !manifest.executor) return '';
     const notice = takeNotice(home);
+    if (optedOut(home, env)) return notice;
     const path = join(home, '.hive/update.json');
     let state = read(path);
     if (state.checkedAt && now - state.checkedAt < day) return notice;
