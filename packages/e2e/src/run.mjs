@@ -22,10 +22,15 @@ let stopping;
 async function finish() {
   if (stopping) return stopping;
   stopping = (async () => {
-    await active?.finish();
+    const failures = [];
+    try { await active?.finish(); } catch (error) { failures.push(error); }
     active = null;
-    await stopAll();
-    await runtime?.close();
+    try { await stopAll(); } catch (error) { failures.push(error); }
+    try { await runtime?.close(); } catch (error) { failures.push(error); }
+    for (const error of failures) {
+      process.exitCode = 1;
+      report.scenarios.push({ name: 'harness-cleanup', status: 'fail', error: error.message, durationMs: 0 });
+    }
     const after = await fingerprintRealConfigs(realHome);
     try { assertRealConfigs(before, after); report.configUnchanged = true; }
     catch (error) { process.exitCode = 1; report.scenarios.push({ name: 'real-config-integrity', status: 'fail', error: error.message, durationMs: 0 }); }
@@ -69,6 +74,7 @@ try {
       result.error = error.message;
       result.stack = error.stack;
       if (result.status === 'fail') process.exitCode = 1;
+      else if (!process.exitCode) process.exitCode = 2;
     } finally {
       try { await active.finish(); } catch (error) { result.status = 'fail'; result.error = [result.error, error.message].filter(Boolean).join('\n'); process.exitCode = 1; }
       active = null;

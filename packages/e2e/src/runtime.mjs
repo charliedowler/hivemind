@@ -20,11 +20,21 @@ export async function startRuntime() {
   const id = randomBytes(7).toString('hex');
   const directory = resolve(evidenceRoot, '_infrastructure');
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const db = await startDatabase();
-  const sink = await startSinks();
+  await command('pnpm', ['--filter', 'gohive', 'build'], { cwd: repoRoot, log: resolve(directory, 'installer-build.log') });
+  const appDirectory = resolve(packageRoot, '.runtime', id);
+  let db, sink, job, closing;
+  const close = () => closing ??= (async () => {
+    const failures = [];
+    for (const action of [() => stop(job?.child), () => sink?.close(), () => db?.close(), () => rm(appDirectory, { recursive: true, force: true })]) {
+      try { await action(); } catch (error) { failures.push(error); }
+    }
+    if (failures.length) throw new AggregateError(failures, 'Runtime cleanup failed');
+  })();
+  try {
+  db = await startDatabase();
+  sink = await startSinks();
   const port = await freePort();
   const url = `http://localhost:${port}`;
-  const appDirectory = resolve(packageRoot, '.runtime', id);
   await mkdir(appDirectory, { recursive: true, mode: 0o700 });
   for (const entry of ['src', 'public']) await cp(resolve(webRoot, entry), resolve(appDirectory, entry), { recursive: true });
   await symlink(resolve(webRoot, 'node_modules'), resolve(appDirectory, 'node_modules'), 'dir');
@@ -46,6 +56,8 @@ export async function startRuntime() {
     RESEND_API_KEY: 're_e2e_local_only',
     EMAIL_FROM: 'Hive <hive@example.com>',
     HIVE_E2E_SINK_URL: sink.url,
+    TYPESAFE_API_KEY: 'e2e-local-only',
+    TYPESAFE_BASE_URL: sink.url,
     HIVE_E2E_RUN_ID: id,
     HIVE_E2E_APP_DIR: appDirectory,
     PORT: String(port),
@@ -56,9 +68,7 @@ export async function startRuntime() {
     SLACK_SIGNING_SECRET: 'hive-e2e-slack-signing',
   };
   await mkdir(env.HOME, { recursive: true, mode: 0o700 });
-  const job = start(process.execPath, [resolve(packageRoot, 'src/server.mjs')], { cwd: repoRoot, env, log: resolve(directory, 'next.log') });
-  const close = async () => { await stop(job.child); await sink.close(); await db.close(); await rm(appDirectory, { recursive: true, force: true }); };
-  try {
+  job = start(process.execPath, [resolve(packageRoot, 'src/server.mjs')], { cwd: repoRoot, env, log: resolve(directory, 'next.log') });
     let ready = false;
     for (let attempt = 0; attempt < 120; attempt++) {
       if (job.child.exitCode !== null) throw new Error(`Next exited: ${JSON.stringify(job.output())}`);
@@ -82,6 +92,7 @@ export function scenarioContext(runtime, name) {
   const startIndex = runtime.events.length;
   const cleanups = [];
   const outputs = [];
+  let finished;
   let requestId = 0;
   const artifact = (name, value) => writeArtifact(directory, name, value);
   const request = async (path, options = {}) => {
@@ -130,7 +141,8 @@ export function scenarioContext(runtime, name) {
     output: (text, surface = 'output') => { outputs.push({ text, surface }); },
     cleanup: callback => cleanups.push(callback),
     resetRateLimits: async () => { await runtime.sql`DELETE FROM rate_limits`; await runtime.sql`DELETE FROM auth_rate_limit`; },
-    async finish() {
+    finish() {
+      finished ??= (async () => {
       const failures = [];
       for (const cleanup of cleanups.reverse()) { try { await cleanup(); } catch (error) { failures.push(error); } }
       const counts = {};
@@ -145,6 +157,8 @@ export function scenarioContext(runtime, name) {
       await artifact('db-counts.json', counts);
       await artifact('outputs.json', outputs);
       if (failures.length) throw new AggregateError(failures, 'Scenario cleanup failed');
+      })();
+      return finished;
     },
   };
 }
