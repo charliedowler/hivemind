@@ -15,3 +15,5 @@ export {
   timeZoneLabel,
   humanizeTimeText,
 } from "./human-time";
+
+export type {HumanTimeOptions} from "./human-time";

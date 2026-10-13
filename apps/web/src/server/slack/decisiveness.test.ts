@@ -63,8 +63,30 @@ describe("Admin instruction decisiveness", () => {
     expect(
       decideInstruction("how do I change capture rules?", "capture", true)?.act,
     ).toBe(false);
-    expect(decideInstruction("Set up a digest", "digest", true)).toBeNull();
+    expect(decideInstruction("Set up a digest", "digest", true)?.reason).toBe(
+      "When should I post the digest?",
+    );
     expect(decideInstruction("undo", "undo", false)?.act).toBe(false);
+  });
+  it("acts on a complete hedged admin instruction and asks one missing-detail question", () => {
+    expect(
+      decideInstruction(
+        "Maybe we should schedule a digest here every Wednesday at 9am London time.",
+        "digest",
+        true,
+      )?.act,
+    ).toBe(true);
+    expect(
+      decideInstruction(
+        "Maybe we should schedule a digest every Wednesday.",
+        "digest",
+        true,
+      )?.reason,
+    ).toBe("What time should I post the digest?");
+    expect(
+      decideInstruction("Maybe we should do something later.", "digest", true)
+        ?.react,
+    ).toBe("eyes");
   });
 });
 
