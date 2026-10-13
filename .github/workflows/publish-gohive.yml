@@ -1,0 +1,49 @@
+name: Publish gohive
+
+on:
+  push:
+    branches: [main]
+    paths: ['packages/cli/**']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-gohive
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Enable the packageManager version of pnpm
+        run: npm install --global corepack@0.34.6 && corepack enable && corepack install
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter gohive typecheck && pnpm --filter gohive test
+      - name: Check the release version
+        id: release
+        shell: bash
+        run: |
+          version=$(node -p "require('./packages/cli/package.json').version")
+          latest=$(npm view gohive version)
+          versions=$(npm view gohive versions --json)
+          if VERSION="$version" VERSIONS="$versions" node -e 'process.exit(JSON.parse(process.env.VERSIONS).includes(process.env.VERSION) ? 0 : 1)'; then
+            echo "::notice::gohive@$version already exists (latest: $latest); skipping publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish with OIDC and provenance
+        if: steps.release.outputs.publish == 'true'
+        run: npm publish ./packages/cli --access public --provenance

@@ -24,13 +24,15 @@ Doctor reports a fixed client, platform and outcome to Hive's authenticated anal
 
 ## Releasing
 
-Maintainer note: `gohive@0.1.0` was published on 2026-10-13.
-
-Build and publish the CLI package. Publishing requires npm 2FA in the browser.
+Bump `version` in `packages/cli/package.json` and commit the change to `main`:
 
 ```sh
-pnpm --filter gohive build && npm publish ./packages/cli --access public
+pnpm --filter gohive version:patch
 ```
+
+The `Publish gohive` workflow checks the CLI and publishes new versions with npm trusted publishing (OIDC) and provenance. No npm token or manual publish is needed. It skips versions that already exist. You can also run the workflow manually from `main`.
+
+npm provenance requires a public source repository. Publishing with provenance remains blocked while this repository is private.
 
 ## Executor
 
