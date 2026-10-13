@@ -8,7 +8,12 @@ const { call, event, install } = vi.hoisted(() => ({
 }));
 vi.mock("@/server/slack/install", () => ({ installation: install }));
 vi.mock("@/server/slack/client", () => ({ slackCall: call }));
-vi.mock("@/server/analytics/events", () => ({ recordEvent: event }));
+vi.mock("@/server/analytics/events", () => ({
+  recordEvent: event,
+  currentOrigin: () => undefined,
+  originFor: () => ({ entrypoint: "slack" }),
+  withOrigin: async (_ctx: unknown, action: () => unknown) => action(),
+}));
 const ctx = {
   teamId: "team_fixture",
   channelId: "C123",
