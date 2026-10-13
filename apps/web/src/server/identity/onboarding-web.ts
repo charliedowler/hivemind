@@ -5,6 +5,7 @@ import { HiveError } from "../errors";
 import { emailDomain, isPublicDomain } from "./email-domain";
 import { listHiveContexts } from "./enrollment";
 import { followOwnerMemberships } from "./owner-bindings";
+import { recordMembershipJoin } from "./join-receipts";
 import {
   randomJoinPhrase,
   lookupJoinPhrase,
@@ -81,6 +82,7 @@ export async function createOrganisation(ctx: HiveContext, requestKey: string) {
     ).slice(0, 80);
     await tx`INSERT INTO teams (id, name, invite_code, invite_expires_at) VALUES (${teamId}, ${name}, ${hashToken(newToken())}, now() - interval '1 second')`;
     await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${ctx.memberId}, ${teamId}, 'admin')`;
+    await recordMembershipJoin(tx, ctx.memberId, teamId, "owner");
     await tx`SELECT hive_create_default_capture_rules(${teamId}, ${ctx.memberId})`;
     await followOwnerMemberships(tx, ctx.memberId);
     let eligible = false;

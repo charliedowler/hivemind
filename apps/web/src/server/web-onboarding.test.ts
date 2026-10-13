@@ -10,6 +10,7 @@ import {
   joinOrganisation,
 } from "./identity/onboarding-web";
 import { memberContext } from "./identity/enrollment";
+import { loadMemberContext } from "./identity/session-context";
 import { captureOwner, shareProjects } from "./project-sharing";
 import {
   bindVerifiedOwner,
@@ -122,6 +123,43 @@ describe.skipIf(!process.env.DATABASE_URL)(
         ownerName: "Charlie",
         actorType: "agent",
       });
+    });
+    it("selects a newly created hive before domain fallback and announces it once without replaying on retry", async () => {
+      const fixture = (
+        await createTeam({
+          teamName: `Domain destination ${suffix}`,
+          memberName: "Creator",
+        })
+      ).ctx;
+      const domain = `creator-${suffix}.example.test`;
+      await sql`UPDATE members SET email=${`creator@${domain}`},email_verified=true WHERE id=${fixture.memberId}`;
+      const personal = (await captureOwner(fixture)).personal;
+      await sql`INSERT INTO team_domains (team_id,domain,created_by) VALUES (${fixture.teamId},${domain},${fixture.memberId})`;
+      const sessionId = newId("ses"),
+        key = randomUUID();
+      await sql`INSERT INTO web_sessions (id,member_id,team_id,token_hash,expires_at) VALUES (${sessionId},${fixture.memberId},${personal.teamId},${randomUUID()},now()+interval '1 day')`;
+      const created = await createOrganisation(personal, key);
+      expect(created.paused).toBe(true);
+      const first = await loadMemberContext(personal.memberId, sessionId);
+      expect(first?.selectedHiveId).toBe(created.teamId);
+      expect(first?.justJoined).toEqual({
+        teamId: created.teamId,
+        teamName: created.teamName,
+        via: "owner",
+      });
+      expect(
+        (await loadMemberContext(personal.memberId, sessionId))?.justJoined,
+      ).toBeNull();
+      await sql`UPDATE web_sessions SET team_id=${personal.teamId} WHERE id=${sessionId}`;
+      expect((await createOrganisation(personal, key)).teamId).toBe(
+        created.teamId,
+      );
+      const retried = await loadMemberContext(personal.memberId, sessionId);
+      expect(retried?.selectedHiveId).toBe(personal.teamId);
+      expect(retried?.justJoined).toBeNull();
+      expect(
+        await memberContext(personal.memberId, personal.teamId),
+      ).not.toBeNull();
     });
     it("does not create membership, project grants or cells on join-page reads", async () => {
       const counts = async () =>
