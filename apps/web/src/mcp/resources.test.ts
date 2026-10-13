@@ -5,6 +5,7 @@ import { getSql } from "@/server/db/client";
 import { shareProjects, captureOwner } from "@/server/project-sharing";
 import { registerHiveTools } from "./server";
 import type { HiveContext } from "@hivemind/core";
+import { withCredentialScope } from "@/server/identity/credential-scope";
 import { newId } from "@/server/db/ids";
 import {
   generateJoinPhrase,
@@ -28,7 +29,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
       { legacy: "stateless" },
     );
     const sql = getSql();
-    async function rpc(actor: HiveContext, method: string, params: unknown) {
+    async function rpc(
+      actor: HiveContext,
+      method: string,
+      params: unknown,
+      sessionKind: "oauth" | "api_key" = "oauth",
+    ) {
       const response = await handler.fetch(
         new Request("https://gohive.dev/api/mcp", {
           method: "POST",
@@ -43,7 +49,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             token: "fixture",
             clientId: "fixture",
             scopes: ["hive"],
-            extra: { ...actor, sessionKind: "oauth" },
+            extra: { ...actor, sessionKind },
           },
         },
       );
@@ -207,6 +213,93 @@ describe.skipIf(!process.env.DATABASE_URL)(
         `https://gohive.dev/j/${rotated.phrase}`,
       );
       expect(overview.result.contents[0].text).toContain('"joinPaused": true');
+    });
+    it("returns every valid organisation invitation only for trusted person-wide credentials", async () => {
+      const personal = (await captureOwner(b)).personal;
+      await generateJoinPhrase(b);
+      const invite = async (wide = false, selected = personal) =>
+        withCredentialScope(selected.memberId, wide, () =>
+          rpc(selected, "tools/call", {
+            name: "hive_invite_link",
+            arguments: {},
+          }),
+        );
+      const scoped = JSON.parse((await invite()).result.content[0].text);
+      expect(scoped).toEqual({
+        joinUrl: null,
+        hint: "Create a hive for your team at https://gohive.dev/app/account",
+      });
+      const person = JSON.parse((await invite(true)).result.content[0].text);
+      expect(
+        person.invitations
+          .map((entry: { teamId: string }) => entry.teamId)
+          .sort(),
+      ).toEqual([a.teamId, b.teamId].sort());
+      expect(person).not.toHaveProperty("hint");
+      expect(person).not.toHaveProperty("joinUrl");
+      for (const entry of person.invitations) {
+        expect(entry).toMatchObject({
+          teamName: expect.any(String),
+          joinUrl: expect.stringContaining("https://gohive.dev/j/"),
+          invitePrompt: expect.stringContaining(
+            "Set me up on Hive and join the ",
+          ),
+          joinPaused: true,
+        });
+      }
+      const overview = await withCredentialScope(personal.memberId, true, () =>
+        rpc(personal, "resources/read", { uri: "hive://overview" }),
+      );
+      for (const entry of person.invitations)
+        expect(overview.result.contents[0].text).toContain(entry.joinUrl);
+      expect(
+        JSON.parse((await invite(false, b)).result.content[0].text),
+      ).not.toHaveProperty("invitations");
+      const singlePersonal = (await captureOwner(a)).personal;
+      const single = JSON.parse(
+        (
+          await withCredentialScope(a.memberId, true, () =>
+            rpc(singlePersonal, "tools/call", {
+              name: "hive_invite_link",
+              arguments: {},
+            }),
+          )
+        ).result.content[0].text,
+      );
+      expect(single.invitations).toHaveLength(1);
+      expect(single).toMatchObject(single.invitations[0]);
+      const apiKey = await rpc(
+        b,
+        "tools/call",
+        { name: "hive_invite_link", arguments: {} },
+        "api_key",
+      );
+      expect(JSON.parse(apiKey.result.content[0].text)).toMatchObject({
+        teamName: b.teamName,
+      });
+      expect(JSON.parse(apiKey.result.content[0].text)).not.toHaveProperty(
+        "invitations",
+      );
+      await sql`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${b.memberId} AND team_id IN (${a.teamId}, ${b.teamId})`;
+      const none = JSON.parse((await invite(true)).result.content[0].text);
+      expect(none).toEqual({
+        invitations: [],
+        joinUrl: null,
+        hint: "Create a hive for your team at https://gohive.dev/app/account",
+      });
+      await sql`UPDATE hive_memberships SET removed_at = NULL WHERE member_id = ${b.memberId} AND team_id IN (${a.teamId}, ${b.teamId})`;
+    });
+    it("does not trust a person-wide flag supplied in MCP auth metadata", async () => {
+      const personal = (await captureOwner(a)).personal;
+      const forged = await rpc(
+        { ...personal, personWide: true } as HiveContext,
+        "tools/call",
+        { name: "hive_invite_link", arguments: {} },
+      );
+      expect(JSON.parse(forged.result.content[0].text)).toEqual({
+        joinUrl: null,
+        hint: "Create a hive for your team at https://gohive.dev/app/account",
+      });
     });
     it("filters other audiences, unhelpful votes and history from the recent resource", async () => {
       const visible = newId("lrn"),

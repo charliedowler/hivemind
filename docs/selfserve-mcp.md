@@ -45,6 +45,6 @@ Capture requires project selection in **What Hive keeps**. Chat has no repositor
 
 After a cell helps or misleads, report the concrete result with `hive_outcome`. Use `hive_feedback` for direct useful (`up`), unhelpful (`down`) or outdated judgments. Feedback changes ranking and inclusion. Default search, ask and recent reads hide unhelpful or historical cells; `include_history: true` includes them. Reading alone never votes.
 
-`hive_invite_link {}` returns the same invite fields as the overview. The phrase is a domain-gated locator, not a secret or an access grant. Any active organisation member can read it; Rotate and Pause stay admin actions. If an admin has not created a phrase yet, the join URL and prompt are null.
+`hive_invite_link {}` returns the same invite fields as the overview. A trusted person-wide OAuth token returns an `invitations` array for all active organisation memberships, with the original fields also present when there is exactly one organisation. With none, it returns an empty array and the personal hint. API keys and team-scoped tokens return only the current hive’s invite. The phrase is a domain-gated locator, not a secret or an access grant. Any active organisation member can read it; Rotate and Pause stay admin actions. If an admin has not created a phrase yet, the join URL and prompt are null.
 
 All resource reads recheck active membership. Cell reads use the same audience and visibility filters as tools. Resource URIs do not accept another hive's ID.

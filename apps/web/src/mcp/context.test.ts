@@ -6,6 +6,7 @@ import { hiveInstructions } from "./instructions";
 const mocks = vi.hoisted(() => ({
   agent: vi.fn(),
   membership: vi.fn(),
+  hives: vi.fn(),
   recent: vi.fn(),
   overview: vi.fn(),
   policy: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/server/identity/agent-enrollment", () => ({
 }));
 vi.mock("@/server/identity/enrollment", () => ({
   memberContext: mocks.membership,
+  listHiveContexts: mocks.hives,
 }));
 vi.mock("@/server/db/client", () => ({ getSql: () => mocks.sql }));
 vi.mock("@/server/hive", () => ({

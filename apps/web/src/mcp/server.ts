@@ -109,7 +109,7 @@ export function registerHiveTools(server: McpServer) {
   registerHiveResources(server);
   server.registerTool("hive_invite_link", {
     title: "Invite teammates to this hive",
-    description: "Get the current organisation's domain-gated join link and setup prompt, or the personal hive's team-creation link.",
+    description: "Get join links and setup prompts for the current hive, or all organisation memberships with person-wide OAuth.",
     inputSchema: z.strictObject({}),
   }, async (_input, ctx) => reply(async () => JSON.stringify(await hiveInviteLink(getContext(ctx))), ctx));
   server.registerTool("hive_share_projects", {
