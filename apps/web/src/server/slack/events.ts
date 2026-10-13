@@ -257,7 +257,13 @@ export async function handleMessage(
         message.user!,
         direct,
       );
-      const prompted = mentioned || direct;
+      const digestFollowup =
+        actor && thread !== message.ts
+          ? await (
+              await import("../digests/instructions")
+            ).isDigestFollowup(teamId, actor.memberId, channel, thread)
+          : false;
+      const prompted = mentioned || direct || digestFollowup;
       const cells =
         actor && !prompted
           ? (
@@ -332,8 +338,7 @@ export async function handleMessage(
         : stripped;
       const reply =
         (receipt[0].payload?.reply as
-          | import("@/slack/tools").SlackToolResult
-          | undefined) ??
+          import("@/slack/tools").SlackToolResult | undefined) ??
         (prompted
           ? await respondToSlack(
               await slackToolContext(actor, channel, thread),

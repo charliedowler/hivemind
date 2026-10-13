@@ -112,6 +112,9 @@ export async function saveSchedule(
       skip_empty: data.skipEmpty,
       next_due_at: next,
       updated_at: new Date(),
+      instruction_revision: existing
+        ? Number(existing.instruction_revision) + 1
+        : 1,
     };
     const rows = existing
       ? await tx`UPDATE slack_digest_schedules SET ${tx(values)} WHERE id=${scheduleId} AND team_id=${ctx.teamId} RETURNING *`
@@ -154,7 +157,7 @@ export async function disableSchedule(ctx: HiveContext, id: string) {
         "An update is being posted. Wait before disabling this schedule.",
         409,
       );
-    await tx`UPDATE slack_digest_schedules SET enabled=false,updated_at=now() WHERE team_id=${ctx.teamId} AND id=${id}`;
+    await tx`UPDATE slack_digest_schedules SET enabled=false,updated_at=now(),instruction_revision=instruction_revision+1 WHERE team_id=${ctx.teamId} AND id=${id}`;
   });
   return result;
 }

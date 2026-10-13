@@ -61,5 +61,8 @@ export async function respondToSlack(
     };
   const tool = slackTools.find((tool) => tool.name === calls[0].name);
   if (!tool) return { text: "That hive tool is unavailable." };
-  return tool.handler(ctx, calls[0].input);
+  return tool.handler(
+    { ...ctx, messageTs, requestText: message, history },
+    calls[0].input,
+  );
 }

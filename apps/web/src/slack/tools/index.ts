@@ -7,7 +7,11 @@ import { HiveError } from "@/server/errors";
 import { askHive, recentLearnings } from "@/server/hive";
 import { channelInfo } from "@/server/slack/client";
 import { installation } from "@/server/slack/install";
-import { slackAnswer, slackEscape, slackCaptureReply } from "@/server/slack/format";
+import {
+  slackAnswer,
+  slackEscape,
+  slackCaptureReply,
+} from "@/server/slack/format";
 
 export type SlackToolContext = {
   teamId: string;
@@ -15,6 +19,9 @@ export type SlackToolContext = {
   isAdmin: boolean;
   channelId: string;
   threadTs: string;
+  messageTs?: string;
+  requestText?: string;
+  history?: Array<{ question: string; answer: string }>;
 };
 export type SlackToolResult = {
   text: string;
