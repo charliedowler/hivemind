@@ -16,11 +16,12 @@ test('join links accept only the Hive origin and a three-word phrase', () => {
   assert.throws(() => joinPhrase('https://other.test/j/amber-honey-fox'));
   assert.throws(() => joinPhrase('https://gohive.dev/j/../../secret'));
 });
-for (const identity of ['human', 'agent']) test(`${identity} install returns while OAuth waits; status resumes and joins with its own human credential`, async t => {
+for (const scenario of ['human', 'agent', 'token-error', 'declined']) test(`${scenario} install returns while OAuth waits; status resumes and joins with its own human credential`, async t => {
+  const identity = scenario === 'human' ? 'human' : 'agent';
   const home = mkdtempSync(join(tmpdir(), 'gohive-background-'));
   const fixtureBin=join(home,'fixture-bin');
   mkdirSync(fixtureBin);
-  writeFileSync(join(fixtureBin,'claude'),'#!/bin/sh\nexit 0\n',{mode:0o755});
+  writeFileSync(join(fixtureBin,'claude'),`#!${process.execPath}\nimport fs from 'node:fs';\nimport path from 'node:path';\nif (process.argv.includes('add')) fs.writeFileSync(path.join(process.env.HOME,'.claude.json'),JSON.stringify({mcpServers:{hive:{type:'http',url:'https://gohive.dev/api/mcp'}}}));\n`,{mode:0o755});
   const fixtureEnv={...process.env,PATH:fixtureBin+':'+process.env.PATH,CI:'true',CLAUDECODE:'1'};
   let baseUrl, redirect, verifier, lastPhrase, releaseExchange;
   const calls = [];
@@ -31,7 +32,7 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
     if (request.url === '/.well-known/oauth-protected-resource') return send({authorization_servers:[baseUrl],scopes_supported:['hive','hive:person']});
     if (request.url === '/.well-known/oauth-authorization-server') return send({registration_endpoint:baseUrl+'/register',authorization_endpoint:baseUrl+'/authorize',token_endpoint:baseUrl+'/token',scopes_supported:['hive','hive:person','offline_access']});
     if (request.url === '/register') { redirect = JSON.parse(body).redirect_uris[0]; return send({client_id:'hook-fixture'}); }
-    if (request.url === '/token') { if (identity === 'human') await new Promise(resolve=>releaseExchange=resolve); verifier = new URLSearchParams(body).get('code_verifier'); return send({access_token:'hook-fixture-token',refresh_token:'refresh-fixture',expires_in:3600}); }
+    if (request.url === '/token') { if (scenario === 'token-error') { response.writeHead(400).end('private-error-fixture'); return; } if (identity === 'human') await new Promise(resolve=>releaseExchange=resolve); verifier = new URLSearchParams(body).get('code_verifier'); return send({access_token:'hook-fixture-token',refresh_token:'refresh-fixture',expires_in:3600}); }
     if (request.url === '/api/mcp' && !request.headers.authorization) { response.writeHead(401, {'WWW-Authenticate':`Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`}).end(); return; }
     if (request.url === '/api/mcp') {
       assert.equal(request.headers.authorization,'Bearer hook-fixture-token');
@@ -78,7 +79,12 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
     assert.equal(signInState(home).url,state.url);
   }
   const callback=new URL(redirect); callback.searchParams.set('state',new URL(state.url).searchParams.get('state')); callback.searchParams.set('code','fixture-code');
-  const callbackPending=fetch(callback);
+  const invalid = new URL(callback); invalid.searchParams.set('state', 'wrong-secret-state');
+  const rejected = await fetch(invalid, { redirect: 'manual' });
+  assert.equal(rejected.status, 302);
+  assert.equal(rejected.headers.get('location'), 'https://gohive.dev/signed-in?error=1');
+  if (scenario === 'declined') { callback.searchParams.delete('code'); callback.searchParams.set('error', 'private-error-fixture'); }
+  const callbackPending=fetch(callback, { redirect: 'manual' });
   if (identity === 'human') {
     for(let i=0;i<100&&!releaseExchange;i++) await new Promise(resolve=>setTimeout(resolve,20));
     assert.ok(releaseExchange);
@@ -88,13 +94,20 @@ for (const identity of ['human', 'agent']) test(`${identity} install returns whi
     releaseExchange();
   }
   const callbackResult=await callbackPending;
-  assert.equal(callbackResult.status,200);
-  assert.ok((await callbackResult.text()).includes('Hive is connected'));
+  assert.equal(callbackResult.status,302);
+  assert.equal(callbackResult.headers.get('referrer-policy'), 'no-referrer');
+  if (['token-error', 'declined'].includes(scenario)) {
+    assert.equal(callbackResult.headers.get('location'), 'https://gohive.dev/signed-in?error=1');
+    for(let i=0;i<50 && signInState(home).phase!=='failed';i++) await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(signInState(home).phase, 'failed');
+    return;
+  }
+  assert.equal(callbackResult.headers.get('location'), 'https://gohive.dev/signed-in?client=claude');
   assert.ok(JSON.parse(readFileSync(join(home,'.hive/oauth.json'),'utf8')).access_token);
   for(let i=0;i<50 && signInState(home).phase!=='connected';i++) await new Promise(resolve=>setTimeout(resolve,20));
   const complete=await exec(process.execPath,[bin,'status','--home',home],{env,timeout:20000});
   assert.ok(complete.stdout.includes("You're in Lightdash."));
-  if (identity === 'human') assert.ok(complete.stdout.includes('run /mcp to reconnect Hive'));
+  if (identity === 'human') assert.ok(complete.stdout.includes('Run /mcp to reconnect Hive; no second sign-in is needed'));
   assert.ok(complete.stdout.includes('Team prompt fixture'));
   assert.ok(complete.stdout.includes('https://gohive.dev/j/amber-honey-fox'));
   assert.equal(lastPhrase,'amber-honey-fox');

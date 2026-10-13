@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { harness } from './identity.js';
 
 export type Agent = 'claude' | 'codex';
 type Hook = { type?: string; command?: string; [key: string]: unknown };
@@ -11,10 +12,10 @@ type HookGroup = { hooks: Hook[]; [key: string]: unknown };
 type OwnedHook = { event: string; command: string; group?: HookGroup };
 type Settings = { hooks?: Record<string, HookGroup[]>; [key: string]: unknown };
 type OwnedFile = { hash: string; previous?: string };
-type Manifest = { executor?: boolean; version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: OwnedHook[] };
+type Manifest = { claudeHeadersHelper?: { command: string; previous?: string }; executor?: boolean; version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: OwnedHook[] };
 export type Result = { status: number; stdout: string; stderr: string };
 export type Runner = (command: string, args: string[], home: string) => Result;
-export type Options = { executor?: boolean; home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string; registerMcp?: boolean; onDoctor?: (agent: Agent, healthy: boolean) => void };
+export type Options = { env?: NodeJS.ProcessEnv; terminalDetection?: boolean; executor?: boolean; home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string; registerMcp?: boolean; onDoctor?: (agent: Agent, healthy: boolean) => void };
 export const url = 'https://gohive.dev/api/mcp';
 export const startMarker = '<!-- hive:start -->';
 export const endMarker = '<!-- hive:end -->';
@@ -92,7 +93,7 @@ export function markInstructions(text: string, agent: Agent | 'executor', remove
   const end = text.indexOf(endMarker);
   if ((begin === -1) !== (end === -1) || (begin !== -1 && (end < begin || text.indexOf(startMarker, begin + 1) !== -1 || text.indexOf(endMarker, end + 1) !== -1))) throw new Error('The Hive instruction markers are incomplete or duplicated. No files were changed');
   const skill = agent === 'executor' ? '~/.hive/skills/hive/SKILL.md' : agent === 'claude' ? '~/.claude/skills/hive/SKILL.md' : '~/.agents/skills/hive/SKILL.md (also ~/.codex/skills/hive/SKILL.md)';
-  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard. Before setup, say "Installing Hive for Claude Code and Codex: the MCP server, a skill, and capture hooks that only act on projects you choose; your config is backed up first." Run npx gohive@latest install without an agent flag for a person; the browser flow runs in the background and gohive status resumes it. If Hive tools are not loaded in Claude Code after sign-in, run /mcp to reconnect Hive. Never create an AgentMail inbox for a person. After setup, call hive_invite_link for organisation hives and mention once "Teammates can join with <prompt>"; share the returned link with other agents on request. Read active/paused state without creating or rotating a phrase. Already installed and signed in means skip installation and account creation. With a join link, go straight to hive_join once signed in; on needs_human say "Open <joinUrl> to join <team>". After sign-in, read hive_share_projects before capture; skip the project question when a selection exists. Otherwise ask the human the one project question from the skill; without an existing selection and a human, capture nothing. Never ask the human to sign up. Hive saves when something is learned, not when the session ends. Capture immediately when a non-obvious failure is fixed (cause and fix), an approach is chosen (decision and why), a gotcha or workaround is found, or measured friction occurs (what blocked and how long only if measured). Push the observation and evidence via hive_push from selected projects only, with consistent runtime context and the Jev gate. Tell the human one line only if it changes what they should do. Stop is a non-blocking safety net for missed facts; skip session receipts and content already pushed. Codex and Executor follow these triggers without hooks. Hive derives metadata and relations. After using a cell, report a concrete evidenced result with hive_outcome. Vote up (useful), down (unhelpful when a cell misled you), or outdated with hive_feedback for a direct judgment. Feedback changes ranking and audience inclusion; use include_history: true to inspect hidden cells. Withdraw your current feedback with your receipt to restore the previous contribution. Retrieval alone never votes; never vote on cells merely retrieved. One actor has one contribution per cell per audience; organisation feedback never changes the personal original. Skip routine summaries and sensitive data.\n${endMarker}`;
+  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard. Before setup, say "Installing Hive for ${agent === 'claude' ? 'Claude Code' : agent === 'codex' ? 'Codex' : 'Executor'}: the MCP server, a skill${agent === 'claude' ? ', and capture hooks' : ''} that only act on projects you choose; your config is backed up first." Run npx gohive@latest install without an agent flag for a person; the browser flow runs in the background and gohive status resumes it. Claude Code and hooks use this same sign-in. If Hive tools are not loaded in Claude Code after sign-in, run /mcp to reconnect Hive; no second sign-in is needed. Never create an AgentMail inbox for a person. After setup, call hive_invite_link for organisation hives and mention once "Teammates can join with <prompt>"; share the returned link with other agents on request. Read active/paused state without creating or rotating a phrase. Already installed and signed in means skip installation and account creation. With a join link, go straight to hive_join once signed in; on needs_human say "Open <joinUrl> to join <team>". After sign-in, read hive_share_projects before capture; skip the project question when a selection exists. Otherwise ask the human the one project question from the skill; without an existing selection and a human, capture nothing. Never ask the human to sign up. Hive saves when something is learned, not when the session ends. Capture immediately when a non-obvious failure is fixed (cause and fix), an approach is chosen (decision and why), a gotcha or workaround is found, or measured friction occurs (what blocked and how long only if measured). Push the observation and evidence via hive_push from selected projects only, with consistent runtime context and the Jev gate. Tell the human one line only if it changes what they should do. Stop is a non-blocking safety net for missed facts; skip session receipts and content already pushed. Codex and Executor follow these triggers without hooks. Hive derives metadata and relations. After using a cell, report a concrete evidenced result with hive_outcome. Vote up (useful), down (unhelpful when a cell misled you), or outdated with hive_feedback for a direct judgment. Feedback changes ranking and audience inclusion; use include_history: true to inspect hidden cells. Withdraw your current feedback with your receipt to restore the previous contribution. Retrieval alone never votes; never vote on cells merely retrieved. One actor has one contribution per cell per audience; organisation feedback never changes the personal original. Skip routine summaries and sensitive data.\n${endMarker}`;
   if (begin !== -1) {
     const after = end + endMarker.length;
     return remove ? text.slice(0, begin) + text.slice(after).replace(/^\r?\n/, '') : text.slice(0, begin) + block + text.slice(after);
@@ -170,14 +171,36 @@ export function detectAgents(home: string, run: Runner = runCommand): Agent[] {
   return (['claude', 'codex'] as Agent[]).filter(agent => run(agent, ['--version'], home).status === 0);
 }
 
+export function parseClients(value: string): Agent[] {
+  const clients = value === 'all' ? ['claude', 'codex'] : value.split(',');
+  if (!clients.length || clients.some(client => client !== 'claude' && client !== 'codex')) throw new Error('Choose claude, codex, all, claude,codex or executor for --client');
+  return [...new Set(clients)] as Agent[];
+}
+
+export function selectAgents(home: string, env: NodeJS.ProcessEnv = process.env, explicit?: Agent[], run: Runner = runCommand): Agent[] {
+  if (explicit) return explicit;
+  const current = harness(env);
+  return current ? [current === 'Claude Code' ? 'claude' : 'codex'] : detectAgents(home, run);
+}
+
+export function installedAgents(home: string): Agent[] | undefined {
+  return existsSync(manifestPath(home)) ? loadManifest(home).agents : undefined;
+}
+
+export function installAnnouncement(agents: Agent[], terminal = false, executor = false): string {
+  const names = [...agents.map(agent => agent === 'claude' ? 'Claude Code' : 'Codex'), ...(executor ? ['Executor'] : [])].join(' and ');
+  return `Installing Hive for ${names}${terminal ? ' (detected on this machine)' : ''}: the MCP server, a skill${agents.includes('claude') ? ', and capture hooks' : ''} that only act on projects you choose; your config is backed up first.`;
+}
+
 export function install(options: Options): Manifest {
   const home = resolve(options.home);
   const run = options.run || runCommand;
   const log = options.log || console.log;
   return withLock(home, () => {
     const manifest = loadManifest(home);
-    const agents = options.agents || detectAgents(home, run);
+    const agents = selectAgents(home, options.env, options.agents, run);
     if (!agents.length && !options.executor) throw new Error('No forager found. Install Claude Code or Codex, then try again');
+    log(installAnnouncement(agents, options.terminalDetection ?? (!options.agents && !harness(options.env || process.env)), options.executor));
     const writes = new Map<string, string | Buffer>();
     const settingsPath = join(home, '.claude/settings.json');
     const instructionAgents: (Agent | 'executor')[] = [...agents, ...(options.executor ? ['executor' as const] : [])];
@@ -211,6 +234,14 @@ export function install(options: Options): Manifest {
       }
       writes.set(settingsPath, JSON.stringify(merged, null, 2) + '\n');
     }
+    if (agents.includes('claude')) {
+      const config = JSON.parse(read(join(home, '.claude.json')) || '{}');
+      const existing = config.mcpServers?.hive?.headersHelper;
+      const command = `node "${join(home, '.claude/skills/hive/scripts/headers.mjs').replace(/(["\\$`])/g, '\\$1')}" "${home.replace(/(["\\$`])/g, '\\$1')}"`;
+      if (existing && existing !== manifest.claudeHeadersHelper?.command && existing !== command) throw new Error('The Claude Hive server has a custom headers helper. No files were changed');
+      manifest.claudeHeadersHelper ||= { command, ...(existing ? { previous: existing } : {}) };
+      manifest.claudeHeadersHelper.command = command;
+    }
     const servers = options.registerMcp === false ? new Map<Agent, { exists: boolean; compatible: boolean }>() : new Map(agents.map(agent => [agent, server(home, agent, run)]));
     for (const [agent, value] of servers) if (value.exists && !value.compatible) throw new Error(`${agent} already has a different server called hive. No files were changed`);
     const backupDir = options.backupDir || join(home, '.hive/backups', `${Date.now()}-${randomUUID().slice(0, 8)}`);
@@ -240,6 +271,12 @@ export function install(options: Options): Manifest {
       log('The install did not finish. Backups and the install record are saved for a retry');
       atomicWrite(manifestPath(home), JSON.stringify(manifest, null, 2) + '\n');
       throw error;
+    }
+    if (agents.includes('claude') && options.registerMcp !== false) {
+      const path = join(home, '.claude.json');
+      const config = JSON.parse(read(path) || '{}');
+      config.mcpServers.hive.headersHelper = manifest.claudeHeadersHelper!.command;
+      atomicWrite(path, JSON.stringify(config, null, 2) + '\n');
     }
     manifest.agents = [...new Set([...manifest.agents, ...agents])];
     atomicWrite(manifestPath(home), JSON.stringify(manifest, null, 2) + '\n');
@@ -295,7 +332,7 @@ export function completeSignIn(options: Options, interactive: boolean, signIn: S
 export function doctor(options: Options): boolean {
   const home = resolve(options.home);
   const log = options.log || console.log;
-  const agents = options.agents || detectAgents(home, options.run);
+  const agents = options.agents || installedAgents(home) || detectAgents(home, options.run);
   if (!agents.length) { log('No agent found. Install Claude Code or Codex'); return false; }
   let healthy = true;
   for (const agent of agents) {
@@ -343,6 +380,15 @@ export function uninstall(options: Options) {
       const path = instructionPaths(home, agent);
       const text = read(path);
       if (text !== undefined) writes.set(path, markInstructions(text, agent, true));
+    }
+    const claudePath = join(home, '.claude.json');
+    if (manifest.claudeHeadersHelper) {
+      const config = JSON.parse(read(claudePath) || '{}');
+      if (config.mcpServers?.hive?.headersHelper === manifest.claudeHeadersHelper.command) {
+        if (manifest.claudeHeadersHelper.previous) config.mcpServers.hive.headersHelper = manifest.claudeHeadersHelper.previous;
+        else delete config.mcpServers.hive.headersHelper;
+        writes.set(claudePath, JSON.stringify(config, null, 2) + '\n');
+      }
     }
     const settingsPath = join(home, '.claude/settings.json');
     if (manifest.agents.includes('claude') && existsSync(settingsPath)) writes.set(settingsPath, JSON.stringify(mergeHooks(JSON.parse(read(settingsPath)!), home, true, manifest.ownedHooks), null, 2) + '\n');

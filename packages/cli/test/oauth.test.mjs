@@ -69,9 +69,13 @@ for (const [identity, inbox] of [['human', ''], ['agent', 'fixture@agentmail.to'
     assert.equal(authorize.searchParams.get('scope'), 'hive offline_access');
     const callback = new URL(redirectUri);
     callback.search = new URLSearchParams({ state: 'wrong-state', code: 'fixture-code' }).toString();
-    assert.equal((await fetch(callback)).status, 400);
+    const rejected = await fetch(callback, { redirect: 'manual' });
+    assert.equal(rejected.status, 302);
+    assert.equal(rejected.headers.get('location'), 'https://gohive.dev/signed-in?error=1');
     callback.searchParams.set('state', authorize.searchParams.get('state'));
-    assert.equal((await fetch(callback)).status, 200);
+    const completedCallback = await fetch(callback, { redirect: 'manual' });
+    assert.equal(completedCallback.status, 302);
+    assert.equal(completedCallback.headers.get('location'), 'https://gohive.dev/signed-in');
   });
   await completed;
   assert.ok(signedIn);

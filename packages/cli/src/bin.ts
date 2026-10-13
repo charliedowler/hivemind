@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { installExecutor, doctorExecutor, detectExecutor } from './executor.js';
-import { install, uninstall, doctor, detectAgents, type Agent } from './installer.js';
+import { install, uninstall, doctor, selectAgents, installedAgents, parseClients, type Agent } from './installer.js';
 import { installerIdentity, harness, type Identity } from './identity.js';
 import { beginSignIn, status, joinPhrase } from './onboarding.js';
 
@@ -15,7 +15,7 @@ async function main() {
   if (command === 'install' || command === 'login') console.log(`gohive ${JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version}`);
   let home = process.env.HOME || homedir();
   let backupDir: string | undefined;
-  let selectedAgent: Agent | undefined;
+  let selectedAgents: Agent[] | undefined;
   let executorClient = false;
   let executorUrl: string | undefined;
   let yes = false;
@@ -38,15 +38,14 @@ async function main() {
       else if (flag === '--backup-dir') backupDir = resolve(value);
       else if (flag === '--executor-url') executorUrl = value;
       else if (flag === '--client' && value === 'executor') executorClient = true;
-      else if (value === 'claude' || value === 'codex') selectedAgent = value;
-      else throw new Error('Choose claude, codex or executor for --client');
+      else selectedAgents = parseClients(value);
     } else throw new Error(`Unknown option: ${flag}`);
   }
   home = resolve(home);
   mkdirSync(home, { recursive: true, mode: 0o700 });
-  const agents = selectedAgent ? [selectedAgent] : detectAgents(home);
-  if (executorClient && selectedAgent) throw new Error('Choose one client per --client install');
-  const options = { home, agents, backupDir };
+  const agents = executorClient ? [] : command === 'install' ? selectAgents(home, process.env, selectedAgents) : selectedAgents || installedAgents(home) || selectAgents(home);
+  if (executorClient && selectedAgents) throw new Error('Choose one client per --client install');
+  const options = { home, agents, backupDir, terminalDetection: command === 'install' && !executorClient && !selectedAgents && !harness(process.env) };
   const mode = installerIdentity(process.env, !!process.stdin.isTTY && !!process.stdout.isTTY, identity, headless);
   if (mode === 'agent' && harness(process.env) && identity !== 'agent') throw new Error('An interactive coding harness needs human sign-in. Use --identity human, or explicitly --identity agent for an agent.');
   const executorOptions = { home, endpoint: executorUrl };
@@ -82,7 +81,7 @@ async function main() {
     if (!healthy) process.exitCode = 1;
   } else if (command === 'uninstall') uninstall(options);
   else if (command === 'login') await beginSignIn({ home, agents, identity: mode, headless, phrase, force: true });
-  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--identity human|agent] [--headless] [--join-url <Hive link>] [--yes] [--client claude|codex|executor]\ngohive status\ngohive doctor\ngohive login\ngohive uninstall\n\nA person signs in as themselves with Google or Slack. Harness markers do not select agent identity. Use --identity agent or --headless when no human is present. Sign-in runs in the background; status resumes it. --yes installs without opening sign-in.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
+  else if (command === 'help' || command === '--help' || command === '-h') console.log('Bring your agent to the hive\n\ngohive install [--identity human|agent] [--headless] [--join-url <Hive link>] [--yes] [--client claude|codex|all|claude,codex|executor]\ngohive status\ngohive doctor\ngohive login\ngohive uninstall\n\nA person signs in as themselves with Google or Slack. Harness markers select only the current client, never agent identity. Without markers, install configures the clients detected on the machine. --client all configures both. Use --identity agent or --headless when no human is present. Sign-in runs in the background; status resumes it. --yes installs without opening sign-in.\n\nOptions: --home <directory>, --backup-dir <directory>, --executor-url <MCP URL>');
   else throw new Error(`Unknown command: ${command}. Run gohive --help`);
 }
 

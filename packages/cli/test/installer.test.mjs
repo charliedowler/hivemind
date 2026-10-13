@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, realpathSync, symlinkSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { install, uninstall, doctor, mergeHooks, markInstructions, runCommand, url } from '../dist/installer.js';
+import { install, uninstall, doctor, mergeHooks, markInstructions, runCommand, selectAgents, parseClients, installedAgents, url } from '../dist/installer.js';
 
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'gohive-fixture-'));
@@ -328,4 +328,67 @@ test('Executor installs the same trigger instructions without native agents or h
   assert.equal(existsSync(join(f.home, '.claude/settings.json')), false);
   uninstall({...f.options, agents: []});
   assert.equal(f.read('.hive/EXECUTOR.md'), '');
+});
+
+
+for (const [name, env, expected] of [
+  ['Claude marker', { CLAUDECODE: '1' }, ['claude']],
+  ['Codex marker', { CODEX_THREAD_ID: 'fixture' }, ['codex']],
+  ['Codex sandbox marker', { CODEX_SANDBOX: 'seatbelt' }, ['codex']],
+  ['both markers', { CLAUDECODE: '1', CODEX_THREAD_ID: 'fixture' }, ['claude']],
+  ['config path alone', { CODEX_HOME: '/config' }, ['claude', 'codex']],
+  ['empty markers', { CLAUDECODE: '', CODEX_THREAD_ID: '' }, ['claude', 'codex']],
+  ['plain terminal', {}, ['claude', 'codex']],
+]) test(`install client selection: ${name}`, () => {
+  const f = fixture();
+  assert.deepEqual(selectAgents(f.home, env, undefined, f.options.run), expected);
+  const { agents, ...options } = f.options;
+  const record = install({ ...options, env });
+  assert.deepEqual(record.agents, expected);
+  assert.equal(f.output[0].split(':')[0], `Installing Hive for ${expected.map(a => a === 'claude' ? 'Claude Code' : 'Codex').join(' and ')}${expected.length === 2 ? ' (detected on this machine)' : ''}`);
+  for (const absent of ['claude', 'codex'].filter(a => !expected.includes(a))) assert.ok(!f.calls.some(call => call[0] === absent));
+});
+
+for (const [value, expected] of [['claude', ['claude']], ['codex', ['codex']], ['all', ['claude', 'codex']], ['claude,codex', ['claude', 'codex']], ['codex,claude,codex', ['codex', 'claude']]]) test(`explicit --client ${value} wins over the harness`, () => {
+  assert.deepEqual(parseClients(value), expected);
+  assert.deepEqual(selectAgents('/fixture', { CLAUDECODE: '1' }, parseClients(value), () => { throw new Error('Detection must not run'); }), expected);
+});
+
+test('plain terminal detects only available clients and invalid selections fail', () => {
+  assert.deepEqual(selectAgents('/fixture', {}, undefined, command => ({status:command==='codex'?0:1,stdout:'',stderr:''})), ['codex']);
+  assert.deepEqual(selectAgents('/fixture', {}, undefined, () => ({status:1,stdout:'',stderr:''})), []);
+  for (const value of ['', 'all,claude', 'claude,', 'other']) assert.throws(() => parseClients(value));
+});
+
+for (const agent of ['claude', 'codex']) test(`${agent}-only installation is checked and removed without involving the other client`, () => {
+  const f = fixture();
+  install({ ...f.options, agents: [agent] });
+  assert.deepEqual(installedAgents(f.home), [agent]);
+  const { agents, ...options } = f.options;
+  f.calls.length = 0;
+  assert.equal(doctor(options), true);
+  uninstall(options);
+  assert.ok(!f.calls.some(call => call[0] === (agent === 'claude' ? 'codex' : 'claude')));
+  assert.equal(installedAgents(f.home), undefined);
+});
+
+test('Claude shares the hook grant through a token-free headers helper and removes it from a preserved server', () => {
+  const f = fixture();
+  f.write('.claude.json', JSON.stringify({mcpServers:{hive:{type:'http',url},other:{command:'keep'}}}));
+  install({...f.options, agents:['claude']});
+  const hive=JSON.parse(f.read('.claude.json')).mcpServers.hive;
+  assert.ok(hive.headersHelper.includes('headers.mjs'));
+  assert.ok(!hive.headersHelper.includes('Bearer'));
+  install({...f.options, agents:['claude']});
+  uninstall(f.options);
+  assert.deepEqual(JSON.parse(f.read('.claude.json')).mcpServers,{hive:{type:'http',url},other:{command:'keep'}});
+});
+
+test('a custom Claude headers helper is preserved without changing any configuration', () => {
+  const f = fixture();
+  const config=JSON.stringify({mcpServers:{hive:{type:'http',url,headersHelper:'custom-auth'}}});
+  f.write('.claude.json',config);
+  assert.throws(()=>install({...f.options,agents:['claude']}),/custom headers helper/);
+  assert.equal(f.read('.claude.json'),config);
+  assert.equal(existsSync(join(f.home,'.claude/settings.json')),false);
 });

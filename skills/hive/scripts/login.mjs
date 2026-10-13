@@ -17,6 +17,13 @@ async function json(url, init = {}) {
   return response.json();
 }
 
+function completion(response, error = false) {
+  const url = new URL('https://gohive.dev/signed-in');
+  if (error) url.searchParams.set('error', '1');
+  else if (['claude', 'codex'].includes(process.env.HIVE_SIGN_IN_CLIENT)) url.searchParams.set('client', process.env.HIVE_SIGN_IN_CLIENT);
+  response.writeHead(302, { Location: url.href, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).end();
+}
+
 async function main() {
   const background = Boolean(process.env.HIVE_SIGN_IN_ATTEMPT);
   if (background) updateSignIn({ pid: process.pid });
@@ -47,10 +54,10 @@ async function main() {
   const codePromise = new Promise((resolve, reject) => { resolveCode = resolve; rejectCode = reject; });
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
-    if (url.pathname !== '/callback' || url.searchParams.get('state') !== state) { response.writeHead(400).end('This sign-in does not match the hive request.'); return; }
+    if (url.pathname !== '/callback' || url.searchParams.get('state') !== state) { completion(response, true); return; }
     const code = url.searchParams.get('code');
-    if (!code) { response.writeHead(400).end('Hive sign-in did not finish.'); rejectCode(new Error('Hive sign-in was declined')); return; }
-    if (received) { response.writeHead(409).end('Sign-in is already finishing. Run npx gohive status.'); return; }
+    if (!code) { completion(response, true); rejectCode(new Error('Hive sign-in was declined')); return; }
+    if (received) { completion(response, true); return; }
     received = true;
     callbackResponse = response;
     if (background) updateSignIn({ phase: 'exchanging' });
@@ -92,13 +99,13 @@ async function main() {
     if (background) updateSignIn({ phase: 'exchanging' });
     saveCredentials({ ...tokens, baseUrl, client_id: registration.client_id, token_endpoint: trustedUrl(discovery.token_endpoint), expires_at: Date.now() + (tokens.expires_in || 3600) * 1000 });
     if (background) updateSignIn({ phase: 'connected', url: undefined });
-    callbackResponse.writeHead(200, { 'Content-Type': 'text/plain' }).end('Hive is connected. Return to your agent and run npx gohive status.');
+    completion(callbackResponse);
     if (background) {
       if (process.env.HIVE_NATIVE_CODEX === '1') await nativeLogin();
     }
     if (!background) console.log('The hooks can now read your hive. Run gohive doctor to check your foragers.');
   } catch (error) {
-    if (callbackResponse && !callbackResponse.headersSent) callbackResponse.writeHead(502, { 'Content-Type': 'text/plain' }).end('Hive could not finish sign-in. Return to your agent and run npx gohive status.');
+    if (callbackResponse && !callbackResponse.headersSent) completion(callbackResponse, true);
     throw error;
   } finally { clearTimeout(timeout); clearTimeout(approval); server.close(); }
 }

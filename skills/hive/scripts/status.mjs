@@ -1,4 +1,6 @@
 import { bearerToken, callTool, homeDirectory, endpoint } from './mcp.mjs';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { readSignIn, updateSignIn } from './sign-in-state.mjs';
 const payload = result => result.structuredContent ?? JSON.parse(result.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') || '{}');
 async function main() {
@@ -26,7 +28,9 @@ async function main() {
     console.log(joined.teamName ? `You're in ${joined.teamName}.` : 'Your hive membership is ready.');
   }
   console.log(state.phase === 'native-waiting' ? 'Signed in. Finish the native MCP connection in the open tab, then run gohive status.' : state.phase === 'native-incomplete' ? 'Signed in. Run codex mcp login hive to finish the native connection.' : 'Signed in. Hive is ready.');
-  if (state.identity === 'human') console.log('If Hive tools are not loaded in Claude Code, run /mcp to reconnect Hive.');
+  let agents = state.agents;
+  try { agents = JSON.parse(readFileSync(join(homeDirectory(), '.hive/install.json'), 'utf8')).agents; } catch {}
+  if (agents?.includes('claude')) console.log('Claude Code and hooks use this same sign-in. Run /mcp to reconnect Hive; no second sign-in is needed.');
   if (state.phase === 'native-waiting' && state.url) console.log(`Open ${state.url}`);
   try {
     const result = payload(await callTool('hive_invite_link', {}, { token, signal: AbortSignal.timeout(2500) }));
