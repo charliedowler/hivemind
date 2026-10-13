@@ -1,10 +1,8 @@
 # Hive in Slack
 
-Implementation plan, 12 October 2026. This plan waits for the identity, learnings backend and Better Auth rounds to finish. Read their reports and the final main branch before selecting migration numbers or changing service contracts.
+Design and contract for Hive in Slack, written on 12 October 2026 and updated with live review corrections.
 
-## Ownership and order
-
-Only this document is changed in the `docs/hive-slack` worktree while the three completion markers are absent. Check all three markers every 60 seconds for at most five hours. Once all exist, fast-forward main, read `/tmp/hive-r3/report.md`, `/tmp/hive-backend/report.md`, `/tmp/hive-auth/report.md` and `docs/learnings-backend.md`, then merge this plan. Implementation proceeds on main as requested. Children, if used, run on Codex only.
+## Migration discipline
 
 Use hand-written additive SQL through the repository migration runner. Write a matching rollback outside the forward migration directory. Inspect the SQL and exercise both directions against a disposable database before production. Apply the forward migration from the current main tip before pushing code that needs it. Never use schema push or force.
 
@@ -70,19 +68,18 @@ Add a decision log with time, channel/thread link, decision, reason, Jev probabi
 
 Record the existing app configuration before edits. Preserve Sign in with Slack. Add bot user, bot scopes `app_mentions:read`, `channels:history`, `groups:history`, `im:history`, `channels:read`, `groups:read`, `chat:write`, `reactions:read`, `reactions:write`, `users:read`, `users:read.email`, `commands`, `pins:read`; events `app_mention`, `message.channels`, `message.groups`, `message.im`, `reaction_added`; `/hive`; interactivity and a save-message shortcut. Add installation callback. All request URLs use `https://gohive.dev`.
 
-Deploy URL verification first. Use Charlie's Chrome to update app `A0C8P4V5L82`, verify the URL and reinstall through the Hive admin's Connect Slack flow. Record exact changes and delivery URLs in `~/projects/launchathon-infra/hivemind.md`. Do not print client secrets or tokens. Confirm Slack's granted scopes after installation.
+Deploy URL verification first. Update your Slack app's URLs, verify them and reinstall through the Hive admin's Connect Slack flow. Do not print client secrets or tokens. Confirm Slack's granted scopes after installation.
 
 ## Verification and report
 
 Run `pnpm -r typecheck`, `pnpm -r test`, `pnpm --filter web build`. Add meaningful gate and delivery tests, signature and OAuth replay tests, consent revocation/purge races, DM exclusion, private-source audience boundaries, cross-team search/read/update/delete, citation formatting and bee-reaction attribution/idempotency. Run React Doctor on changed React files and fix diagnostics caused by this change.
 
-Live checks use an existing launchathon or Wolf test channel, or Charlie's chosen test channel. Connect Slack for the intended Hive team, invite Hive, enable indexing only for that test channel and verify: cited mention answer, human chit-chat remains silent with logged decisions, bee reaction produces the attributed cell, `/hive ask` works, and this Mac's registered Hive MCP returns a Slack citation. Include a thread follow-up and a purge check. Never substitute direct calls to the gate for real Slack exchanges.
+Live checks use a dedicated test channel. Connect Slack for the intended Hive team, invite Hive, enable indexing only for that test channel and verify: cited mention answer, human chit-chat remains silent with logged decisions, bee reaction produces the attributed cell, `/hive ask` works, and this Mac's registered Hive MCP returns a Slack citation. Include a thread follow-up and a purge check. Never substitute direct calls to the gate for real Slack exchanges.
 
-Capture settings and decision log at 1280 and 390 into `docs/screenshots` and inspect every image. Update README and SPEC with actual behavior and limitations. Write and print `/tmp/hive-slack/report.md` with commit ids, migration and rollback, manifest changes, permission rules, three real exchanges with decision evidence, screenshot paths, test results, production checks, stubs and remaining human steps. No claimed live result without the exchange and stored evidence.
+Capture settings and decision log at 1280 and 390 into `docs/screenshots` and inspect every image. Update README and SPEC with actual behavior and limitations.
 
-## Current read status
 
-Read Hive's README, SPEC, current auth/MCP service, migration runner and design-system voice. Read Cloudy's session, tool and voice structure. Read Wolf's `origin/main` gate policy, questions, model and orchestration, plus its when-to-chime-in design. `docs/learnings-backend.md` is absent in the planning snapshot and must be read after the backend marker. Re-read auth and MCP after the auth marker.
+## References
 
 Official contracts consulted: [Slack OAuth](https://docs.slack.dev/authentication/installing-with-oauth/), [Events API](https://docs.slack.dev/apis/events-api/), [history](https://docs.slack.dev/reference/methods/conversations.history/), [thread replies](https://docs.slack.dev/reference/methods/conversations.replies/), [OAuth exchange](https://docs.slack.dev/reference/methods/oauth.v2.access/), [TypeSafe index](https://docs.typesafe.ai/llms.txt), [Vercel Queues quickstart](https://vercel.com/docs/queues/quickstart), [queue pricing and limits](https://vercel.com/docs/queues/pricing), [Hobby cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing). Current history and replies docs distinguish internal apps from non-Marketplace commercial installs; the client must handle the lower limit and persistent continuation.
 

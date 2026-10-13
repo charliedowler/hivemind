@@ -15,19 +15,19 @@ Hive uses hosted c15t 3.0.0. The install adds one consent root, a banner, a pref
 | --- | --- |
 | Path | INSTALL; no previous consent manager |
 | Inth CLI | `@inth/cli@0.0.7` |
-| Organisation | `org_11124krgyz2cbmu48m12bewcci281w` (`charlie-products`) |
-| Project | `prj_11124krhfenpsyww3dmb39qtdqr8qh` (`hive`) |
+| Organisation | Your Inth organisation |
+| Project | One Inth project per product |
 | Region | `eu-central-1`, Europe (Frankfurt) |
-| Backend URL | `https://hive-charlie-products.inth.app/` |
+| Backend URL | The project's hosted URL, `https://<project>-<organisation>.inth.app/` |
 | App packages | `c15t@3.0.0`, `@c15t/integrations@3.0.0` |
 | Core | One installed `@c15t/core@3.0.0`; no overrides |
 | Public variable | `NEXT_PUBLIC_C15T_BACKEND_URL` |
-| Vercel project | `charlie-s-team4/hivemind-hq` |
+| Vercel project | Your Hive project |
 | Vercel environments | Production, preview and development |
 
 The backend URL comes verbatim from `inth project get`. It contains no management credential. CLI credentials stay outside the repository and browser bundle. No billing or plan settings change.
 
-Trusted origins are `gohive.dev`, `www.gohive.dev`, `hivemind-hq.vercel.app` and `localhost:3000`. The activation round removes the preview wildcard and obsolete local test ports, as Charlie requests. The hosted policy stays at its default.
+Trust your production domain, its `www.` alias, the `*.vercel.app` production alias and `localhost:3000`. Do not trust a preview wildcard or obsolete local test ports. The hosted policy stays at its default.
 
 `withConsentManifest` fetches the public policy during the build. `resolveConsent` resolves each request from that snapshot and streams it to `ConsentRoot`. Each route under the root is dynamic. The browser sends choices to the hosted `/subjects` endpoint. `reportSessions: false` disables detached server consent-session reports. Rebuild after a hosted policy change. A missing manifest fails the production build by default.
 
@@ -56,13 +56,13 @@ Normal routes, nested error pages and the 404 inherit the root consent footer. T
 
 ## Hosted default policy limitation
 
-Charlie instructs this setup to retain Inth's default policy and plan. No policy override is supplied locally.
+This setup retains Inth's default policy and plan. No policy override is supplied locally.
 
 Inth's `world_no_banner` rule has `model: 'none'`, `prompt: 'none'` and no rights. c15t hides its stock preferences link and dialog under that rule. Hive's app-owned Cookie preferences button stays visible independently and requests the c15t dialog through `useSetActiveUI`, but c15t still refuses to render the dialog in these regions. Its kernel also returns from category saves without recording a choice under a `none` evaluation policy.
 
 Therefore the unchanged default policy cannot provide a working worldwide opt-in path. With Australia selected, the button is visible, no dialog opens, no measurement grant is stored and no beacon fires. This is a verified limitation, not a completed worldwide preference flow. Merely replacing the dialog markup would not fix consent recording.
 
-The default opt-in and opt-out regions retain the normal dialog. The strict hook prevents tracking before an explicit grant in every region. Charlie owns any later decision to change the hosted policy or plan. The account's ability to edit policies is unverified: the dashboard requires a separate login, and its consent read endpoint returns HTTP 401 in the available browser session. No billing action is taken.
+The default opt-in and opt-out regions retain the normal dialog. The strict hook prevents tracking before an explicit grant in every region. The operator owns any later decision to change the hosted policy or plan. The account's ability to edit policies is unverified: the dashboard requires a separate login, and its consent read endpoint returns HTTP 401 in the available browser session. No billing action is taken.
 
 ## Earlier local verification on 13 October 2026
 
@@ -88,7 +88,7 @@ Typecheck and production build pass. Tests pass: 59 core tests and 119 web tests
 
 ## Live activation, round 4, 13 October 2026
 
-The consent landing is `ebaf7404ad3de56a7ea86054358d20856b6e84e3` on main. Vercel deployment `dpl_FKEZgVHYmnSiss2LRU7HDJLBMi7v` is Ready. The live health endpoint returns that hash before later main changes deploy. The renewed Inth CLI confirms the backend URL and exactly the four trusted origins above. No environment, policy or billing change is needed in this round.
+The consent landing is `ebaf7404ad3de56a7ea86054358d20856b6e84e3` on main. The Vercel deployment is Ready. The live health endpoint returns that hash before later main changes deploy. The renewed Inth CLI confirms the backend URL and exactly the four trusted origins above. No environment, policy or billing change is needed in this round.
 
 Checks pass with the hosted URL: workspace typecheck, workspace tests (217 core, 50 CLI and 425 web passed; 210 web skipped), and the web production build.
 
@@ -104,7 +104,6 @@ Live checks use fresh automation contexts, separate from the user's Chrome. A re
 | Footer routes | Preferences open on `/`, `/privacy`, `/terms`, `/app/login`, signed-out `/app/install` (redirects to login), and a confirmed 404 route |
 | Global error | Injecting error state into the deployed app's Next.js global boundary renders the 500 page and footer; preferences open; no error beacon while denied |
 
-Screenshots are saved and viewed at `/tmp/c15t/hive-live-banner.png`, `/tmp/c15t/hive-live-prefs.png` and `/tmp/c15t/hive-live-global-error.png`. Results and request records are in `/tmp/c15t/hive-round4-live-results.json` and `/tmp/c15t/hive-round4-live.har`.
 
 The local forward proxy's accepted beacon receives 403 from the app's origin check. The real production-origin run returns 204 after acceptance. Hosted saves return 200 in both cases. The final run does not claim a browser `/init` request for normal pages.
 

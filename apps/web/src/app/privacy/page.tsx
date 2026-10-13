@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/legal-page";
+import { OperatorContact } from "@/components/operator-contact";
+import { operatorName, siteHost, siteUrl } from "@/lib/site";
 
 const title = "Privacy policy | Hive";
 const description =
@@ -8,11 +10,11 @@ const description =
 export const metadata: Metadata = {
   title,
   description,
-  alternates: { canonical: "https://gohive.dev/privacy" },
+  alternates: { canonical: new URL("/privacy", siteUrl()).href },
   openGraph: {
     title,
     description,
-    url: "https://gohive.dev/privacy",
+    url: new URL("/privacy", siteUrl()).href,
     siteName: "Hive",
     type: "website",
   },
@@ -25,9 +27,9 @@ export default function PrivacyPage() {
       <section>
         <h2>Who we are</h2>
         <p>
-          Hive is run by Lightdash Ltd. Our home page is{" "}
-          <a href="https://gohive.dev">gohive.dev</a>. For privacy questions,
-          email <a href="mailto:charlie@lightdash.com">charlie@lightdash.com</a>
+          Hive is run by {operatorName() ?? "the operator of this deployment"}. Our home page is{" "}
+          <a href={siteUrl().origin}>{siteHost()}</a>. For privacy questions,
+          email <OperatorContact />
           .
         </p>
       </section>
@@ -82,7 +84,7 @@ export default function PrivacyPage() {
         <h2>Your choices and rights</h2>
         <p>
           You can ask to see, correct, delete or export your data. Email{" "}
-          <a href="mailto:charlie@lightdash.com">charlie@lightdash.com</a> and
+          <OperatorContact /> and
           tell us what you need.
         </p>
       </section>

@@ -23,7 +23,7 @@ export const joinTools: SlackTool[] = [
         return {
           text: "Joining is paused. Set up an allowed work domain and resume joining on the Team page.",
         };
-      const link = `https://gohive.dev/j/${phrase.phrase}`;
+      const link = `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/j/${phrase.phrase}`;
       return {
         text: `Invite your team:\n\n${slackEscape(teamInvitePrompt(actor.teamName, link))}\n\nOr send them this link: ${link}`,
       };

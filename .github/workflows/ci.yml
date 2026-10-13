@@ -65,5 +65,6 @@ jobs:
           PUBLIC_URL: http://localhost:3000
           BETTER_AUTH_URL: http://localhost:3000
           BETTER_AUTH_SECRET: ci-only-placeholder-not-a-production-secret
-          NEXT_PUBLIC_C15T_BACKEND_URL: https://hive-charlie-products.inth.app/
+          # Repository variable: the hosted c15t (Inth) backend URL for your project.
+          NEXT_PUBLIC_C15T_BACKEND_URL: ${{ vars.C15T_BACKEND_URL }}
         run: pnpm --filter web build

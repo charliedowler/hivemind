@@ -11,7 +11,7 @@ Hive uses Better Auth 1.7.7 and the AgentMail Generic OAuth helper. The [provide
 | `AGENTID_CLIENT_ID` | The Hive application's registered client id |
 | `AGENTID_CLIENT_SECRET` | The once-shown client secret |
 
-The button stays hidden when either value is missing. Credentials belong in Vercel production environment variables for `hivemind-hq`. Never expose them in client code, logs, screenshots or documentation.
+The button stays hidden when either value is missing. Credentials belong in your Vercel project's production environment variables. Never expose them in client code, logs, screenshots or documentation.
 
 Register these callback addresses in the AgentID console:
 
@@ -76,7 +76,7 @@ On 13 October 2026, the Hive agent signed in on `gohive.dev` and joined its veri
 
 ## Directory profile draft
 
-Do not submit this profile without Charlie's approval.
+Do not submit this profile without the maintainer's approval.
 
 Name: Hive
 

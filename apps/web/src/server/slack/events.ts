@@ -68,11 +68,8 @@ export function normalizedEvent(
 }
 export async function acceptSlackEvent(payload: z.infer<typeof eventEnvelope>) {
   if (!payload.team_id || !payload.event_id || !payload.event) return;
-  if (
-    payload.api_app_id &&
-    payload.api_app_id !== (process.env.SLACK_APP_ID ?? "A0C8P4V5L82")
-  )
-    return;
+  const appId = process.env.SLACK_APP_ID?.trim();
+  if (payload.api_app_id && appId && payload.api_app_id !== appId) return;
   const rows =
     await getSql()`SELECT team_id FROM slack_installations WHERE workspace_id=${payload.team_id} AND active=true`;
   if (!rows[0]) return;

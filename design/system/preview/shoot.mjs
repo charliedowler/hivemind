@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
-const require = createRequire(process.env.PLAYWRIGHT_FROM ?? "/Users/charlie/projects/ocado-mcp/package.json");
+const require = createRequire(process.env.PLAYWRIGHT_FROM ?? import.meta.url);
 const { chromium } = require("playwright");
 
 const browser = await chromium.launch();

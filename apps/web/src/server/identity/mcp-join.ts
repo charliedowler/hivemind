@@ -20,5 +20,5 @@ export async function mcpJoin(ctx: HiveContext, input: string, options: {trusted
     return {status: "joined", teamId: joined.teamId, teamName: joined.teamName};
   }
   await joinPhraseRateLimit(String(actors[0].owner_member_id ?? ctx.memberId), options.trustedProxyIp);
-  return {status: "needs_human", joinUrl: `https://gohive.dev/j/${phrase}`};
+  return {status: "needs_human", joinUrl: `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/j/${phrase}`};
 }

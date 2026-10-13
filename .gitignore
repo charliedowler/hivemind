@@ -12,3 +12,15 @@ packages/cli/dist/
 packages/cli/assets/
 packages/cli/package-lock.json
 *.tgz
+
+# Local and pulled environment files
+.env.vercel*
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+.pglite/
+# Private notes and local evidence
+launchathon-infra/
+*.local.md
+docs/screenshots/private/

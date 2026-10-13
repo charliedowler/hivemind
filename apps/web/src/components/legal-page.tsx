@@ -3,6 +3,7 @@ import { Card, Sprite } from "@hivemind/design-system";
 import Link from "next/link";
 import { LegalLinks } from "./legal-links";
 import styles from "./legal.module.css";
+import { brandLine } from "@/lib/site";
 
 export function LegalPage({
   title,
@@ -28,7 +29,7 @@ export function LegalPage({
         </Card>
       </main>
       <footer className={styles.footer}>
-        <span>Hive by Lightdash Ltd</span>
+        <span>{brandLine()}</span>
         <LegalLinks />
       </footer>
     </div>

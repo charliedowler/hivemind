@@ -71,7 +71,7 @@ Keep normalized tags as the grouping primitive. Extract service, tool and repo-a
 
 ## Migration and delivery order
 
-1. Finish this document on `docs/learnings-backend`. Wait for `~/projects/launchathon-infra/hive-r3-done.md`, pull main with fast-forward only, merge the docs branch and read the round-three report.
+1. Agree this document before implementation starts, then build from the tip of main.
 2. Add nullable or defaulted lifecycle columns, version tables and supersession edges. Backfill lifecycle from existing admin marks and votes, then push counts. Seed version one from each canonical row. Use composite team foreign keys, unique accepted-edge constraints and indexes on team plus state. SQL uses `IF NOT EXISTS`, short lock and statement timeouts, and a reviewed rollback script. Rollback must reject or explicitly preserve new history rather than silently lose it.
 3. Run the migration with the repository migration runner from the tip of main. Exercise it twice locally and check upgrade behavior against real pre-migration rows. Apply production migration before pushing code that requires it. Never use `drizzle-kit push` or force schema changes.
 4. Wire push inputs, safe dedupe and conflict decisions. Then lifecycle-aware search, ask context and versions. Check typecheck, tests and production build after each coherent step, commit and push each green step.

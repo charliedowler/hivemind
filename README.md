@@ -181,11 +181,7 @@ Open [What Hive keeps](https://gohive.dev/app/team#keeps) to exclude repos, path
 
 Maintainer note: `gohive@0.1.0` was published on 2026-10-13.
 
-Build and publish the CLI package. Publishing requires npm 2FA in the browser.
-
-```sh
-pnpm --filter gohive build && npm publish ./packages/cli --access public
-```
+Bump `version` in `packages/cli/package.json` (`pnpm --filter gohive version:patch`) and merge to `main`. `.github/workflows/publish-gohive.yml` publishes the new version through npm trusted publishing (OIDC), with no stored npm token. [Self-hosting](docs/self-hosting.md#ci-and-npm-publishing) covers the trusted publisher setup and the provenance flag.
 
 ## Develop
 
@@ -212,7 +208,9 @@ Seed the six build observations with an existing member key. The default author 
 HIVEMIND_URL=http://localhost:3000 HIVE_KEY=<key> pnpm --filter web seed -- --file scripts/seed-r3.json
 ```
 
-Set `PUBLIC_URL=https://gohive.dev` for deployed environments. Metadata, invite links and install snippets use this URL. Without it, the app uses the request host. `www.gohive.dev` redirects to `gohive.dev` and keeps the path and query.
+Set `PUBLIC_URL` to your public origin (the hosted service uses `https://gohive.dev`) for deployed environments. Metadata, invite links and install snippets use this URL. Without it, the app uses the request host. When `PUBLIC_URL` is set at build time, `www.<host>` redirects to it and keeps the path and query.
+
+[Self-hosting](docs/self-hosting.md) lists every environment variable, the Vercel setup, migrations and npm publishing. See also [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 Production deploys from `main` through the Vercel GitHub integration. Run `pnpm --filter web db:migrate` against the production `DATABASE_URL` before a deploy that needs a new migration.
 

@@ -6,10 +6,9 @@
   },
   "oauth_config": {
     "redirect_urls": [
-      "https://gohive.dev/api/auth/callback/slack",
-      "https://hivemind-hq.vercel.app/api/auth/callback/slack",
+      "https://hive.example.com/api/auth/callback/slack",
       "http://localhost:3000/api/auth/callback/slack",
-      "https://gohive.dev/api/slack/oauth/callback"
+      "https://hive.example.com/api/slack/oauth/callback"
     ],
     "scopes": {
       "user": [
@@ -38,7 +37,7 @@
   "settings": {
     "interactivity": {
       "is_enabled": true,
-      "request_url": "https://gohive.dev/api/slack/interactivity"
+      "request_url": "https://hive.example.com/api/slack/interactivity"
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": false,
@@ -46,7 +45,7 @@
     "app_level_token_rotation_enabled": false,
     "is_mcp_enabled": false,
     "event_subscriptions": {
-      "request_url": "https://gohive.dev/api/slack/events",
+      "request_url": "https://hive.example.com/api/slack/events",
       "bot_events": [
         "app_mention",
         "message.channels",
@@ -71,7 +70,7 @@
         "command": "/hive",
         "description": "Ask, browse or save shared memory",
         "usage_hint": "ask <question> | recent | save <message permalink>",
-        "url": "https://gohive.dev/api/slack/commands",
+        "url": "https://hive.example.com/api/slack/commands",
         "should_escape": false
       }
     ],

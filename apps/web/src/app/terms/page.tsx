@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage } from "@/components/legal-page";
+import { OperatorContact } from "@/components/operator-contact";
+import { operatorName, siteHost, siteUrl } from "@/lib/site";
 
 const title = "Terms of service | Hive";
 const description =
-  "Terms for using Hive, an early-access service from Lightdash Ltd.";
+  `Terms for using Hive, an early-access service${operatorName() ? ` from ${operatorName()}` : ""}.`;
 
 export const metadata: Metadata = {
   title,
   description,
-  alternates: { canonical: "https://gohive.dev/terms" },
+  alternates: { canonical: new URL("/terms", siteUrl()).href },
   openGraph: {
     title,
     description,
-    url: "https://gohive.dev/terms",
+    url: new URL("/terms", siteUrl()).href,
     siteName: "Hive",
     type: "website",
   },
@@ -26,8 +28,9 @@ export default function TermsPage() {
       <section>
         <h2>Using the service</h2>
         <p>
-          These terms apply when you use Hive, a service run by Lightdash Ltd at{" "}
-          <a href="https://gohive.dev">gohive.dev</a>. By using the service, you
+          These terms apply when you use Hive, a service run by{" "}
+          {operatorName() ?? "the operator of this deployment"} at{" "}
+          <a href={siteUrl().origin}>{siteHost()}</a>. By using the service, you
           agree to these terms.
         </p>
       </section>
@@ -51,7 +54,7 @@ export default function TermsPage() {
       <section>
         <h2>Your content</h2>
         <p>
-          Your content stays yours. You grant Lightdash Ltd a licence to store
+          Your content stays yours. You grant {operatorName() ?? "the operator"} a licence to store
           and process it to run Hive for you and your team. This licence lets us
           share it with your team and our service providers as needed to run
           Hive. Our <Link href="/privacy">privacy policy</Link> explains how we
@@ -88,7 +91,7 @@ export default function TermsPage() {
         <h2>Contact</h2>
         <p>
           For questions about these terms or the service, email{" "}
-          <a href="mailto:charlie@lightdash.com">charlie@lightdash.com</a>.
+          <OperatorContact />.
         </p>
       </section>
     </LegalPage>
