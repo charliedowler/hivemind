@@ -8,7 +8,7 @@ import { getSql } from "../db/client";
 import { hashToken, newToken } from "../db/ids";
 import { HiveError } from "../errors";
 import { requireAdmin } from "./access";
-import { agentIdIssuer, followOwnerMemberships } from "./owner-bindings";
+import { followOwnerMemberships } from "./owner-bindings";
 import { memberContext } from "./enrollment";
 import { emailDomain, isPublicDomain } from "./email-domain";
 import { joinPhraseRateLimit } from "./rate-limit";
@@ -87,7 +87,7 @@ export async function memberJoinPhrase(ctx: HiveContext): Promise<HiveJoinPhrase
 
 type JoinOptions = { trustedProxyIp: string | null; capability?: string; capabilityHash?: string };
 async function authenticatedActor(ctx: HiveContext) {
-  const rows = await getSql()`SELECT m.*, b.owner_member_id FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' AND a.owner_email_verified LEFT JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE m.id = ${ctx.memberId} AND m.disabled_at IS NULL AND NOT m.provisional`;
+  const rows = await getSql()`SELECT m.*, b.owner_member_id FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL LEFT JOIN hive_agent_owners b ON b.agent_member_id = m.id WHERE m.id = ${ctx.memberId} AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows[0]) throw new HiveError("Sign in first.", 401);
   return rows[0];
 }
@@ -152,7 +152,7 @@ export async function issueJoinCapability(ctx: HiveContext, phrase: string, agen
   const actor = await authenticatedActor(ctx);
   if (actor.actor_type !== "human") throw failure();
   return attempt(ctx, phrase, options, async (tx, team, human) => {
-    const agents = await tx`SELECT a.user_id FROM auth_accounts a JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub JOIN members m ON m.id = a.user_id WHERE a.provider_id = 'agentid' AND a.user_id = ${agentId} AND b.owner_member_id = ${human.id} AND a.owner_email_verified AND m.actor_type = 'agent' AND m.disabled_at IS NULL`;
+    const agents = await tx`SELECT b.agent_member_id AS user_id FROM hive_agent_owners b JOIN members m ON m.id = b.agent_member_id WHERE b.agent_member_id = ${agentId} AND b.owner_member_id = ${human.id} AND m.actor_type = 'agent' AND m.disabled_at IS NULL`;
     if (!agents.length) throw failure();
     const capability = newToken();
     await tx`INSERT INTO hive_join_capabilities (token_hash, owner_member_id, agent_member_id, team_id, generation, expires_at) VALUES (${hashToken(capability)}, ${human.id}, ${agentId}, ${team.id}, ${team.join_generation}, now() + interval '15 minutes')`;

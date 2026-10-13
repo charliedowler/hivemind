@@ -2,6 +2,7 @@ import { requireMcpAuth } from "@better-auth/mcp";
 import type { HiveContext } from "@hivemind/core";
 import type { JWTPayload } from "jose";
 import { getAuth, mcpResource } from "./better-auth";
+import { authenticateAgentCredential } from "./identity/agent-credentials";
 import { authenticateApiKey } from "./auth";
 import { memberContext } from "./identity/enrollment";
 import { personalMemberContext } from "./identity/enrollment";
@@ -20,6 +21,12 @@ export async function contextFromClaims(claims: JWTPayload): Promise<HiveContext
 }
 
 export async function withHiveBearerAuth(request: Request, handler: (request: Request, ctx: HiveContext, claims?: JWTPayload) => Promise<Response>) {
+  const agentToken = request.headers.get("authorization")?.match(/^Bearer (ha_[A-Za-z0-9_-]{43})$/i)?.[1];
+  if (agentToken) {
+    const ctx = await authenticateAgentCredential(agentToken);
+    if (!ctx) return Response.json({ error: "This agent credential expired or was revoked." }, { status: 401 });
+    return withCredentialScope(ctx.memberId, true, () => handler(request, ctx, { sub: ctx.memberId, hive_agent: true, scope: "hive" }));
+  }
   const token = request.headers.get("authorization")?.match(/^Bearer (hm_[A-Za-z0-9_-]{43})$/i)?.[1];
   if (token) {
     const ctx = await authenticateApiKey(token);

@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { JoinRequests } from "@/components/join-requests";
 import { listJoinRequests } from "@/server/identity/join-requests";
+import { AgentCredentials } from "@/components/agent-credentials";
+import { ShareOnJoin } from "@/components/share-on-join";
+import { shareOnJoinOffer } from "@/server/share-on-join";
+import { ownerAgentChoices } from "@/server/web-sharing";
 import { Members } from "@/components/members";
 import { SlackSettings } from "@/components/slack-settings";
 import { CaptureRules } from "@/components/capture-rules";
@@ -28,12 +32,14 @@ export default async function Page({
   const choices = await hiveChoices(ctx);
   if (choices.find((hive) => hive.teamId === ctx.teamId)?.personal)
     redirect("/app/account");
-  const [baseUrl, members, slack, rules, query] = await Promise.all([
+  const [baseUrl, members, slack, rules, query, agents, shareOffer] = await Promise.all([
     publicUrl(),
     webMemberPage(ctx),
     teamSlackSettings(ctx),
     listCaptureRules(ctx),
     searchParams,
+    ownerAgentChoices(ctx),
+    shareOnJoinOffer(ctx, ctx.teamId, true),
   ]);
   const isAdmin = members.overview.role === "admin";
   const requests = isAdmin ? await listJoinRequests(ctx) : [];
@@ -42,6 +48,8 @@ export default async function Page({
   return (
     <div className={`stack ${styles.team}`}>
       <h1>{ctx.teamName}</h1>
+      {shareOffer ? <ShareOnJoin {...shareOffer} /> : null}
+      <AgentCredentials agents={agents} />
       {isAdmin ? (
         <HiveInvite
           teamId={ctx.teamId}

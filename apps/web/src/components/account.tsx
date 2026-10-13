@@ -1,4 +1,5 @@
 "use client";
+import { AgentCredentials } from "./agent-credentials";
 import Link from "next/link";
 import { ProjectDelegation } from "./project-delegation";
 import { ProjectSharing } from "./project-sharing";
@@ -160,6 +161,7 @@ export function Account({
           </Card>
         </details>
       ) : null}
+      <AgentCredentials agents={agents} />
       <AccountProjectChoices
         policy={policy}
         rules={rules}

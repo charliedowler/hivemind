@@ -82,7 +82,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
     emailAndPassword: { enabled: true, requireEmailVerification: true, revokeSessionsOnPasswordReset: true },
     emailVerification: { sendOnSignUp: true, autoSignInAfterVerification: false },
     socialProviders,
-    account: { accountLinking: { enabled: true, trustedProviders: [], allowDifferentEmails: false, requireLocalEmailVerified: false } },
+    account: { accountLinking: { enabled: true, trustedProviders: [], allowDifferentEmails: false, requireLocalEmailVerified: false, updateUserInfoOnLink: true } },
     rateLimit: { enabled: true, storage: "database", window: 60, max: 60 },
     disabledPaths: ["/token", "/sign-in/email-otp", "/update-user", "/delete-user", "/change-email"],
     hooks: {

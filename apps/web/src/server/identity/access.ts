@@ -12,7 +12,6 @@ import { getSql } from "../db/client";
 import { hashToken, newToken } from "../db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "../errors";
 import { emailDomain, isPublicDomain } from "./email-domain";
-import { agentIdIssuer } from "./owner-bindings";
 import { requireHuman } from "./agent-enrollment";
 export async function requireAdmin(ctx: HiveContext): Promise<void> {
   await requireHuman(ctx.memberId);
@@ -97,7 +96,7 @@ export async function removeMember(
     if (teams[0]?.personal_owner_member_id === id) throw new HiveInputError("A personal hive keeps its owner.");
     const rows = await tx`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${id} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING member_id`;
     if (!rows.length) throw new HiveNotFoundError("Member not found in your team.");
-    const agents = await tx`UPDATE hive_memberships h SET removed_at = now() WHERE h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND h.member_id IN (SELECT a.user_id FROM auth_accounts a JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE a.provider_id = 'agentid' AND b.owner_member_id = ${id}) RETURNING member_id`;
+    const agents = await tx`UPDATE hive_memberships h SET removed_at = now() WHERE h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND h.member_id IN (SELECT b.agent_member_id FROM hive_agent_owners b WHERE b.owner_member_id = ${id}) RETURNING member_id`;
     const removed = [id, ...agents.map(row => String(row.member_id))];
     await tx`UPDATE api_keys SET revoked_at = now() WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
     await tx`DELETE FROM web_sessions WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;

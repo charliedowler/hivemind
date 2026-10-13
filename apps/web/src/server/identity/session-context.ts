@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { HiveContext } from "@hivemind/core";
+import { completePendingAgentJoins } from "./pending-agent-joins";
 import { getSql } from "../db/client";
 import { enrollMember, listHiveContexts, memberContext, personalMemberContext } from "./enrollment";
 
@@ -25,7 +26,9 @@ export async function signInMemberContext(memberId: string, sessionId?: string) 
   const pending = await sql`SELECT value FROM auth_verification WHERE id = ${`hive-enrollment-context:${memberId}`} AND expires_at > now()`;
   const choice = pending[0] ? JSON.parse(pending[0].value) : null;
   const selected = choice ? await memberContext(memberId, choice.teamId) : null;
-  const enrolled = selected ?? (people[0]?.actor_type === "human" && people[0].email_verified ? await enrollMember(memberId) : await memberContext(memberId));
+  let enrolled = selected ?? (people[0]?.actor_type === "human" && people[0].email_verified ? await enrollMember(memberId) : await memberContext(memberId));
+  if (people[0]?.actor_type === "human" && people[0].email_verified) enrolled = await completePendingAgentJoins(memberId) ?? enrolled;
+  if (sessionId && enrolled) await sql`UPDATE web_sessions SET team_id = ${enrolled.teamId} WHERE id = ${sessionId} AND member_id = ${memberId} AND team_id IS NULL`;
   const latest = sessionId ? await sql`DELETE FROM auth_verification WHERE id = ${`hive-enrollment-context:${memberId}`} AND expires_at > now() RETURNING value` : pending.length ? pending : await sql`SELECT value FROM auth_verification WHERE id = ${`hive-enrollment-context:${memberId}`} AND expires_at > now()`;
   if (latest[0] && sessionId && enrolled) {
     const joined = JSON.parse(latest[0].value);

@@ -1,0 +1,175 @@
+import { randomBytes } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { generateKeyPair, exportJWK, SignJWT } from "jose";
+import { getSql } from "../db/client";
+import { hashToken, newId } from "../db/ids";
+import { bootstrapAgent, authenticateAgentCredential, agentStatus, pollAgentConnection, revokeAgentCredential } from "./agent-credentials";
+import { claimWelcome, issueWelcomeLink } from "./welcome";
+import { createHiveAuth } from "../better-auth";
+import { memberContext, listHiveContexts } from "./enrollment";
+import { shareProjects, captureOwner } from "../project-sharing";
+import { shareOnJoinOffer, shareWith } from "../share-on-join";
+import { expireProvisionalHumans } from "./expire-provisional";
+import { originFor, withOrigin } from "../analytics/events";
+import { mcpJoin } from "./mcp-join";
+import { withHiveBearerAuth } from "../bearer-auth";
+import { generateJoinPhrase } from "./join-phrases";
+import { signInMemberContext } from "./session-context";
+vi.mock("server-only", () => ({}));
+
+describe.skipIf(!process.env.DATABASE_URL)("Hive-issued agent bootstrap", () => {
+  const sql = getSql();
+  const suffix = randomBytes(8).toString("hex");
+  let serial = 0;
+  let messages: { to: string[]; text: string }[];
+  const input = (domain = "gmail.com") => ({ email: `bootstrap-${suffix}-${++serial}@${domain}`, agentName: "Claude Code", machine: "Test Mac" });
+  beforeEach(async () => {
+    vi.stubEnv("BETTER_AUTH_SECRET", "fixture-secret-with-at-least-thirty-two-characters");
+    vi.stubEnv("RESEND_API_KEY", "fixture"); vi.stubEnv("EMAIL_FROM", "fixture@example.test");
+    messages = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => { messages.push(JSON.parse(init.body)); return Response.json({ id: "email-fixture" }); }));
+    await sql`DELETE FROM rate_limits WHERE bucket LIKE 'agent-bootstrap-%'`;
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+  async function fresh(domain?: string, phrase?: string) {
+    const data = input(domain);
+    const result = await bootstrapAgent({ ...data, ...(phrase ? { joinPhrase: phrase } : {}) }, "198.18.1.1");
+    if (result.status !== "issued") throw new Error("Expected provisional credential");
+    const ctx = (await authenticateAgentCredential(result.credential))!;
+    return { data, result, ctx, owner: (await captureOwner(ctx)).ownerId };
+  }
+  async function organisation() {
+    const teamId = newId("team"), admin = newId("mem"), domain = `${randomBytes(8).toString("hex")}.example.test`;
+    await sql`INSERT INTO members (id,name,email,email_verified) VALUES (${admin},'Admin',${`${admin}@${domain}`},true)`;
+    await sql`INSERT INTO teams (id,name,invite_code) VALUES (${teamId},'Example team',${hashToken(teamId)})`;
+    await sql`INSERT INTO hive_memberships (member_id,team_id,role) VALUES (${admin},${teamId},'admin')`;
+    await sql`INSERT INTO team_domains (team_id,domain,created_by) VALUES (${teamId},${domain},${admin})`;
+    const ctx = (await memberContext(admin, teamId))!;
+    return { ctx, teamId, domain, phrase: (await generateJoinPhrase(ctx)).phrase };
+  }
+  it("canonicalises any email, creates one provisional owner, hashes tokens and sends welcome once", async () => {
+    const data = input();
+    const one = await bootstrapAgent({ ...data, email: data.email.toUpperCase() }, "198.18.1.1");
+    const two = await bootstrapAgent(data, "198.18.1.2");
+    expect(one.status).toBe("issued"); expect(two.status).toBe("issued");
+    const people = await sql`SELECT id,provisional,email_verified,provisional_expires_at FROM members WHERE email = ${data.email}`;
+    expect(people).toHaveLength(1); expect(people[0]).toMatchObject({provisional:true,email_verified:false});
+    expect(people[0].provisional_expires_at.getTime()).toBeGreaterThan(Date.now()+6*86400000);
+    expect(await sql`SELECT id FROM teams WHERE personal_owner_member_id=${people[0].id}`).toHaveLength(1);
+    expect(await sql`SELECT id FROM auth_accounts WHERE user_id=${people[0].id}`).toHaveLength(0);
+    expect(messages).toHaveLength(1);
+    if(one.status==='issued')expect((await sql`SELECT token_hash FROM agent_credentials WHERE agent_member_id=${one.agentId}`)[0].token_hash).toBe(hashToken(one.credential));
+  });
+  it("validates input before creating identities", async () => {
+    await expect(bootstrapAgent({...input(),email:"invalid"},null)).rejects.toThrow();
+    await expect(bootstrapAgent({...input(),agentName:""},null)).rejects.toThrow();
+    await expect(bootstrapAgent({...input(),joinPhrase:"bad"},null)).rejects.toThrow(/three-word/);
+  });
+  it("rejects the sixth IP and sixth email attempt independently and limits global issuance", async () => {
+    for(let n=0;n<5;n++)await bootstrapAgent(input(),"198.18.2.1");
+    await expect(bootstrapAgent(input(),"198.18.2.1")).rejects.toMatchObject({status:429});
+    await sql`DELETE FROM rate_limits WHERE bucket LIKE 'agent-bootstrap-%'`;
+    const data=input();for(let n=0;n<5;n++)await bootstrapAgent(data,`198.18.3.${n+1}`);
+    await expect(bootstrapAgent(data,"198.18.3.9")).rejects.toMatchObject({status:429});
+    await sql`DELETE FROM rate_limits WHERE bucket LIKE 'agent-bootstrap-%'`;
+    await sql`INSERT INTO rate_limits (bucket,window_start,count) VALUES (${`agent-bootstrap-global:${hashToken("all")}`},now(),100)`;
+    await expect(bootstrapAgent(input(),"198.18.4.1")).rejects.toMatchObject({status:429});
+  });
+  it("has only personal membership and reads the owner's capture policy before claim", async () => {
+    const org=await organisation(),f=await fresh(org.domain);
+    expect((await listHiveContexts(f.ctx.memberId)).every(h=>h.personal)).toBe(true);
+    expect(await memberContext(f.ctx.memberId,org.teamId)).toBeNull();
+    await withOrigin(originFor(f.ctx,"mcp","oauth"),()=>shareProjects(f.ctx,{include:["github.com/example/widget"],revision:0,humanInstruction:"Keep learnings from this project."}));
+    expect((await agentStatus(f.ctx)).claimPending).toBe(true);
+    const joined=await mcpJoin(f.ctx,org.phrase,{trustedProxyIp:null,sessionKind:"oauth"});
+    expect(joined.status).toBe("claim_pending");expect(joined).not.toHaveProperty("joinUrl");
+  });
+  it("claims with one use, auto-joins a domain and follows every agent as a member", async () => {
+    const org=await organisation(),f=await fresh(org.domain,org.phrase);
+    const second=await bootstrapAgent({...f.data,machine:"Other Mac"},"198.18.1.2");
+    if(second.status!=='issued')throw new Error("Expected another agent");
+    const url=await issueWelcomeLink(f.owner),token=new URL(url).searchParams.get("token")!;
+    const auth=createHiveAuth("http://localhost:3000");
+    const response=await auth.handler(new Request(url.replace("https://gohive.dev","http://localhost:3000")));
+    expect(response.headers.get("location")).toBe("/app/claimed");
+    expect((await sql`SELECT provisional,email_verified FROM members WHERE id=${f.owner}`)[0]).toEqual({provisional:false,email_verified:true});
+    expect(await memberContext(f.ctx.memberId,org.teamId)).not.toBeNull();expect(await memberContext(second.agentId,org.teamId)).not.toBeNull();
+    expect((await sql`SELECT role FROM hive_memberships WHERE member_id=${f.ctx.memberId} AND team_id=${org.teamId}`)[0].role).toBe("member");
+    expect((await agentStatus(f.ctx)).joinPending).toBeNull();
+    expect(await authenticateAgentCredential(f.result.credential)).not.toBeNull();
+    await expect(claimWelcome(token)).rejects.toThrow(/already used/);
+    const cookie=response.headers.getSetCookie().map(v=>v.split(";")[0]).join("; ");
+    const session=await auth.api.getSession({headers:new Headers({Cookie:cookie})});expect(session?.user.id).toBe(f.owner);
+    expect((await sql`SELECT team_id FROM web_sessions WHERE id=${session!.session.id}`)[0].team_id).toBe(org.teamId);
+  });
+  it("does not issue a credential for an existing claimed human until their link is clicked", async () => {
+    const f=await fresh(); await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);
+    const pending=await bootstrapAgent({...f.data,machine:"New Mac"},"198.18.1.2");
+    expect(pending.status).toBe("link_sent");expect(pending).not.toHaveProperty("credential");
+    if(pending.status!=='link_sent')throw new Error("Expected connection request");
+    expect(await pollAgentConnection(pending.requestId,pending.pollingToken)).toEqual({status:"pending"});
+    await expect(pollAgentConnection(pending.requestId,"wrong")).rejects.toThrow();
+    const url=messages.at(-1)!.text.match(/https:\/\/[^\s]+/)![0];
+    const token=new URL(url).searchParams.get("token")!;await claimWelcome(token);
+    const connected=await pollAgentConnection(pending.requestId,pending.pollingToken);
+    expect(connected.status).toBe("issued");
+    if(connected.status==='issued')expect(await authenticateAgentCredential(connected.credential)).not.toBeNull();
+    expect(await pollAgentConnection(pending.requestId,pending.pollingToken)).toEqual(connected);
+    await expect(claimWelcome(token)).rejects.toThrow(/already used/);
+  });
+  it("expires credentials and deletes private cells after seven days without claim", async () => {
+    const f=await fresh();const cellId=newId("lrn");
+    await sql`INSERT INTO learnings (id,team_id,member_id,title,body,kind,source,confidence) VALUES (${cellId},${f.ctx.teamId},${f.ctx.memberId},'Expiry fixture','Private content','learning','claude-code',1)`;
+    expect((await sql`SELECT owner_member_id FROM learnings WHERE id=${cellId}`)[0].owner_member_id).toBe(f.owner);
+    await sql`UPDATE members SET provisional_expires_at=now()-interval '1 second' WHERE id=${f.owner}`;
+    expect(await authenticateAgentCredential(f.result.credential)).toBeNull();
+    await expect(claimWelcome(new URL(messages[0].text.match(/https:\/\/[^\s]+/)![0]).searchParams.get("token")!)).rejects.toThrow();
+    expect((await expireProvisionalHumans()).expired).toBeGreaterThanOrEqual(1);
+    expect(await sql`SELECT id FROM learnings WHERE id=${cellId}`).toHaveLength(0);
+    expect((await sql`SELECT disabled_at FROM members WHERE id=${f.owner}`)[0].disabled_at).not.toBeNull();
+  });
+  it("shows selected projects with counts, publishes only explicit choices, records instruction and retains originals", async () => {
+    const org=await organisation(),f=await fresh(org.domain);
+    await shareProjects(f.ctx,{include:["github.com/example/widget","github.com/example/private"],revision:0,humanInstruction:"Keep both privately."});
+    const cellId=newId("lrn");await sql`INSERT INTO learnings (id,team_id,member_id,title,body,kind,source,confidence,repo) VALUES (${cellId},${f.ctx.teamId},${f.ctx.memberId},'Sharing fixture','Evidence','learning','claude-code',1,'github.com/example/widget')`;
+    await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);await signInMemberContext(f.owner);
+    expect(await sql`SELECT id FROM project_sharing_grants WHERE owner_member_id=${f.owner}`).toHaveLength(0);
+    const offer=await shareOnJoinOffer(f.ctx,org.teamId);expect(offer?.projects).toContainEqual({pattern:"github.com/example/widget",cells:1});
+    await expect(shareWith(f.ctx,{teamId:org.teamId,projects:["github.com/example/other"],humanInstruction:"Share it"})).rejects.toThrow(/selected/);
+    const result=await shareWith(f.ctx,{teamId:org.teamId,projects:["github.com/example/widget"],humanInstruction:"Share my widget findings with Example team."});expect(result.published).toBe(1);
+    expect((await sql`SELECT team_id FROM learnings WHERE id=${cellId}`)[0].team_id).toBe(f.ctx.teamId);
+    expect(await sql`SELECT learning_id FROM learning_shares WHERE learning_id=${cellId} AND team_id=${org.teamId}`).toHaveLength(1);
+    expect((await sql`SELECT human_instruction,instructed_by FROM project_sharing_grants WHERE owner_member_id=${f.owner}`)[0]).toEqual({human_instruction:"Share my widget findings with Example team.",instructed_by:f.ctx.memberId});
+    expect(await shareOnJoinOffer(f.ctx,org.teamId)).toBeNull();expect(await shareOnJoinOffer(f.ctx,org.teamId,true)).not.toBeNull();
+  });
+  it("keeps a declined offer private and available in Account and Team", async () => {
+    const org=await organisation(),f=await fresh(org.domain);
+    await shareProjects(f.ctx,{include:["github.com/example/widget"],revision:0,humanInstruction:"Keep privately."});
+    await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);await signInMemberContext(f.owner);
+    await shareWith(f.ctx,{teamId:org.teamId,projects:[],humanInstruction:"Keep personal."});
+    expect(await shareOnJoinOffer(f.ctx,org.teamId)).toBeNull();expect(await shareOnJoinOffer(f.ctx,org.teamId,true)).not.toBeNull();expect(await sql`SELECT id FROM project_sharing_grants WHERE owner_member_id=${f.owner}`).toHaveLength(0);
+  });
+  it("revokes just one machine and invalidates the real bearer boundary immediately", async () => {
+    const f=await fresh(),other=await fresh();
+    const request=new Request("http://localhost/api/mcp",{headers:{Authorization:`Bearer ${f.result.credential}`}});
+    expect((await withHiveBearerAuth(request,async()=>Response.json({ok:true}))).status).toBe(200);
+    await expect(revokeAgentCredential(other.ctx,f.ctx.memberId)).rejects.toThrow(/not found/);
+    await revokeAgentCredential(f.ctx);
+    expect((await withHiveBearerAuth(request,async()=>Response.json({ok:true}))).status).toBe(401);
+    expect(await authenticateAgentCredential(other.result.credential)).not.toBeNull();
+  });
+  it("claims the same provisional owner through verified Google OAuth and follows its domain", async () => {
+    const org=await organisation(),f=await fresh(org.domain);
+    vi.stubEnv("GOOGLE_CLIENT_ID","fixture-google-client");vi.stubEnv("GOOGLE_CLIENT_SECRET","fixture-google-secret");
+    const keys=await generateKeyPair("RS256");const publicKey={...await exportJWK(keys.publicKey),kid:`bootstrap-${suffix}`,alg:"RS256"};
+    const idToken=await new SignJWT({name:"Human fixture",email:f.data.email,email_verified:true}).setProtectedHeader({alg:"RS256",kid:publicKey.kid}).setSubject(f.owner).setIssuer("https://accounts.google.com").setAudience("fixture-google-client").setIssuedAt().setExpirationTime("1h").sign(keys.privateKey);
+    vi.stubGlobal("fetch",vi.fn(async url=>{if(String(url).includes("oauth2.googleapis.com/token"))return Response.json({access_token:"fixture-google-token",id_token:idToken,token_type:"Bearer",expires_in:3600});if(String(url).includes("/certs"))return Response.json({keys:[publicKey]});if(String(url).includes("googleapis.com"))return Response.json({sub:f.owner,name:"Human fixture",email:f.data.email,email_verified:true});throw new Error("Unexpected request");}));
+    const auth=createHiveAuth("http://localhost:3000");
+    const started=await auth.handler(new Request("http://localhost:3000/api/auth/sign-in/social",{method:"POST",headers:{"Content-Type":"application/json",Origin:"http://localhost:3000"},body:JSON.stringify({provider:"google",callbackURL:"/app"})}));
+    const state=new URL((await started.json()).url).searchParams.get("state");
+    const response=await auth.handler(new Request(`http://localhost:3000/api/auth/callback/google?code=fixture&state=${state}`,{headers:{Cookie:started.headers.getSetCookie().map(v=>v.split(";")[0]).join("; ")}}));
+    expect(response.headers.get("location")).not.toContain("error");
+    const session=await auth.api.getSession({headers:new Headers({Cookie:response.headers.getSetCookie().map(v=>v.split(";")[0]).join("; ")})});
+    expect(session?.user.id).toBe(f.owner);expect((await sql`SELECT provisional FROM members WHERE id=${f.owner}`)[0].provisional).toBe(false);expect(await memberContext(f.ctx.memberId,org.teamId)).not.toBeNull();
+  });
+});

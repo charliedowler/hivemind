@@ -39,6 +39,8 @@ import { reportOutcome } from "@/server/feedback";
 import { reverseDecision } from "@/server/conflict-decisions";
 
 import { shareProjects } from "@/server/project-sharing";
+import { shareWith, shareWithInput } from "@/server/share-on-join";
+import { agentStatus } from "@/server/identity/agent-credentials";
 import { mcpJoin } from "@/server/identity/mcp-join";
 
 import { searchSlack } from "@/server/slack/search";
@@ -120,6 +122,16 @@ export function registerHiveTools(server: McpServer) {
     const policy = await shareProjects(getContext(ctx), input);
     return JSON.stringify(policy);
   }, ctx));
+  server.registerTool("hive_agent_status", {
+    title: "Check agent claim and join",
+    description: "Read this agent's claim state, organisation memberships and project-sharing offers.",
+    inputSchema: z.strictObject({}),
+  }, async (_input, ctx) => reply(async () => JSON.stringify(await agentStatus(getContext(ctx))), ctx));
+  server.registerTool("hive_share_with", {
+    title: "Share selected projects with a team",
+    description: "Publish only the projects the human picked for a joined organisation. Record their explicit humanInstruction; originals stay personal and future captures keep flowing.",
+    inputSchema: shareWithInput,
+  }, async (input, ctx) => reply(async () => JSON.stringify(await shareWith(getContext(ctx), input)), ctx));
   server.registerTool("hive_join", {
     title: "Join an organisation hive",
     description: "Join by its domain-gated phrase using a human sign-in or live human-granted capability. Otherwise returns the owner's human join link. Joining never publishes projects.",

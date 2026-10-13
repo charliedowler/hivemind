@@ -38,7 +38,7 @@ export async function followOwnerMemberships(tx: postgres.TransactionSql, ownerI
   const owners = await tx`SELECT id, provisional, email_verified FROM members WHERE id = ${ownerId} AND actor_type = 'human' AND disabled_at IS NULL FOR UPDATE`;
   if (!owners[0]) return;
   const memberships = await tx`SELECT h.team_id, t.personal_owner_member_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${ownerId} AND h.removed_at IS NULL ORDER BY h.team_id FOR SHARE OF h`;
-  const agents = await tx`SELECT DISTINCT m.id FROM auth_accounts a JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub JOIN members m ON m.id = a.user_id WHERE b.owner_member_id = ${ownerId} AND a.provider_id = 'agentid' AND m.actor_type = 'agent' AND m.disabled_at IS NULL AND a.owner_email_verified`;
+  const agents = await tx`SELECT m.id FROM hive_agent_owners b JOIN members m ON m.id = b.agent_member_id WHERE b.owner_member_id = ${ownerId} AND m.actor_type = 'agent' AND m.disabled_at IS NULL`;
   for (const membership of memberships) {
     if (!membership.personal_owner_member_id && (owners[0].provisional || !owners[0].email_verified)) continue;
     for (const agent of agents) {
@@ -49,6 +49,6 @@ export async function followOwnerMemberships(tx: postgres.TransactionSql, ownerI
 }
 
 export async function claimProvisionalHuman(tx: postgres.TransactionSql, memberId: string) {
-  const rows = await tx`UPDATE members SET provisional = false, updated_at = now() WHERE id = ${memberId} AND actor_type = 'human' AND email_verified AND disabled_at IS NULL AND provisional RETURNING id`;
+  const rows = await tx`UPDATE members SET provisional = false, provisional_expires_at = NULL, updated_at = now() WHERE id = ${memberId} AND actor_type = 'human' AND email_verified AND disabled_at IS NULL AND provisional RETURNING id`;
   if (rows.length) await followOwnerMemberships(tx, memberId);
 }

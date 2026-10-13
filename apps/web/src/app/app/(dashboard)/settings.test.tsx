@@ -1,3 +1,4 @@
+vi.mock("@/server/share-on-join", () => ({ shareOnJoinOffer: async () => null }));
 vi.mock("@/server/project-sharing", () => ({
   ownerCapturePolicy: async () => ({ include: [], exclude: [], revision: 0 }),
 }));

@@ -15,7 +15,6 @@ import { getSql } from "./db/client";
 import { newId } from "./db/ids";
 import { HiveError, HiveNotFoundError } from "./errors";
 import { currentOrigin } from "./analytics/events";
-import { agentIdIssuer } from "./identity/owner-bindings";
 
 type Sql = postgres.Sql | postgres.TransactionSql;
 export const noProjectSelection =
@@ -23,7 +22,7 @@ export const noProjectSelection =
 
 export async function captureOwner(ctx: HiveContext, sql: Sql = getSql()) {
   const rows =
-    await sql`SELECT m.id, m.actor_type, coalesce(b.owner_member_id, CASE WHEN m.actor_type = 'human' THEN m.id END) AS owner_id FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' AND a.owner_email_verified LEFT JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE m.id = ${ctx.memberId} AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE OF m, h`;
+    await sql`SELECT m.id, m.actor_type, coalesce(b.owner_member_id, CASE WHEN m.actor_type = 'human' THEN m.id END) AS owner_id FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL LEFT JOIN hive_agent_owners b ON b.agent_member_id = m.id WHERE m.id = ${ctx.memberId} AND m.disabled_at IS NULL AND NOT m.provisional FOR SHARE OF m, h`;
   const actor = rows[0];
   if (!actor?.owner_id) throw new HiveError(noProjectSelection, 403);
   let people =
@@ -169,7 +168,7 @@ export async function delegateProjectSelection(
   return getSql().begin(async (tx) => {
     await lockCapturePolicy(tx, actor.ownerId);
     const agents =
-      await tx`SELECT a.user_id FROM auth_accounts a JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub JOIN members m ON m.id = a.user_id WHERE a.user_id = ${agentId} AND a.provider_id = 'agentid' AND a.owner_email_verified AND b.owner_member_id = ${actor.ownerId} AND m.actor_type = 'agent' AND m.disabled_at IS NULL`;
+      await tx`SELECT b.agent_member_id AS user_id FROM hive_agent_owners b JOIN members m ON m.id = b.agent_member_id WHERE b.agent_member_id = ${agentId} AND b.owner_member_id = ${actor.ownerId} AND m.actor_type = 'agent' AND m.disabled_at IS NULL`;
     if (!agents.length)
       throw new HiveNotFoundError("Agent not found under your account.");
     const policy = await ownerCapturePolicy(ctx, tx);
@@ -213,13 +212,15 @@ async function publicationAuthority(
   teamId: string,
   ownerId: string,
   withdraw = false,
+  humanInstruction?: string,
 ) {
   const actors =
     await tx`SELECT m.actor_type, h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional AND t.personal_owner_member_id IS NULL FOR SHARE OF h, m, t`;
+  const delegated = humanInstruction && actors[0]?.actor_type === "agent" && (await tx`SELECT c.id FROM agent_credentials c JOIN members o ON o.id = c.owner_member_id JOIN hive_memberships h ON h.member_id = o.id AND h.team_id = ${teamId} WHERE c.agent_member_id = ${ctx.memberId} AND c.owner_member_id = ${ownerId} AND c.revoked_at IS NULL AND o.email_verified AND NOT o.provisional AND o.disabled_at IS NULL AND h.removed_at IS NULL`).length > 0;
   if (
     !actors[0] ||
-    !humanAuthority(String(actors[0].actor_type)) ||
-    (ctx.memberId !== ownerId && !(withdraw && actors[0].role === "admin"))
+    (!delegated && !humanAuthority(String(actors[0].actor_type))) ||
+    (!delegated && ctx.memberId !== ownerId && !(withdraw && actors[0].role === "admin"))
   )
     throw new HiveError(
       "The owner must publish; an organisation admin may withdraw publication.",
@@ -361,6 +362,7 @@ export async function publishProject(
   teamId: string,
   pattern: string,
   transaction?: postgres.TransactionSql,
+  humanInstruction?: string,
 ) {
   const repoPattern = canonicalProject(pattern, true);
   if (!repoPattern)
@@ -368,9 +370,10 @@ export async function publishProject(
   const publish = async (tx: postgres.TransactionSql) => {
     const actor = await captureOwner(ctx, tx);
     await lockCapturePolicy(tx, actor.ownerId);
-    await publicationAuthority(tx, ctx, teamId, actor.ownerId);
+    await publicationAuthority(tx, ctx, teamId, actor.ownerId, false, humanInstruction);
     const grants =
       await tx`INSERT INTO project_sharing_grants (id, owner_member_id, team_id, repo_pattern, granted_by) VALUES (${newId("pgrant")}, ${actor.ownerId}, ${teamId}, ${repoPattern}, ${ctx.memberId}) ON CONFLICT (owner_member_id, team_id, repo_pattern) DO UPDATE SET withdrawn_at = NULL, withdrawn_by = NULL, granted_by = EXCLUDED.granted_by, revision = project_sharing_grants.revision + 1 RETURNING id`;
+    if (humanInstruction) await tx`UPDATE project_sharing_grants SET human_instruction = ${redactSecrets(humanInstruction).text}, instructed_by = ${ctx.memberId} WHERE id = ${grants[0].id}`;
     const cells =
       await tx`SELECT id, repo FROM learnings WHERE team_id = ${actor.personal.teamId} AND owner_member_id = ${actor.ownerId} ORDER BY id`;
     let published = 0;

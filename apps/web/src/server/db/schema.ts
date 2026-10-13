@@ -38,6 +38,7 @@ export const members = pgTable("members", {
   image: text("image"),
   hiveRegistration: text("hive_registration"),
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  provisionalExpiresAt: timestamp("provisional_expires_at", { withTimezone: true }),
   provisional: boolean("provisional").notNull().default(false),
   actorType: text("actor_type").notNull().default("human"),
   email: text("email").unique(),
@@ -525,3 +526,16 @@ export const learningShares = pgTable("learning_shares", {
   withdrawnBy: text("withdrawn_by").references(() => members.id),
   adminOutdated: boolean("admin_outdated").notNull().default(false),
 }, table => [primaryKey({columns: [table.learningId, table.teamId]})]);
+
+export const agentCredentials = pgTable("agent_credentials", {
+  id: text("id").primaryKey(),
+  agentMemberId: text("agent_member_id").notNull().unique().references(() => members.id, { onDelete: "cascade" }),
+  ownerMemberId: text("owner_member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  machine: text("machine").notNull(),
+  joinPhrase: text("join_phrase"),
+  joinError: text("join_error"),
+  createdAt: createdAt(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});

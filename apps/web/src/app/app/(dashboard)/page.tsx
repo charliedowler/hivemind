@@ -1,3 +1,5 @@
+import { shareOnJoinOffer } from "@/server/share-on-join";
+import { ShareOnJoin } from "@/components/share-on-join";
 import { Feed } from "@/components/feed";
 import { getWebContext } from "@/server/auth";
 import { hiveChoices } from "@/server/identity/onboarding-web";
@@ -12,11 +14,13 @@ export default async function Page() {
       justJoined?: { teamId: string; teamName: string } | null;
     }
   )?.justJoined;
+  const offer = ctx && !personal ? await shareOnJoinOffer(ctx, ctx.teamId) : null;
   return (
     <>
       {ctx && justJoined ? (
         <p role="status">You're in {justJoined.teamName}.</p>
       ) : null}
+      {offer ? <ShareOnJoin {...offer} /> : null}
       <Feed teamName={ctx?.teamName} personal={personal} />
     </>
   );
