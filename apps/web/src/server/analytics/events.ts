@@ -12,6 +12,7 @@ export const eventNames = [
   "capture.rule_dropped",
   "capture.rule_applied",
   "access.changed",
+  "digest_action_decided",
   "digest_scheduled",
   "digest_posted",
   "digest_skipped_empty",
@@ -135,12 +136,33 @@ const conflictProbabilities = z.object({
 });
 export const propertiesSchema = z.object({
   ruleId: nullable(z.string().regex(/^crule_[a-z2-7]{12}$/)),
-  ruleKind: nullable(z.enum(["repo_owner", "repo_match", "path_match", "content_category", "agent_or_client", "keyword"])),
+  ruleKind: nullable(
+    z.enum([
+      "repo_owner",
+      "repo_match",
+      "path_match",
+      "content_category",
+      "agent_or_client",
+      "keyword",
+    ]),
+  ),
   ruleAction: nullable(z.enum(["drop", "redact", "flag"])),
   ingress: nullable(z.enum(["mcp", "web", "hook", "slack", "unknown"])),
+  digestAction: nullable(z.enum(["set", "disable", "undo", "list", "clarify"])),
+  digestDecision: nullable(z.enum(["act", "clarify", "refuse"])),
+  digestDecisionSource: nullable(z.enum(["jev", "model"])),
+  digestSignals: nullable(
+    z.object({
+      instruction: probability,
+      enough: probability,
+      allowed: probability,
+    }),
+  ),
   digestScheduleId: nullable(z.string().regex(/^dgs_[a-z2-7]{12}$/)),
   digestPostId: nullable(z.string().regex(/^dgp_[a-z2-7]{12}$/)),
-  cadence: nullable(z.enum(["daily", "weekdays", "weekly", "fortnightly", "monthly"])),
+  cadence: nullable(
+    z.enum(["daily", "weekdays", "weekly", "fortnightly", "monthly"]),
+  ),
   digestTrigger: nullable(z.enum(["scheduled", "manual"])),
   learningCount: nullable(count),
   insightCount: nullable(count),
@@ -289,13 +311,7 @@ export const propertiesSchema = z.object({
 });
 export type Properties = z.input<typeof propertiesSchema>;
 export type EntryPoint =
-  | "mcp"
-  | "web"
-  | "slack"
-  | "hook"
-  | "installer"
-  | "scheduled"
-  | "unknown";
+  "mcp" | "web" | "slack" | "hook" | "installer" | "scheduled" | "unknown";
 export type Origin = {
   teamId: string | null;
   memberId: string | null;

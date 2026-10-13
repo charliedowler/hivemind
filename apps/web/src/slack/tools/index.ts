@@ -64,6 +64,31 @@ export const slackTools: SlackTool[] = [
     input_schema: z.toJSONSchema(empty) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       empty.parse(args);
+      if (
+        await (
+          await import("@/server/digests/instructions")
+        ).isDigestFollowup(
+          ctx.teamId,
+          ctx.memberId,
+          ctx.channelId,
+          ctx.threadTs,
+        )
+      ) {
+        try {
+          return await (
+            await import("@/server/digests/instructions")
+          ).digestInstruction(
+            ctx,
+            ctx.instructionText ?? "undo",
+            await (
+              await import("@/server/digests/connection")
+            ).slackMemberTimezone(ctx.teamId, ctx.memberId),
+          );
+        } catch (error) {
+          if (error instanceof HiveError) return { text: error.message };
+          throw error;
+        }
+      }
       const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
         ...ctx,
         actionType: "undo",
