@@ -36,10 +36,17 @@ export async function POST(request: Request) {
         reason: z.string().trim().max(500).optional(),
       })
       .parse(await readJson(request));
-    const reason = data.reason?.trim() ? redactSecrets(data.reason).text : undefined;
-    const result = data.action === "reason"
-      ? await updateDecisionReason(ctx, data.id, reason ?? `Reversed by ${ctx.memberName} on the dashboard`)
-      : await reverseDecision(ctx, data.id, reason);
+    const reason = data.reason?.trim()
+      ? redactSecrets(data.reason).text
+      : undefined;
+    const result =
+      data.action === "reason"
+        ? await updateDecisionReason(
+            ctx,
+            data.id,
+            reason ?? `Reversed by ${ctx.memberName} on the dashboard`,
+          )
+        : await reverseDecision(ctx, data.id, reason);
     const record = (await listDecisions(ctx, { id: result.id }))[0];
     return Response.json({ ...result, record });
   });

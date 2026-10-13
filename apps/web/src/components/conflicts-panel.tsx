@@ -120,7 +120,14 @@ export function ConflictsPanel() {
               key={record.id}
               record={record}
               onOpen={setSelected}
-              onDecision={(updated) => setState((current) => ({ ...current, decisions: current.decisions?.map((row) => row.id === record.id ? updated : row) }))}
+              onDecision={(updated) =>
+                setState((current) => ({
+                  ...current,
+                  decisions: current.decisions?.map((row) =>
+                    row.id === record.id ? updated : row,
+                  ),
+                }))
+              }
             />
           ))}
         </div>
@@ -181,7 +188,8 @@ export function DecisionCard({
         {record.latencyMs} ms
       </p>
       <p className="small muted">
-        {record.model === "admin" ? "Decision by" : "Newer cell pushed by"} {record.author}
+        {record.model === "admin" ? "Decision by" : "Newer cell pushed by"}{" "}
+        {record.author}
         {record.repo ? ` · ${record.repo}` : ""}
       </p>
       {record.jev ? (
@@ -216,11 +224,18 @@ export function DecisionCard({
       )}
       {record.canReverse || record.canEditReason ? (
         <ReverseDecision record={record} onDecision={onDecision} />
-      ) : record.model === "legacy" ? <p className="small muted">This decision has no reversible cell snapshots.</p> : null}
+      ) : record.model === "legacy" ? (
+        <p className="small muted">
+          This decision has no reversible cell snapshots.
+        </p>
+      ) : null}
     </Card>
   );
 }
-function ReverseDecision({ record, onDecision }: {
+function ReverseDecision({
+  record,
+  onDecision,
+}: {
   record: ConflictDecisionRecord;
   onDecision: (record: ConflictDecisionRecord) => void;
 }) {
@@ -232,23 +247,56 @@ function ReverseDecision({ record, onDecision }: {
     setPending(true);
     setError("");
     try {
-      const result = await requestJson<{ record: ConflictDecisionRecord }>("/api/app/conflicts", {
-        id: record.id, action, ...(action === "reason" ? { reason: reason ?? record.reason } : {}),
-      });
+      const result = await requestJson<{ record: ConflictDecisionRecord }>(
+        "/api/app/conflicts",
+        {
+          id: record.id,
+          action,
+          ...(action === "reason" ? { reason: reason ?? record.reason } : {}),
+        },
+      );
       onDecision(result.record);
     } catch (error) {
       setError(errorMessage(error));
-    } finally { setPending(false); }
+    } finally {
+      setPending(false);
+    }
   }
   return (
     <div className="stack decision-reversal" aria-live="polite">
-      {record.canReverse ? <Button variant="ghost" disabled={pending} onClick={() => void act("reverse")}>
-        {record.decision === "reversed" ? "Undo" : "Reverse this decision"}
-      </Button> : null}
-      {record.canEditReason ? <form className="stack" onSubmit={(event) => { event.preventDefault(); void act("reason"); }}>
-        <Input label="Reason for reversal (optional)" value={reason ?? record.reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
-        <Button variant="ghost" disabled={pending || reason === undefined || reason === record.reason}>Save reason</Button>
-      </form> : null}
+      {record.canReverse ? (
+        <Button
+          variant="ghost"
+          disabled={pending}
+          onClick={() => void act("reverse")}
+        >
+          {record.decision === "reversed" ? "Undo" : "Reverse this decision"}
+        </Button>
+      ) : null}
+      {record.canEditReason ? (
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act("reason");
+          }}
+        >
+          <Input
+            label="Reason for reversal (optional)"
+            value={reason ?? record.reason}
+            maxLength={500}
+            onChange={(event) => setReason(event.target.value)}
+          />
+          <Button
+            variant="ghost"
+            disabled={
+              pending || reason === undefined || reason === record.reason
+            }
+          >
+            Save reason
+          </Button>
+        </form>
+      ) : null}
       {error ? <ErrorPanel message={error} /> : null}
     </div>
   );
