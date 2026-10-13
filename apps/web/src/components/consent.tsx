@@ -94,32 +94,14 @@ export function Consent({
         <ErrorPanel message="This connection request has expired or changed. Start the connection again from your agent." />
       ) : null}
       <form className="stack" action={submit}>
-        {hives.length ? (
-          <label className="stack">
-            <span>Default hive</span>
-            <select
-              aria-label="Default hive"
-              value={selectedChoice}
-              disabled={pending}
-              onChange={(event) => setChoice(event.target.value)}
-            >
-              {canChooseHive
-                ? hives.map((hive) => (
-                    <option key={hive.teamId} value={hive.teamId}>
-                      {hive.personal
-                        ? `Personal · ${hive.teamName}`
-                        : hive.teamName}
-                    </option>
-                  ))
-                : null}
-              {requestedPersonWide ? (
-                <option value="person">
-                  Personal hive and organisations you join now or in future
-                </option>
-              ) : null}
-            </select>
-          </label>
-        ) : null}
+        <HiveChoice
+          hives={hives}
+          canChooseHive={canChooseHive}
+          requestedPersonWide={requestedPersonWide}
+          selected={selectedChoice}
+          pending={pending}
+          onChange={setChoice}
+        />
         <Button type="submit" name="decision" value="allow" loading={pending}>
           Allow access
         </Button>
@@ -167,5 +149,47 @@ function ConsentScopes({
         <li key={claim}>Read the requested profile field: {claim}.</li>
       ))}
     </ul>
+  );
+}
+
+function HiveChoice({
+  hives,
+  canChooseHive,
+  requestedPersonWide,
+  selected,
+  pending,
+  onChange,
+}: {
+  hives: { teamId: string; teamName: string; personal: boolean }[];
+  canChooseHive: boolean;
+  requestedPersonWide: boolean;
+  selected?: string;
+  pending: boolean;
+  onChange: (choice: string) => void;
+}) {
+  if (!hives.length) return null;
+  return (
+    <label className="stack">
+      <span>Default hive</span>
+      <select
+        aria-label="Default hive"
+        value={selected}
+        disabled={pending}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {canChooseHive
+          ? hives.map((hive) => (
+              <option key={hive.teamId} value={hive.teamId}>
+                {hive.personal ? `Personal · ${hive.teamName}` : hive.teamName}
+              </option>
+            ))
+          : null}
+        {requestedPersonWide ? (
+          <option value="person">
+            Personal hive and organisations you join now or in future
+          </option>
+        ) : null}
+      </select>
+    </label>
   );
 }
