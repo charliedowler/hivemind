@@ -1,3 +1,4 @@
+import { slackDecisionSignals } from "./format";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { requireAdmin } from "../identity/access";
@@ -119,7 +120,7 @@ export async function slackSettings(ctx: HiveContext) {
       threadTs: String(d.thread_ts),
       decision: String(d.decision),
       reason: String(d.reason),
-      signals: d.signals as Record<string, number> | null,
+      signals: slackDecisionSignals(d.signals),
       latencyMs: Number(d.latency_ms),
       model: d.model as string | null,
       delivery: String(d.delivery),
