@@ -1,172 +1,137 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { digestScheduleInput } from "@hivemind/core";
 import type { SlackTool, SlackToolContext } from "./index";
-import { getSql } from "@/server/db/client";
+import { toolActor } from "./context";
 import { HiveError } from "@/server/errors";
-import { requireAdmin } from "@/server/identity/access";
+import { decideDecisiveness } from "@/server/slack/decisiveness";
+import { runReversibleAction } from "@/server/slack/actions";
+import { digestChannel } from "@/server/digests/connection";
 import {
-  proposeScheduleFromText,
-  confirmDigestProposal,
-} from "@/server/digests/proposal";
-import { listSchedules, disableSchedule } from "@/server/digests/store";
-import { slackMemberTimezone } from "@/server/digests/connection";
+  listSchedules,
+  saveSchedule,
+  scheduleEvent,
+} from "@/server/digests/store";
 import { slackEscape } from "@/server/slack/format";
-async function actor(ctx: SlackToolContext) {
-  const rows =
-    await getSql()`SELECT m.name,t.name AS team_name FROM members m JOIN teams t ON t.id=m.team_id WHERE m.team_id=${ctx.teamId} AND m.id=${ctx.memberId} AND m.removed_at IS NULL`;
-  if (!rows[0])
-    throw new HiveError("Join this hive before using schedules.", 403);
-  return {
-    teamId: ctx.teamId,
-    memberId: ctx.memberId,
-    teamName: String(rows[0].team_name),
-    memberName: String(rows[0].name),
-  };
-}
-const dateFormats = new Map<string, Intl.DateTimeFormat>();
-function scheduleDate(timezone: string, next: string) {
-  let formatter = dateFormats.get(timezone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-GB", {
-      timeZone: timezone,
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-    dateFormats.set(timezone, formatter);
-  }
-  return formatter.format(new Date(next));
-}
-const textInput = z.strictObject({ text: z.string().min(1).max(2000) });
+
 const listInput = z.strictObject({
   disableId: z
     .string()
     .regex(/^dgs_[a-z2-7]{12}$/)
     .optional(),
 });
+async function instruction(ctx: SlackToolContext) {
+  const judgment = await decideDecisiveness(ctx.instructionText ?? "", ctx);
+  if (!judgment.act) throw new HiveError(judgment.reason, 422);
+}
 const tools: SlackTool[] = [
   {
     name: "hive_schedule_digest",
     description:
-      "Propose a digest schedule from the admin's full request. Use for instructions to post scheduled learnings, insights or friction updates. Uses this channel and the admin's Slack timezone by default. Requires admin confirmation before saving.",
-    input_schema: z.toJSONSchema(textInput) as Anthropic.Tool.InputSchema,
+      "Create a digest schedule now when an admin clearly instructs Hive to do so. Supply the typed schedule from the request. Use the current channel and supplied speaker timezone unless the request names a timezone. Do not use for musings or questions about schedules. No confirmation is needed.",
+    input_schema: z.toJSONSchema(
+      digestScheduleInput,
+    ) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
-      await requireAdmin(await actor(ctx));
-      const input = textInput.parse(args);
-      const proposal = await proposeScheduleFromText(
-        ctx.teamId,
-        ctx.memberId,
-        input.text,
-        {
-          channelId: ctx.channelId,
-          timezone: await slackMemberTimezone(ctx.teamId, ctx.memberId),
+      await instruction(ctx);
+      const input = digestScheduleInput.parse(args);
+      if (input.channelId !== ctx.channelId)
+        throw new HiveError(
+          "Ask in the channel where you want the update.",
+          400,
+        );
+      const actor = await toolActor(ctx);
+      const channel = await digestChannel(actor, input.channelId);
+      let saved: Awaited<ReturnType<typeof saveSchedule>> | undefined;
+      const result = await runReversibleAction(
+        ctx,
+        "hive_schedule_digest",
+        async (tx) => {
+          saved = await saveSchedule(actor, input, channel, undefined, tx);
+          const rows =
+            await tx`SELECT updated_at::text AS expected_updated_at FROM slack_digest_schedules WHERE team_id=${ctx.teamId} AND id=${saved.id}`;
+          return {
+            inverse: {
+              kind: "digest",
+              id: saved.id,
+              expectedUpdatedAt: String(rows[0].expected_updated_at),
+              enabled: false,
+            },
+            text: `Schedule saved for #${slackEscape(saved.channelName)}: ${saved.cadence} at ${saved.time} (${saved.timezone}); next update ${saved.nextDueAt}.`,
+            undo: "pause this schedule",
+          };
         },
       );
-      return {
-        text:
-          proposal.restatement +
-          " Confirm to save this schedule. The proposal expires in 15 minutes.",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              verbatim: true,
-              text: slackEscape(proposal.restatement),
-            },
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "plain_text",
-                emoji: false,
-                text: "Confirm to save. This proposal expires in 15 minutes.",
-              },
-            ],
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: { type: "plain_text", text: "Confirm", emoji: false },
-                action_id: "tool:hive_schedule_digest:confirm",
-                value: proposal.id,
-              },
-            ],
-          },
-        ],
-      };
-    },
-    async handleAction(ctx, action, value) {
-      if (action !== "confirm")
-        throw new HiveError("This schedule action is unavailable.", 400);
-      const schedule = await confirmDigestProposal(
-        ctx.teamId,
-        ctx.memberId,
-        ctx.channelId,
-        value,
-      );
-      return {
-        text: `Schedule saved for #${slackEscape(schedule.channelName)}. The next update is ${scheduleDate(schedule.timezone, schedule.nextDueAt)} (${schedule.timezone}). <https://gohive.dev/app/settings/slack/digests|Manage schedules>`,
-      };
+      if (saved) await scheduleEvent(saved, ctx.memberId);
+      return result;
     },
   },
   {
     name: "hive_list_digest_schedules",
     description:
-      "List the hive's digest schedules and next run. If an admin asks to disable a schedule, pass its exact schedule ID in disableId. Never guess an ID; list first when unclear.",
+      "List digest schedules and their IDs. To pause a schedule on a clear admin instruction, pass its exact ID in disableId. Never guess an ID.",
     input_schema: z.toJSONSchema(listInput) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
-      const member = await actor(ctx),
-        input = listInput.parse(args);
-      if (input.disableId) await disableSchedule(member, input.disableId);
+      await toolActor(ctx);
+      const input = listInput.parse(args);
+      if (input.disableId) {
+        await instruction(ctx);
+        return runReversibleAction(
+          ctx,
+          "hive_list_digest_schedules",
+          async (tx) => {
+            const rows =
+              await tx`SELECT * FROM slack_digest_schedules WHERE team_id=${ctx.teamId} AND id=${input.disableId!} FOR UPDATE`;
+            if (!rows[0])
+              throw new HiveError("Schedule not found in your hive.", 404);
+            if (
+              (
+                await tx`SELECT id FROM slack_digest_posts WHERE team_id=${ctx.teamId} AND schedule_id=${input.disableId!} AND status='running'`
+              ).length
+            )
+              throw new HiveError(
+                "An update is being posted. Try again after it finishes.",
+                409,
+              );
+            const changed =
+              await tx`UPDATE slack_digest_schedules SET enabled=false,updated_at=now() WHERE team_id=${ctx.teamId} AND id=${input.disableId!} RETURNING updated_at::text AS expected_updated_at`;
+            return {
+              inverse: {
+                kind: "digest",
+                id: input.disableId!,
+                expectedUpdatedAt: String(changed[0].expected_updated_at),
+                enabled: rows[0].enabled,
+              },
+              text: "Schedule paused.",
+              undo: "restore its previous state",
+            };
+          },
+        );
+      }
       const schedules = await listSchedules(ctx.teamId);
-      const text =
-        schedules
-          .map(
-            (s) =>
-              `${s.id}: #${slackEscape(s.channelName)}, ${s.cadence} at ${s.time} (${s.timezone}); ${s.enabled ? `next ${s.nextDueAt}` : "paused"}`,
-          )
-          .join("\n") ||
-        "No digest schedules yet. An admin can ask Hive to set one up in this channel.";
       return {
-        text: `${input.disableId ? "Schedule disabled.\n" : ""}${text}\n<https://gohive.dev/app/settings/slack/digests|Manage schedules>${ctx.isAdmin && schedules.length ? "\nReply with the schedule ID to disable one." : ""}`,
+        text:
+          schedules
+            .map(
+              (s) =>
+                `${s.id}: #${slackEscape(s.channelName)}, ${s.cadence} at ${s.time} (${s.timezone}); ${s.enabled ? `next ${s.nextDueAt}` : "paused"}`,
+            )
+            .join("\n") ||
+          "No digest schedules yet. An admin can ask Hive to set one up in this channel.",
       };
     },
   },
 ];
-
-function readableError(error: unknown) {
-  if (error instanceof HiveError) return { text: error.message };
-  if (error instanceof z.ZodError)
-    return {
-      text: "The schedule could not be read. Include a frequency and time, or use Hive settings.",
-    };
-  throw error;
-}
-export const digestTools: SlackTool[] = tools.map((tool) => ({
+export const digestTools = tools.map((tool) => ({
   ...tool,
-  async handler(ctx, args) {
+  async handler(ctx: SlackToolContext, args: unknown) {
     try {
       return await tool.handler(ctx, args);
     } catch (error) {
-      return readableError(error);
+      if (error instanceof HiveError) return { text: error.message };
+      if (error instanceof z.ZodError)
+        return { text: "Include a frequency and time, or use Hive settings." };
+      throw error;
     }
   },
-  ...(tool.handleAction
-    ? {
-        async handleAction(
-          ctx: SlackToolContext,
-          action: string,
-          value: string,
-        ) {
-          try {
-            return await tool.handleAction!(ctx, action, value);
-          } catch (error) {
-            return readableError(error);
-          }
-        },
-      }
-    : {}),
 }));

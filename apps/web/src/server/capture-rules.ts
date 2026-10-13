@@ -1,3 +1,4 @@
+import type postgres from "postgres";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import {
@@ -78,17 +79,18 @@ export async function effectiveRules(ctx: HiveContext): Promise<CaptureRule[]> {
   return rows.map(ruleView);
 }
 
-export async function createCaptureRule(ctx: HiveContext, input: CaptureRuleInput): Promise<CaptureRule> {
+export async function createCaptureRule(ctx: HiveContext, input: CaptureRuleInput, transaction?: postgres.TransactionSql): Promise<CaptureRule> {
   const data = parseRule(input);
   const sql = getSql();
-  const rows = await sql.begin(async tx => {
+  const operation = async (tx: postgres.TransactionSql) => {
     await lockLearningWrites(tx, ctx);
     const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
     if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
     if (data.scope === "team" && members[0].role !== "admin")
       throw new HiveError("A team admin is needed to change team rules.", 403);
     return tx`INSERT INTO capture_rules (id, team_id, member_id, created_by, name, scope, kind, action, enabled, config, source, natural_text) VALUES (${newId("crule")}, ${ctx.teamId}, ${data.scope === "team" ? null : ctx.memberId}, ${ctx.memberId}, ${data.name}, ${data.scope}, ${data.kind}, ${data.action}, ${data.enabled}, ${tx.json(data)}, ${data.source ?? "web"}, ${data.naturalText ? redactSecrets(data.naturalText).text : null}) RETURNING *`;
-  });
+  };
+  const rows = transaction ? await operation(transaction) : await sql.begin(operation);
   return ruleView(rows[0]);
 }
 

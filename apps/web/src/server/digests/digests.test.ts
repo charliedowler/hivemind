@@ -292,7 +292,7 @@ describe.skipIf(!enabled)(
           },
           { text: "every day at 9" },
         );
-      expect(result.text).toBe("Only a team admin can do this.");
+      expect(result.text).toBe("A team admin is needed to change Hive from Slack.");
       expect(model).toHaveBeenCalledTimes(1);
     });
   },

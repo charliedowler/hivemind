@@ -1,3 +1,4 @@
+import { hasThreadAction } from "./actions";
 import { z } from "zod";
 import { redactSecrets, type HiveContext } from "@hivemind/core";
 import { getSql } from "../db/client";
@@ -257,7 +258,8 @@ export async function handleMessage(
         message.user!,
         direct,
       );
-      const prompted = mentioned || direct;
+      const undoRequest = /^(?:please\s+)?undo(?:\s+(?:that|it|the last action|please))?[.!]?$/i.test(message.text.trim()) && !!message.thread_ts && await hasThreadAction(teamId, channel, thread);
+      const prompted = mentioned || direct || undoRequest;
       const cells =
         actor && !prompted
           ? (
@@ -270,8 +272,25 @@ export async function handleMessage(
               (hit) => hit.lifecycle === "confirmed" && !hit.verifyBeforeUse,
             )
           : [];
+      const page =
+        !prompted && message.thread_ts
+          ? await messagePage(inst.token, channel, message.thread_ts)
+          : null;
+      const contextComplete = !page || (!page.cursor && !page.more);
+      const conversation = (page?.messages ?? [])
+        .filter((item) => item.ts !== message.ts)
+        .map((item) => ({
+          speaker:
+            item.user === inst.bot_user_id
+              ? "Hive"
+              : item.bot_id
+                ? "Other app"
+                : "Teammate",
+          text: redactSecrets(item.text).text.slice(0, 1500),
+        }));
       const facts = {
         prompted,
+        contextComplete,
         inRoom: prior.length > 0,
         confirmedMatch: cells.some(
           (hit) => (hit.signals.vector ?? 0) >= 0.75 || hit.signals.fts >= 0.8,
@@ -281,7 +300,9 @@ export async function handleMessage(
       };
       const judgment = prompted
         ? { signals: null, model: null, latencyMs: 0 }
-        : await judgeSlack(message.text, prior, cells);
+        : contextComplete
+          ? await judgeSlack(message.text, prior, cells, conversation)
+          : { signals: null, model: null, latencyMs: 0 };
       const saved = receipt[0].payload?.decision as
         | { id: string; decision: GateDecision["decision"]; reason: string }
         | undefined;
