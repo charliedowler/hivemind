@@ -79,6 +79,6 @@ export async function respondToSlack(
   );
   return {
     ...result,
-    text: slackToolReply(result.text, { timeZone: timezone }),
+    text: slackToolReply(result.text ?? "", { timeZone: timezone }),
   };
 }
