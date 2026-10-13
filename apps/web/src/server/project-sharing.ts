@@ -38,7 +38,9 @@ export async function lockCapturePolicy(tx: postgres.TransactionSql, ownerId: st
 }
 
 function narrowsPolicy(before: OwnerCapturePolicy, after: OwnerCapturePolicy) {
-  return after.include.every(pattern => before.include.includes(pattern) || (!/[?*]/.test(pattern) && before.include.some(prior => projectPatternMatches(prior, pattern)))) && before.exclude.every(pattern => after.exclude.includes(pattern));
+  const included = new Set(before.include);
+  const excluded = new Set(after.exclude);
+  return after.include.every(pattern => included.has(pattern) || (!/[?*]/.test(pattern) && before.include.some(prior => projectPatternMatches(prior, pattern)))) && before.exclude.every(pattern => excluded.has(pattern));
 }
 function humanAuthority(actorType: string) {
   return actorType === "human" && currentOrigin()?.sessionKind !== "api_key";

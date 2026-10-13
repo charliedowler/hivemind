@@ -662,8 +662,8 @@ async function askHiveAction(
       gaps: "Some retrieved Slack evidence is no longer available.",
       synthesized: false,
     };
-  const visibleIds = (await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l WHERE l.id = ANY(${hits.filter(h => !h.id.startsWith("slk_")).map(h => h.id)}::text[])`).map(row => String(row.id));
-  if (hits.some(hit => !hit.id.startsWith("slk_") && !visibleIds.includes(hit.id)))
+  const visibleIds = new Set((await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l WHERE l.id = ANY(${hits.filter(h => !h.id.startsWith("slk_")).map(h => h.id)}::text[])`).map(row => String(row.id)));
+  if (hits.some(hit => !hit.id.startsWith("slk_") && !visibleIds.has(hit.id)))
     return {answer: "Cell permissions changed while Hive answered. Ask again.", citations: [], confidence: "low", gaps: "A publication was withdrawn.", synthesized: false};
   const sources = new Map(
     hits
