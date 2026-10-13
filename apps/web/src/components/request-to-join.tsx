@@ -76,15 +76,37 @@ export function RequestToJoin({
   );
 }
 
-export function ApprovedJoin({phrase,teamName}:{phrase:string;teamName:string}) {
-  const [pending,setPending]=useState(false);
-  const [error,setError]=useState('');
+export function ApprovedJoin({
+  phrase,
+  teamName,
+}: {
+  phrase: string;
+  teamName: string;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
   async function open() {
-    setPending(true);setError('');
+    setPending(true);
+    setError("");
     try {
-      const result=await requestJson<{destination:string}>('/api/app/join-phrase',{phrase});
+      const result = await requestJson<{ destination: string }>(
+        "/api/app/join-phrase",
+        { phrase },
+      );
       window.location.assign(result.destination);
-    } catch (error) {setError(errorMessage(error));} finally {setPending(false);}
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      setPending(false);
+    }
   }
-  return <Card className="stack"><h1>You're in {teamName}.</h1><Button loading={pending} onClick={()=>void open()}>Open {teamName}</Button>{error?<p role="alert">{error}</p>:null}</Card>;
+  return (
+    <Card className="stack">
+      <h1>You're in {teamName}.</h1>
+      <Button loading={pending} onClick={() => void open()}>
+        Open {teamName}
+      </Button>
+      {error ? <p role="alert">{error}</p> : null}
+    </Card>
+  );
 }

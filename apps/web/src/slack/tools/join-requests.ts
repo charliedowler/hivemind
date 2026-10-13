@@ -144,6 +144,7 @@ export async function respondToJoinRequest(
   const explicit = parseJoinDecision(message);
   if (explicit) return joinRequestTools[0].handler(instruction, explicit);
   if (ctx.channelId.startsWith("D") && isExplicitUndoIntent(message)) {
+    if (ctx.threadTs !== messageTs) return undoThreadAction(instruction);
     const latest =
       await getSql()`SELECT thread_ts FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND member_id=${ctx.memberId} AND channel_id=${ctx.channelId} ORDER BY created_at DESC,id DESC LIMIT 1`;
     if (latest[0])

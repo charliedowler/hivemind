@@ -85,14 +85,14 @@ export async function memberJoinPhrase(ctx: HiveContext): Promise<HiveJoinPhrase
   return rows[0] ? { phrase: String(rows[0].phrase), generation: Number(rows[0].generation), paused: Boolean(rows[0].join_paused) } : null;
 }
 
-type JoinOptions = { trustedProxyIp: string | null; capability?: string; capabilityHash?: string; allowRequest?: boolean };
+type JoinOptions = { trustedProxyIp: string | null; capability?: string; capabilityHash?: string };
 async function authenticatedActor(ctx: HiveContext) {
   const rows = await getSql()`SELECT m.*, b.owner_member_id FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ctx.teamId} AND h.removed_at IS NULL LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' AND a.owner_email_verified LEFT JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE m.id = ${ctx.memberId} AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows[0]) throw new HiveError("Sign in first.", 401);
   return rows[0];
 }
 
-async function attempt<T>(ctx: HiveContext, input: string, options: JoinOptions, action: (tx: postgres.TransactionSql, team: postgres.Row, human: postgres.Row, phrase: string) => Promise<T>) {
+async function attempt<T>(ctx: HiveContext, input: string, options: JoinOptions, action: (tx: postgres.TransactionSql, team: postgres.Row, human: postgres.Row, phrase: string) => Promise<T>, allowRequest = false) {
   const actor = await authenticatedActor(ctx);
   const ownerId = actor.actor_type === "agent" ? actor.owner_member_id : actor.id;
   await joinPhraseRateLimit(String(ownerId || actor.id), options.trustedProxyIp && isIP(options.trustedProxyIp) ? options.trustedProxyIp : null);
@@ -120,11 +120,11 @@ async function attempt<T>(ctx: HiveContext, input: string, options: JoinOptions,
     if (!team || team.join_paused || team.join_domain_policy !== "verified_domain" || !current[0] || Number(team.join_generation) !== Number(current[0].generation) || Number(phrases[0].generation) !== Number(current[0].generation)) throw failure();
     if (capability && (capability.team_id !== team.id || Number(capability.generation) !== Number(current[0].generation))) throw failure();
     const domain = emailDomain(String(human.email));
-    if ((!domain || isPublicDomain(domain)) && !options.allowRequest) throw failure();
+    if ((!domain || isPublicDomain(domain)) && !allowRequest) throw failure();
     const domains = await tx`SELECT domain FROM team_domains WHERE team_id = ${team.id} AND domain = ${domain ?? ""} FOR SHARE`;
-    if (!domains.length && !options.allowRequest) throw failure();
+    if (!domains.length && !allowRequest) throw failure();
     const membership = await tx`SELECT removed_at FROM hive_memberships WHERE member_id = ${human.id} AND team_id = ${team.id}`;
-    if (membership[0]?.removed_at && !(options.allowRequest && (await tx`SELECT id FROM hive_join_requests WHERE team_id = ${team.id} AND member_id = ${human.id} AND status = 'pending' AND undone_at IS NOT NULL`).length)) throw failure();
+    if (membership[0]?.removed_at && !(allowRequest && (await tx`SELECT id FROM hive_join_requests WHERE team_id = ${team.id} AND member_id = ${human.id} AND status = 'pending' AND undone_at IS NOT NULL`).length)) throw failure();
     return action(tx, team, human, phrase);
   });
 }
@@ -163,5 +163,5 @@ export async function issueJoinCapability(ctx: HiveContext, phrase: string, agen
 export async function withHumanJoinPhrase<T>(ctx: HiveContext, phrase: string, trustedProxyIp: string | null, action: (tx: postgres.TransactionSql, team: postgres.Row, human: postgres.Row) => Promise<T>) {
   const actor = await authenticatedActor(ctx);
   if (actor.actor_type !== "human") throw failure();
-  return attempt(ctx, phrase, { trustedProxyIp, allowRequest: true }, action);
+  return attempt(ctx, phrase, { trustedProxyIp }, action, true);
 }

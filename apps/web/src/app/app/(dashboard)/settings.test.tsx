@@ -33,6 +33,9 @@ vi.mock("@/server/identity/onboarding-web", () => ({
 vi.mock("@/server/identity/join-phrases", () => ({
   adminJoinPhrase: async () => null,
 }));
+vi.mock("@/server/identity/join-requests", () => ({
+  listJoinRequests: async () => [],
+}));
 vi.mock("@/server/web-sharing", () => ({
   projectShareState: async () => [],
   ownerAgentChoices: async () => [],
@@ -102,7 +105,7 @@ beforeEach(() => {
   mocks.sql.mockResolvedValue([{ has_password: false }]);
 });
 it.each(["admin", "member"])(
-  "keeps four Team anchors and read-only controls for %s",
+  "shows admin requests and keeps read-only controls for %s",
   async (role) => {
     mocks.members.mockResolvedValue({ overview: { role } });
     const dom = new JSDOM(
@@ -114,9 +117,21 @@ it.each(["admin", "member"])(
       const doc = dom.window.document;
       expect(
         [...doc.querySelectorAll("body > div > section")].map((s) => s.id),
-      ).toEqual(["members", "slack", "keeps", "export"]);
+      ).toEqual([
+        ...(role === "admin" ? ["requests"] : []),
+        "members",
+        "slack",
+        "keeps",
+        "export",
+      ]);
       expect([...doc.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(
-        ["Members", "Slack", "What Hive keeps", "Export"],
+        [
+          ...(role === "admin" ? ["Requests"] : []),
+          "Members",
+          "Slack",
+          "What Hive keeps",
+          "Export",
+        ],
       );
       expect(doc.querySelectorAll("fieldset")).toHaveLength(4);
       expect(doc.querySelectorAll("fieldset:disabled")).toHaveLength(

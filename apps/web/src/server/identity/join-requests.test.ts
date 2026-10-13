@@ -340,6 +340,67 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await decideJoinRequest(admin, id, "approve");
       expect(await memberContext(person.memberId, admin.teamId)).not.toBeNull();
     });
+    it("replays a Slack delivery without deciding or emailing twice", async () => {
+      const { id } = await request("Replay Person");
+      const ctx = {
+        ...slackContext("104.001"),
+        instructionText: `decline ${id}`,
+      };
+      const first = await joinRequestTools[0].handler(ctx, {
+        decision: "decline",
+        person: id,
+      });
+      const again = await joinRequestTools[0].handler(ctx, {
+        decision: "decline",
+        person: id,
+      });
+      expect(first).toMatchObject({ react: "white_check_mark" });
+      expect(again).toEqual(first);
+      expect(transport.email).toHaveBeenCalledTimes(1);
+      expect(
+        await sql`SELECT id FROM slack_tool_actions WHERE team_id=${admin.teamId} AND message_ts=${ctx.messageTs}`,
+      ).toHaveLength(1);
+    });
+    it("blocks a different admin from undoing and protects a later role change", async () => {
+      const { person, id } = await request("Changed Person");
+      const ctx = {
+        ...slackContext("105.001"),
+        instructionText: `approve ${id}`,
+      };
+      await joinRequestTools[0].handler(ctx, {
+        decision: "approve",
+        person: id,
+      });
+      expect(
+        await undoThreadAction({
+          ...ctx,
+          memberId: second.memberId,
+          instructionText: "undo",
+        }),
+      ).toMatchObject({
+        text: "Only the person who made this change can undo it here.",
+      });
+      await sql`UPDATE hive_memberships SET role='admin' WHERE member_id=${person.memberId} AND team_id=${admin.teamId}`;
+      expect(
+        await undoThreadAction({ ...ctx, instructionText: "undo" }),
+      ).toMatchObject({ text: "This membership changed after your approval." });
+    });
+    it("requires an email for ambiguous names", async () => {
+      await request("Same Person");
+      await request("Same Name");
+      const ctx = {
+        ...slackContext("106.001"),
+        instructionText: "approve Same",
+      };
+      expect(
+        await joinRequestTools[0].handler(ctx, {
+          decision: "approve",
+          person: "Same",
+        }),
+      ).toMatchObject({
+        text: "More than one person matches. Use their email.",
+      });
+    });
     it("acts on an explicit named channel approval and ignores an informational question", async () => {
       const { person } = await request(`Unique${suffix}`);
       const ctx = { ...slackContext("100.001"), channelId: "CAPP" };

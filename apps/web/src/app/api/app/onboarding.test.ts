@@ -24,7 +24,9 @@ vi.mock("@/server/identity/onboarding-web", () => ({
   joinFailure:
     "This hive could not be joined. Check the link or ask your admin.",
 }));
-vi.mock("@/server/identity/join-requests", () => ({joinOrRequest:mocks.join}));
+vi.mock("@/server/identity/join-requests", () => ({
+  joinOrRequest: mocks.join,
+}));
 vi.mock("@/server/web-hive-session", () => ({ selectHive: mocks.select }));
 vi.mock("@/lib/public-url", () => ({
   publicUrl: async () => "https://gohive.dev",
@@ -52,7 +54,11 @@ beforeEach(() => {
     teamName: "Team",
     paused: false,
   });
-  mocks.join.mockResolvedValue({ status:"joined", teamId: "team", teamName: "Team" });
+  mocks.join.mockResolvedValue({
+    status: "joined",
+    teamId: "team",
+    teamName: "Team",
+  });
   mocks.invite.mockResolvedValue({
     teamId: "team",
     teamName: "Team",
@@ -196,4 +202,14 @@ it("requires human authority and same-origin requests before issuing agent capab
   ).toBe(403);
   expect(mocks.capability).not.toHaveBeenCalled();
   expect(mocks.delegation).not.toHaveBeenCalled();
+});
+
+it("returns requested without selecting a hive when admin approval is required", async () => {
+  mocks.join.mockResolvedValue({ status: "requested", requestId: "fixture" });
+  const response = await join(
+    request("join-phrase", { phrase: "amber-honey-fox" }, "https://gohive.dev"),
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ status: "requested" });
+  expect(mocks.select).not.toHaveBeenCalled();
 });

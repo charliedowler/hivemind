@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   sync: vi.fn(),
   retry: vi.fn(),
 }));
+vi.mock("@/server/identity/join-requests", () => ({
+  maintainJoinRequests: async () => ({ expired: 0 }),
+}));
 vi.mock("@/server/db/client", () => ({ getSql: () => mocks.query }));
 vi.mock("@/server/slack/install", () => ({ syncChannels: mocks.sync }));
 vi.mock("@/server/slack/queue", () => ({ retryPendingSlack: mocks.retry }));
@@ -65,6 +68,7 @@ it("runs every 15 minutes and refreshes and retries with a current admin", async
   });
   expect(mocks.retry).toHaveBeenCalledWith(mocks.sync.mock.calls[0][0]);
   expect(await response.json()).toEqual({
+    joinRequests: { expired: 0 },
     results: [
       {
         teamId: "team_a",
@@ -93,6 +97,10 @@ it("isolates failures so a channel error does not block retries or another team"
 it("reports work left when the invocation budget expires", async () => {
   vi.spyOn(Date, "now").mockReturnValueOnce(0).mockReturnValue(231_000);
   const response = await GET(request());
-  expect(await response.json()).toEqual({ results: [], remaining: 1 });
+  expect(await response.json()).toEqual({
+    joinRequests: { expired: 0 },
+    results: [],
+    remaining: 1,
+  });
   expect(mocks.sync).not.toHaveBeenCalled();
 });

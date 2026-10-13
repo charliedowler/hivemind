@@ -29,7 +29,7 @@ async function expireForTeam(tx: postgres.TransactionSql, teamId: string) {
 }
 async function lockTeam(tx: postgres.TransactionSql, ctx: HiveContext) {
   const admins =
-    await tx`SELECT t.id FROM teams t WHERE t.id=${ctx.teamId} AND t.personal_owner_member_id IS NULL AND EXISTS (SELECT 1 FROM members m JOIN hive_memberships h ON h.member_id=m.id WHERE m.id=${ctx.memberId} AND h.team_id=t.id AND h.role='admin' AND h.removed_at IS NULL AND m.actor_type='human' AND m.email_verified AND NOT m.provisional AND m.disabled_at IS NULL) FOR UPDATE`;
+    await tx`SELECT t.id FROM teams t JOIN hive_memberships h ON h.team_id=t.id JOIN members m ON m.id=h.member_id WHERE t.id=${ctx.teamId} AND t.personal_owner_member_id IS NULL AND m.id=${ctx.memberId} AND h.role='admin' AND h.removed_at IS NULL AND m.actor_type='human' AND m.email_verified AND NOT m.provisional AND m.disabled_at IS NULL FOR UPDATE OF t FOR SHARE OF h,m`;
   if (!admins.length)
     throw new HiveError("Only a team admin can do this.", 403);
   await expireForTeam(tx, ctx.teamId);
@@ -293,7 +293,7 @@ export async function maintainJoinRequests() {
   const [expired, pending, declined] = await Promise.all([
     sql`UPDATE hive_join_requests SET status='expired' WHERE status='pending' AND expires_at<=now() RETURNING id`,
     sql`SELECT DISTINCT r.id FROM hive_join_requests r JOIN hive_join_request_notifications n ON n.request_id=r.id WHERE r.status='pending' AND r.expires_at>now() AND n.status='pending' ORDER BY r.id LIMIT 25`,
-    sql`SELECT id FROM hive_join_requests WHERE status='declined' AND decline_emailed_at IS NULL AND decided_at>now()-interval '1 day' LIMIT 25`,
+    sql`SELECT id FROM hive_join_requests WHERE status='declined' AND decline_emailed_at IS NULL ORDER BY decided_at,id LIMIT 25`,
   ]);
   async function deliverBatch(index: number): Promise<void> {
     if (index >= Math.max(pending.length, declined.length)) return;
