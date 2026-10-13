@@ -27,6 +27,7 @@ import {
   type ConflictJev,
 } from "./conflict-judgments";
 import { judgeMemory } from "./memory-judgments";
+import { runReversibleAction, undoLastAction } from "./slack/actions";
 import { GET, POST } from "../app/api/app/conflicts/route";
 const auth = vi.hoisted(() => ({ ctx: null as HiveContext | null }));
 vi.mock("./auth", async (original) => ({
@@ -125,6 +126,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     });
     afterAll(async () => {
       for (const table of [
+        "slack_tool_actions",
         "feedback",
         "learning_pushes",
         "ask_log",
@@ -275,6 +277,20 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await expect(
         reverseDecision(a, record.id, "Unsafe reversal."),
       ).rejects.toThrow("changes");
+    });
+    it("records Slack reversal and its inverse atomically without replaying the mutation", async () => {
+      const { old, record } = await pair("supersede", "Slack reverse receipt");
+      const context = { ...a, isAdmin: true, channelId: "CDECISIONS", threadTs: "1800000000.10", messageTs: "1800000000.11" };
+      const result = await runReversibleAction(context, "hive_reverse_decision", async (tx) => {
+        const reversed = await reverseDecision(a, record.id, undefined, tx, "from Slack");
+        return { inverse: { kind: "decision_reversed", id: reversed.id }, text: "Decision reversed.", undo: "restore the decision" };
+      });
+      expect(result.text).toBe("Decision reversed.");
+      expect((await getLearning(a, old.id))?.lifecycle).toBe("fresh");
+      expect(await runReversibleAction(context, "hive_reverse_decision", async () => { throw new Error("A replay must not mutate"); })).toEqual(result);
+      expect(await undoLastAction(context)).toEqual({ text: "Decision reapplied." });
+      expect((await getLearning(a, old.id))?.lifecycle).toBe("superseded");
+      expect((await undoLastAction(context)).text).toContain("already undone");
     });
     it("reverses without a reason and allows an optional audit correction", async () => {
       const { record } = await pair("keep_both", "Default audit reason");
