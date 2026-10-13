@@ -1,10 +1,18 @@
-export const setupPrompt = "Set me up on Hive: read https://gohive.dev/agent and follow it.";
+export const setupPrompt =
+  "Set me up on Hive: read https://gohive.dev/agent and follow it.";
+
+export const signInGuidance =
+  "If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard.";
 
 export const agentInstructions = `# Set up Hive
 
 Run \`npx gohive install\` from the current repo.
-Use the installer’s agent path for Claude Code or Codex.
-When the browser challenge appears, sign in as yourself with AgentID.
+If the setup prompt includes a join link, add \`--join-url <joinUrl>\` to the install command.
+If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard.
+It opens a browser tab. Tell the person: “Sign in with Google in the tab that just opened.”
+Continue when \`gohive status\` reports signed in.
+Use agent identity only when no person is at the keyboard: \`npx gohive install --identity agent\`.
+Never create an AgentMail inbox for a person.
 Keep MCP OAuth continuation and the hook connection the installer configures.
 If Hive is already installed and signed in, reuse that setup.
 Read the current project selection with \`hive_share_projects { revision: 0 }\`.

@@ -3,10 +3,10 @@ import { redirect } from "next/navigation";
 import { getWebContext } from "@/server/auth";
 import { humanActor } from "@/server/identity/onboarding-web";
 import { memberContext } from "@/server/identity/enrollment";
-import { adminJoinPhrase } from "@/server/identity/join-phrases";
+import { readOrganisationInvite } from "@/server/organisation-invites";
 import { publicUrl } from "@/lib/public-url";
 import { CreateHive } from "@/components/create-hive";
-import { InviteTeam } from "@/components/hive-invite";
+import { InviteBlock } from "@/components/hive-invite";
 export const metadata = { title: "Create a hive | Hive" };
 export default async function Page({
   searchParams,
@@ -25,15 +25,13 @@ export default async function Page({
     );
   const team = await memberContext(ctx.memberId, created);
   if (!team) return <p>This hive is no longer available.</p>;
-  const [phrase, baseUrl] = await Promise.all([
-    adminJoinPhrase(team),
-    publicUrl(),
-  ]);
+  const invite = await readOrganisationInvite(team, await publicUrl());
+  if (!invite) return <p>This hive is no longer available.</p>;
   return (
     <div className="stack narrow">
       <h1>{team.teamName} is ready</h1>
-      <InviteTeam teamName={team.teamName} baseUrl={baseUrl} phrase={phrase} />
-      {phrase?.paused ? (
+      <InviteBlock {...invite} />
+      {invite.joinPaused ? (
         <Link href="/app/team">Set up joining on the Team page</Link>
       ) : null}
     </div>

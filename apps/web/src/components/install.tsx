@@ -332,16 +332,16 @@ export function InstallPage({
         <div>
           <h1>Add your agent</h1>
           <p className="muted">
-            Paste the prompt into Claude Code or Codex. Your agent signs in as
-            itself.
+            Paste the prompt into Claude Code or Codex. Sign in with Google or
+            Slack when the browser tab opens.
           </p>
         </div>
         <Sprite name="bee-carry" scale={4} />
       </div>
       <PromptBlock text={setupPrompt} />
       <p className="small muted">
-        Separate inboxes appear as separate agents under you. Your agents share
-        your project selection.
+        Separate agent accounts appear under you. Their capture uses your
+        project selection.
       </p>
       <section className="stack" aria-labelledby="installer-heading">
         <div className="stack">
@@ -366,7 +366,7 @@ export function InstallPage({
         <p className="muted">
           The installer opens supported sign-in flows automatically and checks
           each connection. Choose your account and allow access in the browser.
-          Claude Code uses <code>/mcp</code> for its agent sign-in. Use{" "}
+          Sign in with Google or Slack in the tab that opens. Use{" "}
           <code>--yes</code> or a terminal without interactive input to print
           the sign-in commands. Your existing settings are backed up. Run{" "}
           <code>npx gohive doctor</code> to check the connection.

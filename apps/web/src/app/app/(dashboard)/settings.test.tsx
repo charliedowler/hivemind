@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   rules: vi.fn(),
   account: vi.fn(),
   sql: vi.fn(),
+  invite: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
@@ -38,6 +39,12 @@ vi.mock("@/server/web-sharing", () => ({
 }));
 vi.mock("@/components/hive-invite", () => ({
   HiveInvite: () => <p>Invite control</p>,
+  InviteBlock: ({ invitePrompt }: { invitePrompt: string }) => (
+    <p>{invitePrompt}</p>
+  ),
+}));
+vi.mock("@/server/organisation-invites", () => ({
+  readOrganisationInvite: mocks.invite,
 }));
 vi.mock("@/server/identity/access", () => ({ account: mocks.account }));
 vi.mock("@/server/slack/store", () => ({ teamSlackSettings: mocks.slack }));
@@ -68,6 +75,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.context.mockResolvedValue(ctx);
   mocks.members.mockResolvedValue({ overview: { role: "admin" } });
+  mocks.invite.mockResolvedValue(null);
   mocks.slack.mockResolvedValue({
     installation: null,
     channels: [],
@@ -158,3 +166,20 @@ it.each([TeamPage, AccountPage])(
     expect(mocks.rules).not.toHaveBeenCalled();
   },
 );
+
+it("shows the invitation to members without admin actions", async () => {
+  mocks.members.mockResolvedValue({ overview: { role: "member" } });
+  mocks.invite.mockResolvedValue({
+    teamId: "team_test",
+    teamName: "Team",
+    joinUrl: "https://gohive.dev/j/phrase",
+    invitePrompt: "Set me up on Hive and join the Team hive",
+    joinPaused: false,
+  });
+  const html = renderToStaticMarkup(
+    await TeamPage({ searchParams: Promise.resolve({}) }),
+  );
+  expect(html).toContain("Set me up on Hive and join the Team hive");
+  expect(html).not.toContain("Invite control");
+  expect(html).not.toContain("Rotate");
+});

@@ -12,7 +12,7 @@ import {
   Sprite,
 } from "@hivemind/design-system";
 import { PromptBlock } from "@/components/prompt-block";
-import { setupPrompt } from "@/lib/agent-onboarding";
+import { setupPrompt, signInGuidance } from "@/lib/agent-onboarding";
 import { buildInstallSnippets } from "@/lib/install";
 import { publicUrl } from "@/lib/public-url";
 
@@ -61,7 +61,6 @@ export default async function HomePage() {
   });
   return (
     <main className="landing">
-
       <header className="landing-header">
         <Link href="/" className="brand">
           <Sprite name="bee" scale={3} />
@@ -81,8 +80,13 @@ export default async function HomePage() {
         actions={
           <div className="stack hero-prompt">
             <PromptBlock text={setupPrompt} recordCopy />
-            <p className="small">Paste into Claude Code or Codex. Your agent does the rest.</p>
-            <Link className="small" href="/app/login">Prefer a browser? Sign in</Link>
+            <p className="small">
+              Paste into Claude Code or Codex. Your agent does the rest.
+            </p>
+            <p className="small">{signInGuidance}</p>
+            <Link className="small" href="/app/login">
+              Prefer a browser? Sign in
+            </Link>
           </div>
         }
       />
@@ -125,8 +129,8 @@ export default async function HomePage() {
         </ol>
         <InstallSnippet
           options={snippets
-            .filter(
-              (snippet) => ["claude", "codex", "executor"].includes(snippet.id),
+            .filter((snippet) =>
+              ["claude", "codex", "executor"].includes(snippet.id),
             )
             .map((snippet) => ({
               agent: snippet.id as "claude" | "codex" | "executor",

@@ -2,7 +2,7 @@
 import { useState, type FormEvent } from "react";
 import type { HiveJoinPhrase } from "@hivemind/core";
 import { Button, Card, Input } from "@hivemind/design-system";
-import { teamInvitePrompt } from "@/lib/agent-onboarding";
+import { teamInvitePrompt, signInGuidance } from "@/lib/agent-onboarding";
 import { requestJson, errorMessage } from "@/lib/client";
 import { useRouter } from "next/navigation";
 import { PromptBlock } from "./prompt-block";
@@ -10,12 +10,14 @@ export function InviteTeam({
   teamName,
   baseUrl,
   phrase,
+  allowPaused = false,
 }: {
   teamName: string;
   baseUrl: string;
   phrase: HiveJoinPhrase | null;
+  allowPaused?: boolean;
 }) {
-  if (!phrase || phrase.paused)
+  if (!phrase || (phrase.paused && !allowPaused))
     return (
       <p className="muted">
         Joining is paused. Add an allowed work domain and resume joining on the
@@ -24,14 +26,35 @@ export function InviteTeam({
     );
   const link = `${baseUrl}/j/${phrase.phrase}`;
   return (
+    <InviteBlock
+      joinUrl={link}
+      invitePrompt={teamInvitePrompt(teamName, link)}
+      joinPaused={phrase.paused}
+    />
+  );
+}
+export function InviteBlock({
+  joinUrl,
+  invitePrompt,
+  joinPaused,
+}: {
+  joinUrl: string;
+  invitePrompt: string;
+  joinPaused: boolean;
+}) {
+  return (
     <section className="stack" aria-label="Invite your team">
       <h2>Invite your team</h2>
-      <PromptBlock
-        key={phrase.phrase}
-        text={teamInvitePrompt(teamName, link)}
-      />
+      {joinPaused ? (
+        <p className="muted">
+          Joining is paused. Add an allowed work domain and resume joining on
+          the Team page.
+        </p>
+      ) : null}
+      <PromptBlock key={joinUrl} text={invitePrompt} />
+      <p className="small muted">{signInGuidance}</p>
       <p className="small breakable">
-        Or send them this link: <a href={link}>{link}</a>
+        Or send them this link: <a href={joinUrl}>{joinUrl}</a>
       </p>
     </section>
   );

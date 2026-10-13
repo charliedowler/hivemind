@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   human: vi.fn(),
   capability: vi.fn(),
   delegation: vi.fn(),
+  invite: vi.fn(),
+  email: vi.fn(),
 }));
 vi.mock("@/server/auth", () => ({ getWebContext: mocks.auth }));
 vi.mock("@/server/identity/onboarding-web", () => ({
@@ -23,6 +25,13 @@ vi.mock("@/server/identity/onboarding-web", () => ({
     "This hive could not be joined. Check the link or ask your admin.",
 }));
 vi.mock("@/server/web-hive-session", () => ({ selectHive: mocks.select }));
+vi.mock("@/lib/public-url", () => ({
+  publicUrl: async () => "https://gohive.dev",
+}));
+vi.mock("@/server/organisation-invites", () => ({
+  readOrganisationInvite: mocks.invite,
+  deliverOrganisationCreated: mocks.email,
+}));
 vi.mock("@/server/identity/join-phrases", () => ({
   issueJoinCapability: mocks.capability,
 }));
@@ -43,6 +52,13 @@ beforeEach(() => {
     paused: false,
   });
   mocks.join.mockResolvedValue({ teamId: "team", teamName: "Team" });
+  mocks.invite.mockResolvedValue({
+    teamId: "team",
+    teamName: "Team",
+    joinUrl: "https://gohive.dev/j/amber-honey-fox",
+    invitePrompt: "Invite prompt",
+    joinPaused: false,
+  });
 });
 const request = (path: string, body: unknown, origin?: string) =>
   new Request(`https://gohive.dev/api/app/${path}`, {
@@ -53,6 +69,27 @@ const request = (path: string, body: unknown, origin?: string) =>
     },
     body: JSON.stringify(body),
   });
+it("returns the exact creation invite contract to the human and their agent", async () => {
+  const response = await createRoute.POST(
+    request(
+      "create-organisation",
+      { requestKey: crypto.randomUUID() },
+      "https://gohive.dev",
+    ),
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    teamId: "team",
+    teamName: "Team",
+    joinUrl: "https://gohive.dev/j/amber-honey-fox",
+    invitePrompt: "Invite prompt",
+    joinPaused: false,
+  });
+  expect(mocks.email).toHaveBeenCalledWith(
+    mocks.ctx,
+    await mocks.invite.mock.results[0].value,
+  );
+});
 it.each([undefined, "https://evil.example", "null"])(
   "rejects join and create without a same-origin CSRF boundary (%s)",
   async (origin) => {

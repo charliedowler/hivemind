@@ -38,6 +38,7 @@ export function JoinHive({
       <p className="small muted">
         Your agents join with you. Joining does not share any new projects.
       </p>
+      <p className="small">Join {teamName} is selected. Click below to join.</p>
       <Button loading={pending} onClick={() => void join()}>
         Join {teamName}
       </Button>

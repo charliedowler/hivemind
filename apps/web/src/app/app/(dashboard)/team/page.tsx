@@ -8,7 +8,8 @@ import { getWebContext } from "@/server/auth";
 import { webMemberPage } from "@/server/web-member-page";
 import { adminJoinPhrase } from "@/server/identity/join-phrases";
 import { hiveChoices } from "@/server/identity/onboarding-web";
-import { HiveInvite } from "@/components/hive-invite";
+import { HiveInvite, InviteBlock } from "@/components/hive-invite";
+import { readOrganisationInvite } from "@/server/organisation-invites";
 import { teamSlackSettings } from "@/server/slack/store";
 import { listCaptureRules } from "@/server/capture-rules";
 import styles from "./team.module.css";
@@ -34,6 +35,7 @@ export default async function Page({
   ]);
   const isAdmin = members.overview.role === "admin";
   const phrase = isAdmin ? await adminJoinPhrase(ctx) : null;
+  const invite = !isAdmin ? await readOrganisationInvite(ctx, baseUrl) : null;
   return (
     <div className={`stack ${styles.team}`}>
       <h1>{ctx.teamName}</h1>
@@ -45,7 +47,17 @@ export default async function Page({
           initial={phrase}
           initialDomains={members.overview.domains}
         />
-      ) : null}
+      ) : invite ? (
+        invite.joinPaused ? (
+          <p className="muted">
+            Joining is paused. Your admin can resume it on the Team page.
+          </p>
+        ) : (
+          <InviteBlock {...invite} />
+        )
+      ) : (
+        <p className="muted">Your admin can create the join link.</p>
+      )}
       <section
         id="members"
         className={styles.section}

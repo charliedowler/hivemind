@@ -26,7 +26,16 @@ export function Consent({
   hives?: { teamId: string; teamName: string; personal: boolean }[];
 }) {
   const [choice, setChoice] = useState<string>();
-  const selectedTeamId = choice ?? teamId;
+  const requestedPersonWide = scopes.includes("hive:person");
+  const canChooseHive = scopes.includes("hive") && hives.length > 0;
+  const selectedChoice =
+    choice ??
+    (canChooseHive ? teamId : requestedPersonWide ? "person" : teamId);
+  const personWide = selectedChoice === "person";
+  const selectedTeamId = personWide ? teamId : selectedChoice;
+  const grantedScopes = personWide
+    ? scopes
+    : scopes.filter((scope) => scope !== "hive:person");
   const selectedTeamName =
     hives.find((hive) => hive.teamId === selectedTeamId)?.teamName ?? teamName;
   const [error, submit, pending] = useActionState(
@@ -42,6 +51,7 @@ export function Consent({
         const result = await authClient.oauth2.consent({
           accept: form.get("decision") === "allow",
           oauth_query: oauthQuery,
+          ...(requestedPersonWide ? { scope: grantedScopes.join(" ") } : {}),
         });
         if (result.error) throw new Error(result.error.message);
         if (result.data?.url) window.location.assign(result.data.url);
@@ -59,7 +69,7 @@ export function Consent({
       <h1>Connect {clientName} to your hive</h1>
       <p>
         You are signed in as {email}.{" "}
-        {scopes.includes("hive:person") ? (
+        {personWide ? (
           <>
             This agent can access your personal hive and organisations you join
             now or in future.
@@ -70,30 +80,13 @@ export function Consent({
           </>
         )}
       </p>
-      <ul className="consent-scopes">
-        {scopes.map((scope) => (
-          <li key={scope}>
-            {scope === "hive:person"
-              ? "Read and search cells, ask Hive, save personal cells and give feedback in your personal hive and organisations you join now or in future. Sharing with an organisation still needs your permission."
-              : scope === "hive"
-                ? "Read and search cells, ask the hive, save cells and give feedback in this team."
-                : scope === "offline_access"
-                  ? "Keep the connection active between sessions until you revoke it."
-                  : scope === "openid"
-                    ? "Confirm your member identity."
-                    : scope === "profile"
-                      ? "Read your name."
-                      : scope === "email"
-                        ? "Read your email address."
-                        : scope}
-          </li>
-        ))}
-        {claims.map((claim) => (
-          <li key={claim}>Read the requested profile field: {claim}.</li>
-        ))}
-      </ul>
+      <ConsentScopes
+        scopes={grantedScopes}
+        personWide={personWide}
+        claims={claims}
+      />
       <p className="small muted">
-        {scopes.includes("hive:person")
+        {personWide
           ? "This connection follows your future hive memberships until you revoke it. Cancel to leave the agent disconnected."
           : "Access is limited to this hive. Cancel to leave the agent disconnected."}
       </p>
@@ -106,17 +99,24 @@ export function Consent({
             <span>Default hive</span>
             <select
               aria-label="Default hive"
-              value={selectedTeamId}
+              value={selectedChoice}
               disabled={pending}
               onChange={(event) => setChoice(event.target.value)}
             >
-              {hives.map((hive) => (
-                <option key={hive.teamId} value={hive.teamId}>
-                  {hive.personal
-                    ? `Personal · ${hive.teamName}`
-                    : hive.teamName}
+              {canChooseHive
+                ? hives.map((hive) => (
+                    <option key={hive.teamId} value={hive.teamId}>
+                      {hive.personal
+                        ? `Personal · ${hive.teamName}`
+                        : hive.teamName}
+                    </option>
+                  ))
+                : null}
+              {requestedPersonWide ? (
+                <option value="person">
+                  Personal hive and organisations you join now or in future
                 </option>
-              ))}
+              ) : null}
             </select>
           </label>
         ) : null}
@@ -134,5 +134,38 @@ export function Consent({
         </Button>
       </form>
     </Card>
+  );
+}
+
+const scopeDescriptions: Record<string, string> = {
+  "hive:person":
+    "Read and search cells, ask Hive, save personal cells and give feedback in your personal hive and organisations you join now or in future. Sharing with an organisation still needs your permission.",
+  hive: "Read and search cells, ask the hive, save cells and give feedback in this hive.",
+  offline_access:
+    "Keep the connection active between sessions until you revoke it.",
+  openid: "Confirm your member identity.",
+  profile: "Read your name.",
+  email: "Read your email address.",
+};
+function ConsentScopes({
+  scopes,
+  personWide,
+  claims,
+}: {
+  scopes: string[];
+  personWide: boolean;
+  claims: string[];
+}) {
+  return (
+    <ul className="consent-scopes">
+      {scopes
+        .filter((scope) => !personWide || scope !== "hive")
+        .map((scope) => (
+          <li key={scope}>{scopeDescriptions[scope] ?? scope}</li>
+        ))}
+      {claims.map((claim) => (
+        <li key={claim}>Read the requested profile field: {claim}.</li>
+      ))}
+    </ul>
   );
 }

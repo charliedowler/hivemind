@@ -1,20 +1,21 @@
 import { Feed } from "@/components/feed";
 import { getWebContext } from "@/server/auth";
 import { hiveChoices } from "@/server/identity/onboarding-web";
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const [params, ctx] = await Promise.all([searchParams, getWebContext()]);
+export default async function Page() {
+  const ctx = await getWebContext();
   const hives = ctx ? await hiveChoices(ctx) : [];
   const personal = Boolean(
     hives.find((hive) => hive.teamId === ctx?.teamId)?.personal,
   );
+  const justJoined = (
+    ctx as typeof ctx & {
+      justJoined?: { teamId: string; teamName: string } | null;
+    }
+  )?.justJoined;
   return (
     <>
-      {ctx && (!personal || params.joined === "1") ? (
-        <p role="status">You're in {ctx.teamName}.</p>
+      {ctx && justJoined ? (
+        <p role="status">You're in {justJoined.teamName}.</p>
       ) : null}
       <Feed teamName={ctx?.teamName} personal={personal} />
     </>

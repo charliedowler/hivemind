@@ -11,7 +11,10 @@ import { ProjectDelegation } from "./project-delegation";
 import { Feed } from "./feed";
 import { PromptBlock } from "./prompt-block";
 import { setupPrompt } from "@/lib/agent-onboarding";
-import { renderWelcome } from "@/server/identity/welcome-template";
+import {
+  renderWelcome,
+  renderOrganisationCreated,
+} from "@/server/identity/welcome-template";
 import { Consent } from "./consent";
 const mocks = vi.hoisted(() => ({ request: vi.fn(), consent: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -58,7 +61,7 @@ it("lists both hives with the organisation selected by default at consent", () =
       teamName="Lightdash"
       teamId="team"
       email="human@example.test"
-      scopes={["hive:person"]}
+      scopes={["hive", "hive:person"]}
       claims={[]}
       oauthQuery="client_id=claude"
       hives={[
@@ -71,6 +74,24 @@ it("lists both hives with the organisation selected by default at consent", () =
   expect(html).toContain("Personal · My hive");
   expect(html).toContain("Lightdash");
   expect(html).toContain("organisations you join now or in future");
+});
+it("uses the same creation prompt and link in email, including a paused explanation", () => {
+  const message = renderOrganisationCreated({
+    name: "<Person>",
+    teamName: "Team",
+    joinUrl: "https://gohive.dev/j/amber-honey-fox",
+    invitePrompt:
+      "Set me up on Hive and join the Team hive: read https://gohive.dev/agent and follow it, then join with https://gohive.dev/j/amber-honey-fox",
+    joinPaused: true,
+  });
+  expect(message.text).toContain(
+    "then join with https://gohive.dev/j/amber-honey-fox",
+  );
+  expect(message.html).toContain(
+    "then join with https://gohive.dev/j/amber-honey-fox",
+  );
+  expect(message.text).toContain("Joining is paused.");
+  expect(message.html).not.toContain("<Person>");
 });
 async function mount(element: React.ReactNode) {
   const dom = new JSDOM('<div id="root"></div>', {
@@ -136,6 +157,57 @@ it.each(["allow", "cancel"])(
       expect(mocks.consent).toHaveBeenCalledWith({
         accept: decision === "allow",
         oauth_query: query,
+      });
+    } finally {
+      await close();
+    }
+  },
+);
+it.each(["team", "person"])(
+  "narrows person-wide consent only for a scoped choice (%s)",
+  async (choice) => {
+    const query =
+      "client_id=claude&scope=hive+hive%3Aperson+offline_access&sig=signed";
+    const { host, close } = await mount(
+      <Consent
+        clientName="Claude"
+        teamName="Lightdash"
+        teamId="team"
+        email="human@example.test"
+        scopes={["hive", "hive:person", "offline_access"]}
+        claims={[]}
+        oauthQuery={query}
+        hives={[
+          { teamId: "team", teamName: "Lightdash", personal: false },
+          { teamId: "personal", teamName: "My hive", personal: true },
+        ]}
+      />,
+    );
+    vi.stubGlobal("FormData", window.FormData);
+    mocks.request.mockResolvedValue({ ok: true });
+    mocks.consent.mockResolvedValue({ data: {} });
+    try {
+      await act(async () => {
+        const select = host.querySelector("select")!;
+        select.value = choice;
+        select.dispatchEvent(new window.Event("change", { bubbles: true }));
+      });
+      if (choice === "person")
+        expect(host.textContent).toContain(
+          "follows your future hive memberships",
+        );
+      else
+        expect(host.textContent).toContain("Access is limited to this hive.");
+      await act(async () =>
+        host.querySelector<HTMLButtonElement>('button[value="allow"]')!.click(),
+      );
+      expect(mocks.consent).toHaveBeenCalledWith({
+        accept: true,
+        oauth_query: query,
+        scope:
+          choice === "person"
+            ? "hive hive:person offline_access"
+            : "hive offline_access",
       });
     } finally {
       await close();
