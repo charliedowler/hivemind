@@ -315,11 +315,16 @@ describe.skipIf(!process.env.DATABASE_URL)(
         ).map((hit) => hit.id),
       ).toContain(old.id);
       const answer = await askHive(a, { question: "Capybara gate" });
-      expect(answer.answer).toContain(`[${old.id}]`);
+      expect(answer.answer).not.toContain(`[${old.id}]`);
       expect(answer.answer).toContain(`[${current.id}]`);
       expect(answer.answer).toContain("As of ");
       expect(answer.answer).toContain("Verify before use");
       expect(answer.citations.map((citation) => citation.id)).toEqual(
+        expect.arrayContaining([current.id]),
+      );
+      expect(answer.citations.map(citation => citation.id)).not.toContain(old.id);
+      const historyAnswer = await askHive(a, {question: "Capybara gate", include_history: true});
+      expect(historyAnswer.citations.map(citation => citation.id)).toEqual(
         expect.arrayContaining([old.id, current.id]),
       );
       await expect(

@@ -1,12 +1,17 @@
-import type { HiveContext, LearningView } from "@hivemind/core";
+import {
+  excludedFromRetrieval,
+  type LearningStanding,
+  type HiveContext,
+  type LearningView,
+} from "@hivemind/core";
 
 export function learningView(
   row: Record<string, unknown>,
   ctx?: HiveContext,
-): LearningView {
+): LearningStanding {
   const date = (value: unknown) =>
     new Date(value as string | Date).toISOString();
-  return {
+  const learning: LearningStanding = {
     id: String(row.id),
     title: String(row.title),
     body: String(row.body),
@@ -23,6 +28,31 @@ export function learningView(
       down: Number(row.down_votes),
       outdated: Number(row.outdated_votes),
     },
+    feedbackStanding:
+      row.weighted_net_votes === undefined
+        ? undefined
+        : {
+            weightedNetVotes: Number(row.weighted_net_votes),
+            usefulOutcomes: Number(row.useful_outcomes),
+            contradictedOutcomes: Number(row.contradicted_outcomes),
+            staleOutcomes: Number(row.stale_outcomes),
+            lastOutcome: row.last_outcome as NonNullable<
+              LearningStanding["feedbackStanding"]
+            >["lastOutcome"],
+            lastOutcomeAt: row.last_outcome_at
+              ? date(row.last_outcome_at)
+              : null,
+            lastConfirmedAt: row.last_confirmed_at
+              ? date(row.last_confirmed_at)
+              : null,
+            lastContradictedAt: row.last_contradicted_at
+              ? date(row.last_contradicted_at)
+              : null,
+          },
+    unhelpfulLabel:
+      Number(row.down_votes) > 0
+        ? `Marked unhelpful by ${Number(row.down_votes)}`
+        : null,
     lifecycle: row.lifecycle as LearningView["lifecycle"],
     revision: Number(row.revision),
     verifyAfter: row.verify_after ? date(row.verify_after) : null,
@@ -30,7 +60,7 @@ export function learningView(
       row.lifecycle === "outdated" ||
       Boolean(
         row.verify_after &&
-        new Date(row.verify_after as string).getTime() <= Date.now(),
+          new Date(row.verify_after as string).getTime() <= Date.now(),
       ),
     supersededBy: row.superseded_by as string | null,
     sessionRef: row.session_ref as string | null,
@@ -45,9 +75,10 @@ export function learningView(
     captureFlagged: Boolean(row.capture_flagged),
     canConfirmCapture: Boolean(
       row.capture_flagged &&
-      ctx &&
-      (row.member_id === ctx.memberId || row.owner_member_id === ctx.memberId) &&
-      ["fresh", "confirmed"].includes(String(row.lifecycle)),
+        ctx &&
+        (row.member_id === ctx.memberId ||
+          row.owner_member_id === ctx.memberId) &&
+        ["fresh", "confirmed"].includes(String(row.lifecycle)),
     ),
     captureCategories:
       (row.capture_categories as Record<string, boolean> | undefined) ?? {},
@@ -61,4 +92,6 @@ export function learningView(
     updatedAt: date(row.updated_at),
     lastPushedAt: date(row.last_pushed_at),
   };
+  learning.retrievalExcluded = excludedFromRetrieval(learning);
+  return learning;
 }

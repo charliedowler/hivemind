@@ -156,7 +156,7 @@ export const hiveSearchInput = z.object({
     .boolean()
     .optional()
     .describe(
-      "Include superseded, outdated and retracted cells for investigation.",
+      "Include unhelpful, contradicted, superseded, outdated and retracted cells for investigation.",
     ),
   query: z
     .string()
@@ -186,6 +186,7 @@ export const hiveSearchInput = z.object({
 });
 
 export const hiveAskInput = z.object({
+  include_history: hiveSearchInput.shape.include_history,
   question: z
     .string()
     .min(1)
@@ -200,6 +201,7 @@ export const hiveAskInput = z.object({
 });
 
 export const hiveRecentInput = z.object({
+  include_history: hiveSearchInput.shape.include_history,
   since: z
     .union([
       z.iso.datetime({ offset: true }),

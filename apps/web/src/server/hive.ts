@@ -10,6 +10,7 @@ import {
   normalizeTags,
   parseSince,
   rankCandidates,
+  type RankCandidate,
   redactSecrets,
   type AskResult,
   type EarlyAccessInput,
@@ -19,6 +20,7 @@ import {
   type HiveRecentInput,
   type HiveSearchInput,
   type LearningView,
+  type LearningStanding,
   type MemberView,
   type PushResult,
   type SearchHit,
@@ -50,6 +52,7 @@ import {
   recordConflictEvent,
   retryRelatedConflicts,
 } from "./conflict-decisions";
+import { feedbackStandingSql, retrievalEligibleSql } from "./feedback";
 import { judgeMemory, rerankMemory } from "./memory-judgments";
 import {
   queueEvidence,
@@ -462,7 +465,7 @@ export function searchLearnings(
   ctx: HiveContext,
   input: HiveSearchInput,
   options: { publicOnly?: boolean; cellsOnly?: boolean; excludeFlagged?: boolean } = {},
-): Promise<SearchHit[]> {
+): Promise<(SearchHit & LearningStanding)[]> {
   return withOperation(ctx, "search", () =>
     searchLearningsAction(ctx, input, options),
   );
@@ -472,7 +475,7 @@ async function searchLearningsAction(
   ctx: HiveContext,
   input: HiveSearchInput,
   options: { publicOnly?: boolean; cellsOnly?: boolean; excludeFlagged?: boolean } = {},
-): Promise<SearchHit[]> {
+): Promise<(SearchHit & LearningStanding)[]> {
   const started = performance.now();
   const data = validate(hiveSearchInput, input);
   const sql = getSql();
@@ -484,15 +487,15 @@ async function searchLearningsAction(
   const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
   const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
   const excludeFlagged = options.excludeFlagged ?? ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
-  const filter = sql`${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.include_history ?? false} OR l.lifecycle IN ('fresh','confirmed')) AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND (${!options.publicOnly} OR l.source <> 'slack' OR EXISTS(SELECT 1 FROM slack_channels sc WHERE sc.team_id=l.team_id AND sc.private=false AND sc.bot_member=true AND l.session_ref LIKE '%' || '/archives/' || sc.channel_id || '/%'))`;
+  const filter = sql`${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND ${retrievalEligibleSql(data.include_history)} AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND (${!options.publicOnly} OR l.source <> 'slack' OR EXISTS(SELECT 1 FROM slack_channels sc WHERE sc.team_id=l.team_id AND sc.private=false AND sc.bot_member=true AND l.session_ref LIKE '%' || '/archives/' || sc.channel_id || '/%'))`;
   const ftsRows =
-    await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
+    await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
-    ? await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
+    ? await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
     : [];
   const candidates = new Map<
     string,
-    LearningView & { vector: number | null; fts: number }
+    RankCandidate
   >();
   for (const row of ftsRows)
     candidates.set(row.id, {
@@ -512,7 +515,7 @@ async function searchLearningsAction(
       prefixUsed = true;
       const prefix = words.map((word) => `${word}:*`).join(" & ");
       const rows =
-        await sql`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
+        await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, ts_rank_cd(l.search, to_tsquery('english', ${prefix})) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ to_tsquery('english', ${prefix}) ORDER BY fts DESC LIMIT 40`;
       for (const row of rows)
         candidates.set(row.id, {
           ...view(row, ctx),
@@ -521,7 +524,7 @@ async function searchLearningsAction(
         });
     }
   }
-  const cells = rankCandidates([...candidates.values()], data.repo);
+  const cells = rankCandidates([...candidates.values()], data.repo, new Date(), {includeHistory: data.include_history});
   const slack =
     options.cellsOnly ||
     (data.kind && data.kind !== "learning") ||
@@ -558,6 +561,18 @@ async function searchLearningsAction(
   return hits;
 }
 
+async function retrievalLifecycleContext(ctx: HiveContext, hits: LearningView[], includeHistory = false) {
+  const context = await answerLifecycleContext(ctx, hits);
+  if (includeHistory) return context;
+  const prompt = JSON.parse(context.prompt);
+  return {
+    ...context,
+    prompt: JSON.stringify({...prompt, history: []}),
+    text: context.text.split("\n\n").filter(line => !line.startsWith("Replaced ") && !line.startsWith("Earlier history is truncated")).join("\n\n"),
+    citations: [],
+  };
+}
+
 export function askHive(
   ctx: HiveContext,
   input: HiveAskInput,
@@ -574,15 +589,16 @@ async function askHiveAction(
   const started = performance.now();
   const data = validate(hiveAskInput, input);
   const friction =
-    !options.publicOnly && isFrictionAsk(data.question)
+    !data.include_history && !options.publicOnly && isFrictionAsk(data.question)
       ? await frictionSummary(ctx, data.repo)
       : null;
-  if (friction && friction.count) {
+  const frictionEligible = friction?.count ? await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs WHERE l.id = ANY(${friction.cells.map(cell => cell.id)}::text[]) AND ${retrievalEligibleSql()}` : [];
+  if (friction && friction.count && frictionEligible.length === friction.cells.length) {
     const cells =
-      await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
+      await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
     const result = appendLifecycleContext(
       frictionAnswer(friction),
-      await answerLifecycleContext(ctx, cells.map(row => view(row, ctx))),
+      await retrievalLifecycleContext(ctx, cells.map(row => view(row, ctx)), data.include_history),
     );
     const dates = new Map(
       cells.map((cell) => [
@@ -618,12 +634,14 @@ async function askHiveAction(
         query: data.question.slice(0, 500),
         repo: data.repo,
         limit: 8,
+        include_history: data.include_history,
       },
       {...options, excludeFlagged: true},
     ),
+    {includeHistory: data.include_history},
   );
   const [context, relevance] = await Promise.all([
-    answerLifecycleContext(ctx, hits),
+    retrievalLifecycleContext(ctx, hits, data.include_history),
     classifyAsk(data.question, hits),
   ]);
   let result: AskResult;
@@ -662,7 +680,7 @@ async function askHiveAction(
       gaps: "Some retrieved Slack evidence is no longer available.",
       synthesized: false,
     };
-  const visibleIds = new Set((await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l WHERE l.id = ANY(${hits.filter(h => !h.id.startsWith("slk_")).map(h => h.id)}::text[])`).map(row => String(row.id)));
+  const visibleIds = new Set((await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs WHERE ${retrievalEligibleSql(data.include_history)} AND l.id = ANY(${hits.filter(h => !h.id.startsWith("slk_")).map(h => h.id)}::text[])`).map(row => String(row.id)));
   if (hits.some(hit => !hit.id.startsWith("slk_") && !visibleIds.has(hit.id)))
     return {answer: "Cell permissions changed while Hive answered. Ask again.", citations: [], confidence: "low", gaps: "A publication was withdrawn.", synthesized: false};
   const sources = new Map(
@@ -711,14 +729,14 @@ async function askHiveAction(
 export function recentLearnings(
   ctx: HiveContext,
   input: HiveRecentInput,
-): Promise<LearningView[]> {
+): Promise<LearningStanding[]> {
   return withOperation(ctx, "recent", () => recentLearningsAction(ctx, input));
 }
 
 async function recentLearningsAction(
   ctx: HiveContext,
   input: HiveRecentInput,
-): Promise<LearningView[]> {
+): Promise<LearningStanding[]> {
   const data = validate(hiveRecentInput, input);
   let since: Date;
   try {
@@ -732,7 +750,7 @@ async function recentLearningsAction(
   const canonicalRepo = data.repo ? canonicalProject(data.repo) : null;
   const excludeFlagged = ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
   const rows =
-    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo} OR l.repo = ${canonicalRepo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
+    await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND ${retrievalEligibleSql(data.include_history)} AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND l.last_pushed_at >= ${since} AND (${repo}::text IS NULL OR l.repo = ${repo} OR l.repo = ${canonicalRepo}) ORDER BY l.last_pushed_at DESC LIMIT ${data.limit}`;
   await recordEvent({
     name: "recent.performed",
     properties: { resultCount: rows.length, kind: data.kind },
@@ -745,10 +763,10 @@ export {recordFeedback} from "./feedback";
 export async function getLearning(
   ctx: HiveContext,
   id: string,
-): Promise<LearningView | null> {
+): Promise<LearningStanding | null> {
   if (id.startsWith("slk_")) return getSlackMessage(ctx, id);
   const rows =
-    await getSql()`SELECT l.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`;
+    await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`;
   return rows[0] ? view(rows[0], ctx) : null;
 }
 

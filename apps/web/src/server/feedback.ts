@@ -28,6 +28,29 @@ import { cleanEvidence, evidenceText } from "./llm/capture";
 import { classifyOutcome } from "./outcome-judgments";
 import { scheduleKnowledge } from "./knowledge-tree";
 
+export function feedbackStandingSql(alias = "l") {
+  const q = getSql();
+  return q`(SELECT
+    coalesce(sum((CASE f.vote WHEN 'up' THEN 1 WHEN 'down' THEN -1 ELSE 0 END) * power(0.5, greatest(0, extract(epoch FROM (now() - coalesce(r.created_at, f.updated_at))) / 86400) / 90)), 0)::float AS weighted_net_votes,
+    count(*) FILTER (WHERE r.classification = 'useful')::int AS useful_outcomes,
+    count(*) FILTER (WHERE r.classification = 'contradicted')::int AS contradicted_outcomes,
+    count(*) FILTER (WHERE r.classification = 'stale')::int AS stale_outcomes,
+    (array_agg(r.classification ORDER BY r.created_at DESC, r.id DESC) FILTER (WHERE r.classification IS NOT NULL))[1] AS last_outcome,
+    max(r.created_at) FILTER (WHERE r.classification IS NOT NULL) AS last_outcome_at,
+    max(r.created_at) FILTER (WHERE r.classification = 'useful') AS last_confirmed_at,
+    max(r.created_at) FILTER (WHERE r.classification = 'contradicted' AND btrim(CASE WHEN jsonb_typeof(r.evidence) = 'string' THEN r.evidence #>> '{}' ELSE concat_ws('', r.evidence->>'session_excerpt', r.evidence->>'diff', r.evidence->>'command_output') END) <> '') AS last_contradicted_at
+    FROM feedback f LEFT JOIN feedback_receipts r ON r.id = f.receipt_id AND r.learning_id = f.learning_id AND r.team_id = f.team_id AND r.member_id = f.member_id
+    WHERE f.learning_id = ${q(`${alias}.id`)} AND f.team_id = ${q(`${alias}.team_id`)})`;
+}
+
+export function retrievalEligibleSql(includeHistory = false, alias = "l", standingAlias = "fs") {
+  const q = getSql();
+  return q`(${includeHistory} OR (
+    ${q(`${alias}.lifecycle`)} IN ('fresh','confirmed')
+    AND NOT (${q(`${alias}.down_votes`)} >= 2 AND ${q(`${alias}.down_votes`)} > ${q(`${alias}.up_votes`)})
+    AND (${q(`${standingAlias}.last_contradicted_at`)} IS NULL OR ${q(`${standingAlias}.last_confirmed_at`)} >= ${q(`${standingAlias}.last_contradicted_at`)})))`;
+}
+
 async function scopedCell(ctx: HiveContext, id: string) {
   const rows =
     await getSql()`SELECT l.* FROM ${audienceCellsSql(ctx)} l WHERE l.id = ${id} AND ${learningVisibleSql(ctx)}`;
@@ -173,7 +196,7 @@ async function writeFeedback(
           409,
         );
       const previous = (
-        await tx`SELECT vote, receipt_id FROM feedback WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} FOR UPDATE`
+        await tx`SELECT vote, receipt_id, updated_at FROM feedback WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} FOR UPDATE`
       )[0];
       const receipt = newId("fbr");
       let target: string | null = previous?.receipt_id ?? null;
@@ -186,6 +209,7 @@ async function writeFeedback(
         },
         previousVote: previous?.vote ?? null,
         previousReceipt: target,
+        previousUpdatedAt: previous?.updated_at?.toISOString() ?? null,
       };
       let affectsLifecycle = Boolean(change.vote);
       let restoredVote: FeedbackVote | null = null;
@@ -221,7 +245,7 @@ async function writeFeedback(
           const restoredReceipt =
             submitted?.before_state?.previousReceipt ?? null;
           if (restoredVote)
-            await tx`UPDATE feedback SET vote = ${restoredVote}, note = NULL, receipt_id = ${restoredReceipt}, updated_at = now() WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId}`;
+            await tx`UPDATE feedback SET vote = ${restoredVote}, note = NULL, receipt_id = ${restoredReceipt}, updated_at = ${submitted?.before_state?.previousUpdatedAt ?? new Date()} WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId}`;
           else
             await tx`DELETE FROM feedback WHERE learning_id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId}`;
         }

@@ -200,10 +200,11 @@ endWebSession(): Promise<void>
    - `vector` = cosine similarity clamped to 0..1
    - `fts` = rank divided by the max rank in the candidate set
    - `recency` = `exp(-ageDays / 45)` on `last_pushed_at`
-   - `votes` = `0.5 + 0.5 * tanh((up - down + 0.5 * (pushCount - 1)) / 3)`
+   - `weightedNetVotes` = the sum of current up (+1) and down (-1) contributions, each multiplied by `2^(-ageDays / 90)`. Age uses the original receipt timestamp, or the legacy feedback update timestamp. Outdated votes do not add weight. Repeat pushes do not count as useful feedback.
+   - `votes` = `clamp(0.5 + weightedNetVotes / 6, -0.5, 1.5)`. Three fresh net useful outcomes double the neutral votes term from 0.5 to 1. Useful outcomes already count as up votes and never count twice. The capped term leaves text and vector relevance dominant.
    - `score = 0.55 * vector + 0.25 * fts + 0.10 * recency + 0.10 * votes`. Without a vector signal: `0.70 * fts + 0.15 * recency + 0.15 * votes`.
    - plus 0.08 when the repo matches, times `0.85 + 0.15 * confidence`, times 0.4 when `outdated > up` and `outdated >= 1`.
-3. Default candidates exclude superseded, outdated and retracted cells before limits are applied. `include_history: true` includes them. Scale by lifecycle (confirmed 1, fresh 0.95, historical 0.25) and verification age (0.7 after the deadline). Return the top `limit` hits with signals.
+3. Default search, ask and recent exclude cells before candidate limits when down votes outnumber up votes and there are at least two down votes, when a current evidenced contradicted outcome is newer than the latest current useful outcome (or there is no useful outcome), or when lifecycle is superseded, outdated or retracted. Evidence timestamps are report receipt timestamps. Replaced and withdrawn contributions do not affect standing. `include_history: true` on all three tools includes these cells; direct ID reads also retain them. Withdrawal recomputes standing immediately. Counts and outcome stamps use the projected cell audience, never votes from another publication or its personal original. The read model exposes `unhelpfulLabel` ("Marked unhelpful by N"), `retrievalExcluded` and `feedbackStanding`; the comb can keep showing hidden cells. Scale by lifecycle (confirmed 1, fresh 0.95, historical 0.25) and verification age (0.7 after the deadline). Return the top `limit` hits with signals.
 
 ### Ask
 
@@ -211,13 +212,13 @@ The shared ask service, relevance gate and MCP `hive_ask` tool serve agent reque
 
 1. `searchLearnings` with the question, limit 8.
 2. No hits: return a fixed answer that says the hive has nothing on this yet, `synthesized: false`, `confidence: "low"`.
-3. Rerank each hit with a Jev relevance probability, scaling its score by `0.5 + 0.5 * probability`; use the original ranking on failure. Gate retrieved evidence with Jev. Weak evidence returns a gap before synthesis. Empty retrieval skips Jev. On an outage require a vector similarity of at least 0.55 or 75% lexical coverage without vectors. Then call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
+3. Give Jev each candidate's vote counts, current outcome counts, latest outcome and timestamps, and lifecycle. The reranker filters excluded cells unless history is requested; no model response can add candidates. Rerank each hit with a Jev relevance probability, scaling its score by `0.5 + 0.5 * probability`; use the original ranking on failure. Gate retrieved evidence with Jev. Weak evidence returns a gap before synthesis. Empty retrieval skips Jev. On an outage require a vector similarity of at least 0.55 or 75% lexical coverage without vectors. Then call `claude-sonnet-5-5` with structured output (`client.messages.parse` and `zodOutputFormat`), `output_config.effort: "low"`, `max_tokens: 4000`. The prompt gives each learning as a block with its id, title, kind, repo, tags, author, date, votes and body. The model must answer only from these learnings, cite ids inline as `[lrn_xxx]`, say what is missing in `gaps`, and prefer newer and upvoted learnings when they conflict. Do not pass `temperature`, `thinking: disabled`, a prefill or forced `tool_choice`: this model rejects them.
 4. Drop citations whose id is not in the retrieved set. On `stop_reason: "refusal"`, any API error, or a missing key: return the extractive fallback (top 3 hits as a bullet list with ids), `synthesized: false`.
-5. Append the accepted replacement chain (up to 16 links), an as-of date and overdue verification warnings with their historical citations. If there are no answer citations, do not manufacture a chain. Write an `ask_log` row.
+5. Append an as-of date and overdue verification warnings. Only include the accepted replacement chain (up to 16 links) and its historical citations when `include_history: true`. If there are no answer citations, do not manufacture a chain. Write an `ask_log` row.
 
 ### Recent
 
-`since` accepts an ISO datetime or `<n>m`, `<n>h`, `<n>d`, `<n>w`. Search and recent accept a hard kind filter. Order by `last_pushed_at desc`.
+`since` accepts an ISO datetime or `<n>m`, `<n>h`, `<n>d`, `<n>w`. Search and recent accept a hard kind filter. Order by `last_pushed_at desc`. Apply the same feedback and lifecycle inclusion policy before the limit. `include_history: true` includes hidden cells.
 
 ### Feedback
 
@@ -488,13 +489,13 @@ The response is JSON with the saved cell, `inferred` metadata, relation judgment
 | Outcome | Existing vote and standing rule |
 | --- | --- |
 | useful | up; can confirm the cell |
-| contradicted | down; reduces vote ranking, without inventing a retraction threshold |
+| contradicted | down; reduces ranking and hides the cell when its evidence receipt is newer than the latest current useful outcome |
 | stale | outdated; outdated votes greater than up votes mark the cell outdated |
 | inconclusive | audit receipt only; existing votes and lifecycle stay unchanged |
 
 The outcome can cite a check in its own text; separate evidence is optional. Bare approval, viewing, retrieval, unfinished attempts and unsupported claims are inconclusive. Search, recent, getLearning, hive_browse and hive_read never cast feedback.
 
-`feedback` remains keyed by authenticated member and cell. Two agents or credentials for one member cannot stack independent votes. A newer supported outcome or direct vote replaces that member's contribution. Team scope and active membership are hard checks. The existing lifecycle thresholds remain: terminal superseded/retracted states stay terminal, admin-outdated wins, outdated votes greater than up votes make outdated, positive votes or repeated pushes make confirmed, otherwise fresh.
+`feedback` remains keyed by cell, audience team and authenticated member. Two agents or credentials for one member cannot stack independent votes. A newer supported outcome or direct vote replaces that member's contribution. Team scope and active membership are hard checks. The existing lifecycle thresholds remain: terminal superseded/retracted states stay terminal, admin-outdated wins, outdated votes greater than up votes make outdated, positive votes or repeated pushes make confirmed, otherwise fresh.
 
 Every direct vote, outcome and withdrawal creates an actor-bound `feedback_receipts` audit row with text, redacted evidence, judgment, target receipt and before/after standing. `hive_feedback({id, withdraw: true, receipt?})` withdraws that actor's current receipt, or the specified non-affecting receipt. A replaced affecting receipt, reused withdrawal or another actor's receipt cannot remove newer feedback. Withdrawal restores the actor's previous contribution, then recomputes standing with current team votes and admin/terminal guards. Correct a result by reporting a new outcome for the same cell. Inconclusive receipt withdrawal has no lifecycle effect.
 

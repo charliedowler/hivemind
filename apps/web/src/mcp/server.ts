@@ -238,7 +238,7 @@ export function registerHiveTools(server: McpServer) {
   }, async (input, ctx) => reply(async () => JSON.stringify(await correctLearning(getContext(ctx), input)), ctx));
   server.registerTool("hive_outcome", {
     title: "Report a result from using a cell",
-    description: "Report a concrete result from using this cell, with evidence when available. Hive classifies useful, contradicted, stale or inconclusive. Retrieval alone never votes. Returns an actor-bound receipt you can withdraw with hive_feedback.",
+    description: "Report a concrete result from using this cell, with evidence when available. Hive classifies useful, contradicted, stale or inconclusive. Useful results raise ranking; contradicted and stale results can hide cells from default retrieval. Retrieval alone never votes. Returns an actor-bound receipt you can withdraw with hive_feedback.",
     inputSchema: hiveOutcomeInput,
   }, async (input, ctx) => reply(async () => JSON.stringify(await reportOutcome(getContext(ctx), input)), ctx));
 
@@ -247,7 +247,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Search shared learnings",
       description:
-        "Call at the start of work in a repository and when an error appears. Find relevant learnings before repeating an investigation. The repo boosts same-repository results; tags filter results.",
+        "Call at the start of work in a repository and when an error appears. Find relevant learnings before repeating an investigation. The repo boosts same-repository results; tags filter results. Unhelpful and contradicted cells are hidden by default, along with outdated, superseded and retracted cells. Use include_history: true to investigate them.",
       inputSchema: hiveSearchInput,
     },
     async (input, ctx) =>
@@ -269,7 +269,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Ask the hive",
       description:
-        "Ask a question using the team's saved learnings. The answer cites its cells. Check the confidence and gaps before acting.",
+        "Ask a question using the team's saved learnings. The answer cites its cells. Check the confidence and gaps before acting. Unhelpful and contradicted cells are hidden by default, along with outdated, superseded and retracted cells. Use include_history: true to investigate them.",
       inputSchema: hiveAskInput,
     },
     async (input, ctx) =>
@@ -284,7 +284,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Catch up on learnings",
       description:
-        "List what the team learned since a date or during a time window. Use repo to limit results to one repository.",
+        "List what the team learned since a date or during a time window. Use repo to limit results to one repository. Unhelpful and historical cells are hidden by default; include_history: true shows them.",
       inputSchema: hiveRecentInput,
     },
     async (input, ctx) =>
@@ -321,7 +321,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Review a learning",
       description:
-        "Optional direct useful, unhelpful or outdated vote. Prefer hive_outcome for an evidenced result. Use withdraw: true and the receipt to withdraw your feedback. The newest feedback replaces your prior vote; retrieval never votes.",
+        "Optional direct useful, unhelpful or outdated vote. Prefer hive_outcome for an evidenced result. Use withdraw: true and the receipt to withdraw your feedback. Votes change ranking and inclusion in default search, ask and recent. The newest feedback replaces your prior vote; retrieval never votes.",
       inputSchema: hiveFeedbackInput,
     },
     async (input, ctx) =>
