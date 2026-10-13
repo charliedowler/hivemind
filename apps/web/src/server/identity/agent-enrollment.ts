@@ -77,7 +77,7 @@ export async function setFirstAgentName(memberId: string, input: string) {
 }
 
 export async function enrollAgent(memberId: string, input?: HiveRegistration, selectedTeam?: string): Promise<HiveContext | null> {
-  await getSql().begin(async tx => {
+  const enrolledTeam = await getSql().begin(async tx => {
     const rows = await tx`SELECT m.*, a.owner_sub, b.owner_member_id FROM members m LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' AND a.owner_email_verified LEFT JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE m.id = ${memberId}`;
     const member = rows[0];
     if (!member || member.disabled_at || member.actor_type !== "agent") throw new HiveError("This agent identity is no longer active.", 403);
@@ -99,18 +99,17 @@ export async function enrollAgent(memberId: string, input?: HiveRegistration, se
       if (!owned.length) throw new HiveError("Your verified owner is not a member of this team.", 403);
       teamId = selectedTeam;
     } else {
-      const current = await tx`SELECT team_id FROM hive_memberships WHERE member_id = ${memberId} AND team_id = ${member.team_id ?? ""} AND removed_at IS NULL`;
-      if (current.length) return;
-      const choices = await tx`SELECT h.team_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${memberId} AND h.removed_at IS NULL ORDER BY (t.personal_owner_member_id IS NULL) DESC, h.joined_at, h.team_id`;
+      const choices = await tx`SELECT h.team_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${memberId} AND h.removed_at IS NULL ORDER BY (t.personal_owner_member_id IS NOT NULL) DESC, h.joined_at, h.team_id`;
       teamId = choices[0]?.team_id;
     }
     if (!teamId) return;
     const active = await tx`SELECT team_id FROM hive_memberships WHERE member_id = ${memberId} AND team_id = ${teamId} AND removed_at IS NULL`;
     if (!active.length) throw new HiveError("This membership was removed. Ask your team admin.", 403);
-    await tx`UPDATE members SET team_id = ${teamId}, role = 'member', removed_at = NULL, hive_registration = NULL, updated_at = now() WHERE id = ${memberId}`;
+    await tx`UPDATE members SET hive_registration = NULL, updated_at = now() WHERE id = ${memberId}`;
     await tx`UPDATE web_sessions SET team_id = ${teamId} WHERE member_id = ${memberId} AND team_id IS NULL`;
+    return teamId;
   });
-  return memberContext(memberId);
+  return memberContext(memberId, enrolledTeam);
 }
 
 export async function ownerInviteRole(tx: postgres.TransactionSql, memberId: string, email: string, teamId: string, inviteHash: string): Promise<"member" | "admin"> {
@@ -119,7 +118,7 @@ export async function ownerInviteRole(tx: postgres.TransactionSql, memberId: str
 }
 
 export async function agentEnrollmentNotice(memberId: string) {
-  const rows = await getSql()`SELECT t.name, a.owner_name FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = m.team_id AND h.removed_at IS NULL JOIN teams t ON t.id = h.team_id LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' WHERE m.id = ${memberId} AND m.actor_type = 'agent' AND m.disabled_at IS NULL`;
+  const rows = await getSql()`SELECT t.name, a.owner_name FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.removed_at IS NULL JOIN teams t ON t.id = h.team_id LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' WHERE m.id = ${memberId} AND m.actor_type = 'agent' AND m.disabled_at IS NULL ORDER BY (t.personal_owner_member_id IS NOT NULL) DESC, h.joined_at, h.team_id LIMIT 1`;
   const row = rows[0];
   return row ? row.owner_name ? `You're in ${row.name}, joined via ${row.owner_name}.` : `You're in ${row.name}.` : null;
 }

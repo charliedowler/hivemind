@@ -9,7 +9,7 @@ async function main() {
   const sql = getSql();
   try {
     const teams =
-      await sql`SELECT t.id, t.name, m.id AS member_id, m.name AS member_name FROM teams t JOIN LATERAL (SELECT id, name FROM members WHERE team_id = t.id AND role = 'admin' AND removed_at IS NULL ORDER BY created_at LIMIT 1) m ON true`;
+      await sql`SELECT t.id, t.name, m.id AS member_id, m.name AS member_name FROM teams t JOIN LATERAL (SELECT person.id, person.name FROM members person JOIN hive_memberships h ON h.member_id = person.id WHERE h.team_id = t.id AND h.role = 'admin' AND h.removed_at IS NULL AND person.disabled_at IS NULL AND NOT person.provisional ORDER BY h.joined_at, person.id LIMIT 1) m ON true`;
     for (const team of teams) {
       const ctx = {
         teamId: team.id,

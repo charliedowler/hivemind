@@ -202,9 +202,8 @@ export async function completeEmailCode(
       await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId}, ${role}) ON CONFLICT DO NOTHING`;
       const active = await tx`SELECT role FROM hive_memberships WHERE member_id = ${memberId} AND team_id = ${teamId} AND removed_at IS NULL`;
       if (!active.length) throw new HiveInputError("This membership was removed. Ask your admin.");
-      await tx`UPDATE members SET team_id = ${teamId}, role = ${active[0].role}, removed_at = NULL WHERE id = ${memberId}`;
     } else {
-      await tx`UPDATE members SET team_id = ${teamId}, role = ${role} WHERE id = ${memberId}`;
+      await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId}, ${role}) ON CONFLICT DO NOTHING`;
     }
     await tx`SELECT hive_ensure_personal_hive(${memberId})`;
     if (payload.intent === "teams") await tx`SELECT hive_create_default_capture_rules(${teamId}, ${memberId})`;

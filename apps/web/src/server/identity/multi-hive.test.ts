@@ -54,7 +54,6 @@ describe.skipIf(!process.env.DATABASE_URL)("multi-hive identities", () => {
     const id = newId("mem"); memberIds.push(id);
     await sql`INSERT INTO members (id, name, email, email_verified) VALUES (${id}, ${`${label}-${suffix}`}, ${`${label}-${suffix}@${workDomain}`}, true)`;
     const personal = (await sql`SELECT hive_ensure_personal_hive(${id}) AS id`)[0].id;
-    await sql`UPDATE members SET team_id = ${personal}, role = 'admin' WHERE id = ${id}`;
     return (await memberContext(id, personal))!;
   }
   async function agent(label: string, ownerId: string) {
@@ -232,7 +231,6 @@ describe.skipIf(!process.env.DATABASE_URL)("multi-hive identities", () => {
   it("keeps team keys scoped to their membership rather than the selected hive", async () => {
     const key = `hm_${randomBytes(32).toString("base64url")}`;
     await sql`INSERT INTO api_keys (id, member_id, team_id, key_hash, prefix) VALUES (${newId("key")}, ${owner.memberId}, ${secondAdmin.teamId}, ${hashToken(key)}, 'fixture')`;
-    await sql`UPDATE members SET team_id = ${owner.teamId}, role = 'admin' WHERE id = ${owner.memberId}`;
     expect((await authenticateApiKey(key))?.teamId).toBe(secondAdmin.teamId);
     await removeMember(secondAdmin, owner.memberId);
     expect(await authenticateApiKey(key)).toBeNull();

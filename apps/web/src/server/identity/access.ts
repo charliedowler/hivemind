@@ -99,7 +99,6 @@ export async function removeMember(
     if (!rows.length) throw new HiveNotFoundError("Member not found in your team.");
     const agents = await tx`UPDATE hive_memberships h SET removed_at = now() WHERE h.team_id = ${ctx.teamId} AND h.removed_at IS NULL AND h.member_id IN (SELECT a.user_id FROM auth_accounts a JOIN agent_owner_bindings b ON b.issuer = ${agentIdIssuer} AND b.owner_sub = a.owner_sub WHERE a.provider_id = 'agentid' AND b.owner_member_id = ${id}) RETURNING member_id`;
     const removed = [id, ...agents.map(row => String(row.member_id))];
-    await tx`UPDATE members SET removed_at = now() WHERE id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
     await tx`UPDATE api_keys SET revoked_at = now() WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
     await tx`DELETE FROM web_sessions WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
   });

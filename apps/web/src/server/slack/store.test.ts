@@ -78,7 +78,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         })
       ).ctx;
       const sql = getSql();
-      await sql`UPDATE members SET email=${`slack-${workspace.toLowerCase()}@example.test`},email_verified=true WHERE id=${a.memberId} AND team_id=${a.teamId}`;
+      await sql`UPDATE members SET email=${`slack-${workspace.toLowerCase()}@example.test`},email_verified=true WHERE id=${a.memberId}`;
       await sql`INSERT INTO slack_installations(team_id,workspace_id,workspace_name,bot_user_id,token_ciphertext,installed_by,scopes) VALUES(${a.teamId},${workspace},'Fixture','UBOT',${encryptBotToken("synthetic-token", a.teamId, workspace)},${a.memberId},'{}')`;
       for (const [id, priv, state] of [
         ["CSELECTED", false, "enabled"],
@@ -95,7 +95,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         if (table === "teams")
           await sql`DELETE FROM teams WHERE id=ANY(${[a.teamId, b.teamId]}::text[])`;
         else
-          await sql`DELETE FROM ${sql(table)} WHERE team_id=ANY(${[a.teamId, b.teamId]}::text[])`;
+          await sql`DELETE FROM ${sql(table)} WHERE ${table === "members" ? sql`id IN (SELECT member_id FROM hive_memberships WHERE team_id=ANY(${[a.teamId, b.teamId]}::text[]))` : sql`team_id=ANY(${[a.teamId, b.teamId]}::text[])`}`;
       }
       vi.unstubAllEnvs();
       await sql.end();

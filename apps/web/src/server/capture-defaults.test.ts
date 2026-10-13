@@ -19,7 +19,7 @@ describe.skipIf(!enabled)("default capture exclusions", () => {
   }
   afterAll(async () => {
     const sql = getSql();
-    for (const table of ["capture_rules", "web_sessions", "members"]) await sql`DELETE FROM ${sql(table)} WHERE team_id = ANY(${teams}::text[])`;
+    for (const table of ["capture_rules", "web_sessions"]) await sql`DELETE FROM ${sql(table)} WHERE team_id = ANY(${teams}::text[])`;
     await sql`DELETE FROM teams WHERE id = ANY(${teams}::text[])`;
     await sql`DELETE FROM members WHERE id = ANY(${members}::text[])`;
     await sql.end();
@@ -35,11 +35,10 @@ describe.skipIf(!enabled)("default capture exclusions", () => {
   it("backfills existing teams once and preserves an owner's disabled choice on replay", async () => {
     const ctx = await enroll();
     await getSql()`DELETE FROM capture_rules WHERE team_id = ${ctx.teamId}`;
-    const migration = await readFile(new URL("../../drizzle/0024_default_capture_rules.sql", import.meta.url), "utf8");
-    await getSql().begin(tx => tx.unsafe(migration));
+    await getSql()`SELECT hive_create_default_capture_rules(${ctx.teamId}, ${ctx.memberId})`;
     const rules = await listCaptureRules(ctx); expect(rules).toHaveLength(3);
     await updateCaptureRule(ctx, rules[0].id, {...rules[0], enabled: false});
-    await getSql().begin(tx => tx.unsafe(migration));
+    await getSql()`SELECT hive_create_default_capture_rules(${ctx.teamId}, ${ctx.memberId})`;
     const after = await listCaptureRules(ctx);
     expect(after).toHaveLength(3); expect(after.find(rule => rule.id === rules[0].id)?.enabled).toBe(false);
     const rollback = await readFile(new URL("../../drizzle/rollback/0024_default_capture_rules.sql", import.meta.url), "utf8");

@@ -11,10 +11,10 @@ type HookGroup = { hooks: Hook[]; [key: string]: unknown };
 type OwnedHook = { event: string; command: string; group?: HookGroup };
 type Settings = { hooks?: Record<string, HookGroup[]>; [key: string]: unknown };
 type OwnedFile = { hash: string; previous?: string };
-type Manifest = { version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: OwnedHook[] };
+type Manifest = { executor?: boolean; version: 1; agents: Agent[]; files: Record<string, OwnedFile>; registered: Agent[]; backupDirectories: string[]; ownedHooks: OwnedHook[] };
 export type Result = { status: number; stdout: string; stderr: string };
 export type Runner = (command: string, args: string[], home: string) => Result;
-export type Options = { home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string; registerMcp?: boolean; onDoctor?: (agent: Agent, healthy: boolean) => void };
+export type Options = { executor?: boolean; home: string; agents?: Agent[]; backupDir?: string; run?: Runner; log?: (line: string) => void; assets?: string; registerMcp?: boolean; onDoctor?: (agent: Agent, healthy: boolean) => void };
 export const url = 'https://gohive.dev/api/mcp';
 export const startMarker = '<!-- hive:start -->';
 export const endMarker = '<!-- hive:end -->';
@@ -22,8 +22,18 @@ const assetDirectory = fileURLToPath(new URL('../assets/hive/', import.meta.url)
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const read = (path: string) => existsSync(path) ? readFileSync(path, 'utf8') : undefined;
 const manifestPath = (home: string) => join(home, '.hive/install.json');
-const instructionPaths = (home: string, agent: Agent) => join(home, agent === 'claude' ? '.claude/CLAUDE.md' : '.codex/AGENTS.md');
+const instructionPaths = (home: string, agent: Agent | 'executor') => join(home, agent === 'executor' ? '.hive/EXECUTOR.md' : agent === 'claude' ? '.claude/CLAUDE.md' : '.codex/AGENTS.md');
 const hookCommand = (home: string, script: string) => `node "${join(home, '.claude/skills/hive/scripts', script).replace(/(["\\$`])/g, '\\$1')}"`;
+const hookSpecs = [
+  { event: 'SessionStart', script: 'session-start.mjs', matcher: 'startup|resume|clear|compact', timeout: 4, background: false },
+  { event: 'Stop', script: 'stop.mjs', timeout: 15, background: true },
+  { event: 'PreCompact', script: 'stop.mjs', timeout: 15, background: true },
+  { event: 'SubagentStop', script: 'stop.mjs', timeout: 15, background: true },
+  { event: 'PostToolUse', script: 'stop.mjs', matcher: 'Bash|mcp__.*__hive_push', timeout: 3, background: false },
+  { event: 'PostToolUseFailure', script: 'stop.mjs', matcher: 'Bash', timeout: 3, background: false },
+];
+const hookGroup = (home: string, spec: typeof hookSpecs[number]): HookGroup => ({ ...(spec.matcher ? { matcher: spec.matcher } : {}), hooks: [{ type: 'command', command: hookCommand(home, spec.script), timeout: spec.timeout, ...(spec.background ? { async: true } : {}) }] });
+
 
 export const runCommand: Runner = (command, args, home) => {
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, HIVE_HOME: home, CODEX_HOME: join(home, '.codex') };
@@ -45,7 +55,8 @@ export function mergeHooks(value: unknown, home: string, remove = false, ownedHo
   validateSettings(value);
   const settings: Settings = structuredClone(value);
   const hooks = settings.hooks || {};
-  for (const [event, script] of [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']]) {
+  for (const spec of hookSpecs) {
+    const { event, script } = spec;
     const command = hookCommand(home, script);
     const groups = hooks[event] || [];
     if (remove) {
@@ -68,7 +79,7 @@ export function mergeHooks(value: unknown, home: string, remove = false, ownedHo
       if (kept.length) hooks[event] = kept;
       else delete hooks[event];
     } else if (!groups.some(group => group.hooks.some(hook => hook.type === 'command' && hook.command === command))) {
-      hooks[event] = [...groups, { ...(event === 'SessionStart' ? { matcher: 'startup|resume|clear|compact' } : {}), hooks: [{ type: 'command', command, timeout: event === 'SessionStart' ? 4 : 6 }] }];
+      hooks[event] = [...groups, hookGroup(home, spec)];
     }
   }
   if (Object.keys(hooks).length) settings.hooks = hooks;
@@ -76,12 +87,12 @@ export function mergeHooks(value: unknown, home: string, remove = false, ownedHo
   return settings;
 }
 
-export function markInstructions(text: string, agent: Agent, remove = false): string {
+export function markInstructions(text: string, agent: Agent | 'executor', remove = false): string {
   const begin = text.indexOf(startMarker);
   const end = text.indexOf(endMarker);
   if ((begin === -1) !== (end === -1) || (begin !== -1 && (end < begin || text.indexOf(startMarker, begin + 1) !== -1 || text.indexOf(endMarker, end + 1) !== -1))) throw new Error('The Hive instruction markers are incomplete or duplicated. No files were changed');
-  const skill = agent === 'claude' ? '~/.claude/skills/hive/SKILL.md' : '~/.agents/skills/hive/SKILL.md (also ~/.codex/skills/hive/SKILL.md)';
-  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. Already installed and signed in means skip installation and account creation. With a join link, go straight to hive_join once signed in; on needs_human say "Open <joinUrl> to join <team>". After sign-in, read hive_share_projects before capture; skip the project question when a selection exists. Otherwise ask the human the one project question from the skill; without an existing selection and a human, capture nothing. Never ask the human to sign up. Before finishing, capture a scrubbed observation only from a selected project with consistent runtime context via hive_push. Hive derives metadata and relations. After using a cell, report a known result with hive_outcome; retrieval alone never votes. Skip routine summaries and sensitive data.\n${endMarker}`;
+  const skill = agent === 'executor' ? '~/.hive/skills/hive/SKILL.md' : agent === 'claude' ? '~/.claude/skills/hive/SKILL.md' : '~/.agents/skills/hive/SKILL.md (also ~/.codex/skills/hive/SKILL.md)';
+  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. Already installed and signed in means skip installation and account creation. With a join link, go straight to hive_join once signed in; on needs_human say "Open <joinUrl> to join <team>". After sign-in, read hive_share_projects before capture; skip the project question when a selection exists. Otherwise ask the human the one project question from the skill; without an existing selection and a human, capture nothing. Never ask the human to sign up. Hive saves when something is learned, not when the session ends. Capture immediately when a non-obvious failure is fixed (cause and fix), an approach is chosen (decision and why), a gotcha or workaround is found, or measured friction occurs (what blocked and how long only if measured). Push the observation and evidence via hive_push from selected projects only, with consistent runtime context and the Jev gate. Tell the human one line only if it changes what they should do. Stop is a non-blocking safety net for missed facts; skip session receipts and content already pushed. Codex and Executor follow these triggers without hooks. Hive derives metadata and relations. After using a cell, report a concrete evidenced result with hive_outcome. Vote up (useful), down (unhelpful when a cell misled you), or outdated with hive_feedback for a direct judgment. Feedback changes ranking and audience inclusion; use include_history: true to inspect hidden cells. Withdraw your current feedback with your receipt to restore the previous contribution. Retrieval alone never votes; never vote on cells merely retrieved. One actor has one contribution per cell per audience; organisation feedback never changes the personal original. Skip routine summaries and sensitive data.\n${endMarker}`;
   if (begin !== -1) {
     const after = end + endMarker.length;
     return remove ? text.slice(0, begin) + text.slice(after).replace(/^\r?\n/, '') : text.slice(0, begin) + block + text.slice(after);
@@ -166,13 +177,14 @@ export function install(options: Options): Manifest {
   return withLock(home, () => {
     const manifest = loadManifest(home);
     const agents = options.agents || detectAgents(home, run);
-    if (!agents.length) throw new Error('No forager found. Install Claude Code or Codex, then try again');
+    if (!agents.length && !options.executor) throw new Error('No forager found. Install Claude Code or Codex, then try again');
     const writes = new Map<string, string | Buffer>();
     const settingsPath = join(home, '.claude/settings.json');
-    for (const agent of agents) {
+    const instructionAgents: (Agent | 'executor')[] = [...agents, ...(options.executor ? ['executor' as const] : [])];
+    for (const agent of instructionAgents) {
       const path = instructionPaths(home, agent);
       writes.set(path, markInstructions(read(path) || '', agent));
-      const destinations = agent === 'claude' ? ['.claude/skills/hive'] : ['.agents/skills/hive', '.codex/skills/hive'];
+      const destinations = agent === 'executor' ? ['.hive/skills/hive'] : agent === 'claude' ? ['.claude/skills/hive'] : ['.agents/skills/hive', '.codex/skills/hive'];
       for (const destination of destinations) {
         for (const source of filesUnder(options.assets || assetDirectory)) {
           const target = join(home, destination, relative(options.assets || assetDirectory, source));
@@ -185,8 +197,15 @@ export function install(options: Options): Manifest {
     }
     if (agents.includes('claude')) {
       const existing = JSON.parse(read(settingsPath) || '{}') as Settings;
+      for (const owned of manifest.ownedHooks) {
+        const groups = existing.hooks?.[owned.event];
+        const index = groups?.findIndex(group => isDeepStrictEqual(group, owned.group)) ?? -1;
+        const spec = hookSpecs.find(item => item.event === owned.event);
+        if (groups && index >= 0 && spec) { groups[index] = hookGroup(home, spec); owned.group = structuredClone(groups[index]); }
+      }
       const merged = mergeHooks(existing, home);
-      for (const [event, script] of [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']]) {
+      for (const spec of hookSpecs) {
+        const { event, script } = spec;
         const command = hookCommand(home, script);
         if (!(existing.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.type === 'command' && hook.command === command))) manifest.ownedHooks.push({ event, command, group: structuredClone(merged.hooks![event].at(-1)!) });
       }
@@ -195,11 +214,12 @@ export function install(options: Options): Manifest {
     const servers = options.registerMcp === false ? new Map<Agent, { exists: boolean; compatible: boolean }>() : new Map(agents.map(agent => [agent, server(home, agent, run)]));
     for (const [agent, value] of servers) if (value.exists && !value.compatible) throw new Error(`${agent} already has a different server called hive. No files were changed`);
     const backupDir = options.backupDir || join(home, '.hive/backups', `${Date.now()}-${randomUUID().slice(0, 8)}`);
-    const configurationPaths = [join(home, '.claude.json'), join(home, '.claude/settings.json'), join(home, '.claude/CLAUDE.md'), join(home, '.codex/config.toml'), join(home, '.codex/AGENTS.md'), manifestPath(home)];
+    const configurationPaths = [join(home, '.hive/EXECUTOR.md'), join(home, '.claude.json'), join(home, '.claude/settings.json'), join(home, '.claude/CLAUDE.md'), join(home, '.codex/config.toml'), join(home, '.codex/AGENTS.md'), manifestPath(home)];
     backUp(home, [...configurationPaths, ...writes.keys()], backupDir);
     log(`Your old files are safe in ${backupDir}`);
     manifest.backupDirectories.push(backupDir);
     manifest.agents = [...new Set([...manifest.agents, ...agents])];
+    manifest.executor ||= options.executor;
     for (const [path, content] of writes) {
       const before = read(path);
       if (before === content || (Buffer.isBuffer(content) && before === content.toString('utf8'))) continue;
@@ -289,7 +309,7 @@ export function doctor(options: Options): boolean {
       try {
         const settings: Settings = JSON.parse(read(join(home, '.claude/settings.json')) || '{}');
         validateSettings(settings);
-        hooks = [['SessionStart', 'session-start.mjs'], ['Stop', 'stop.mjs']].every(([event, script]) =>
+        hooks = hookSpecs.every(({event, script}) =>
           (settings.hooks?.[event] || []).some(group => group.hooks.some(hook => hook.command === hookCommand(home, script))) && existsSync(join(home, '.claude/skills/hive/scripts', script)));
       } catch { hooks = false; }
     }
@@ -316,10 +336,10 @@ export function uninstall(options: Options) {
     const manifest = loadManifest(home);
     for (const path of Object.keys(manifest.files)) {
       const full = resolve(home, path);
-      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/') || relative(home, full) !== path) throw new Error('The Hive install record contains an unexpected path');
+      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/', '.hive/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/') || relative(home, full) !== path) throw new Error('The Hive install record contains an unexpected path');
     }
     const writes = new Map<string, string>();
-    for (const agent of manifest.agents) {
+    for (const agent of [...manifest.agents, ...(manifest.executor ? ['executor' as const] : [])]) {
       const path = instructionPaths(home, agent);
       const text = read(path);
       if (text !== undefined) writes.set(path, markInstructions(text, agent, true));
@@ -336,7 +356,7 @@ export function uninstall(options: Options) {
     if (retainedRuntime) log('Kept the Claude skill runtime for a preserved hook');
     for (const [path, owned] of Object.entries(manifest.files)) {
       const full = resolve(home, path);
-      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/') || relative(home, full) !== path) throw new Error('The Hive install record contains an unexpected path');
+      if (!['.claude/skills/hive/', '.codex/skills/hive/', '.agents/skills/hive/', '.hive/skills/hive/'].some(prefix => path.startsWith(prefix)) || !full.startsWith(home + '/') || relative(home, full) !== path) throw new Error('The Hive install record contains an unexpected path');
       if (retainedRuntime && path.startsWith('.claude/skills/hive/')) continue;
       const current = read(full);
       if (current === undefined) continue;

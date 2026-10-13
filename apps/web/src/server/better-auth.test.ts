@@ -10,6 +10,7 @@ import { createTeam, authenticateApiKey } from "./auth";
 import { hashToken, newId } from "./db/ids";
 import { enrollMember } from "./identity/enrollment";
 import { contextFromClaims } from "./bearer-auth";
+import { sessionMemberContext } from "./identity/session-context";
 import { POST as mcpRoute } from "@/app/api/mcp/route";
 import { POST as captureRoute } from "@/app/api/app/capture/route";
 import { POST as keyLogin } from "@/app/api/app/session/route";
@@ -39,6 +40,7 @@ let accessToken: string;
 let refreshToken: string;
 let clientId: string;
 let executorClientId: string;
+let personClientId: string;
 let consentQuery: string;
 
 async function request(path: string, body?: unknown, cookie?: string, method = body === undefined ? "GET" : "POST"): Promise<Response> {
@@ -80,8 +82,10 @@ async function signup(label: string, registration: { intent: string; [key: strin
   expect(verified.status, await verified.clone().text()).toBe(200);
   const signedIn = await request("/api/auth/sign-in/email", { email, password });
   expect(signedIn.status, await signedIn.clone().text()).toBe(200);
-  const rows = await getSql()`SELECT team_id FROM members WHERE id = ${body.user.id}`;
+  const rows = await getSql()`SELECT h.team_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${body.user.id} AND h.removed_at IS NULL ORDER BY (t.personal_owner_member_id IS NULL) DESC, h.joined_at DESC LIMIT 1`;
   if (rows[0].team_id && registration.intent === "create") teamIds.push(rows[0].team_id);
+  const session = await fixture.auth!.api.getSession({ headers: new Headers({ Cookie: sessionCookies(signedIn) }) });
+  await getSql()`UPDATE web_sessions SET team_id = ${rows[0].team_id} WHERE id = ${session!.session.id}`;
   return { email, memberId: body.user.id, teamId: rows[0].team_id as string, cookie: sessionCookies(signedIn) };
 }
 
@@ -126,7 +130,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
       const sql = getSql();
       for (const table of ["capture_rules", "learning_conflict_votes", "learning_supersessions", "learning_versions", "feedback", "learning_pushes", "ask_log", "learnings", "api_keys", "web_sessions", "team_domains"]) await sql`DELETE FROM ${sql(table)} WHERE team_id IN ${sql(teamIds)}`;
       if (clientId) await sql`DELETE FROM auth_oauth_client WHERE client_id = ${clientId}`;
-      if (executorClientId) await sql`DELETE FROM auth_oauth_client WHERE client_id = ${executorClientId}`;
+    if (executorClientId) await sql`DELETE FROM auth_oauth_client WHERE client_id = ${executorClientId}`;
+    if (personClientId) await sql`DELETE FROM auth_oauth_client WHERE client_id = ${personClientId}`;
       await sql`DELETE FROM members WHERE id IN ${sql(memberIds)}`;
       await sql`DELETE FROM teams WHERE id IN ${sql(teamIds)}`;
       await sql`DELETE FROM auth_verification WHERE identifier LIKE ${`%${suffix}%`}`;
@@ -150,12 +155,12 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     expect(signedIn.status).toBe(200);
     const out = await request("/api/auth/sign-out", {}, sessionCookies(signedIn));
     expect(out.status).toBe(200);
-    expect(events.at(-1)).toMatchObject({ outcome: "logout", member_id: memberA, team_id: teamA });
+    expect(events.at(-1)).toMatchObject({ outcome: "logout", member_id: memberA, team_id: null });
   });
   it("keeps the member table and legacy keys intact and removes key web login", async () => {
     expect(await authenticateApiKey(legacyKey)).not.toBeNull();
     expect((await keyLogin()).status).toBe(410);
-    const rows = await getSql()`SELECT role, email_verified FROM members WHERE id = ${memberA} AND team_id = ${teamA}`;
+    const rows = await getSql()`SELECT h.role, m.email_verified FROM members m JOIN hive_memberships h ON h.member_id = m.id WHERE m.id = ${memberA} AND h.team_id = ${teamA}`;
     expect(rows[0]).toMatchObject({ role: "admin", email_verified: true });
   });
   it("joins only the verified invite or allowed work domain as a member", async () => {
@@ -165,8 +170,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     const unverified = newId("mem");
     memberIds.push(id, unverified);
     await getSql()`INSERT INTO members (id, name, email, email_verified) VALUES (${id}, 'Work fixture', ${`forager@${domain}`}, true), (${unverified}, 'Pending fixture', ${`pending@${domain}`}, false)`;
-    expect((await enrollMember(id))?.teamId).toBe(teamA);
-    const roles = await getSql()`SELECT role FROM members WHERE id = ${id}`;
+    expect((await enrollMember(id, { intent: "domain" }))?.teamId).toBe(teamA);
+    const roles = await getSql()`SELECT role FROM hive_memberships WHERE member_id = ${id} AND team_id = ${teamA}`;
     expect(roles[0].role).toBe("member");
     await expect(enrollMember(unverified, { intent: "domain" })).rejects.toThrow("Verify your email");
     const invite = `hive-${suffix}`;
@@ -209,7 +214,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
   it("uses an email reset code to add a password to the same legacy member", async () => {
     const legacy = await authenticateApiKey(legacyKey);
     const email = `legacy-${suffix}@auth.example.test`;
-    await getSql()`UPDATE members SET email = ${email}, email_verified = true WHERE id = ${legacy!.memberId} AND team_id = ${legacy!.teamId}`;
+    await getSql()`UPDATE members SET email = ${email}, email_verified = true WHERE id = ${legacy!.memberId}`;
     const sent = await request("/api/auth/email-otp/request-password-reset", { email });
     expect(sent.status, await sent.clone().text()).toBe(200);
     const reset = await request("/api/auth/email-otp/reset-password", { email, otp: codes.get(email), password });
@@ -272,7 +277,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     expect(grantCount()).toBe(beforeGrant);
     const consent = await request("/api/auth/oauth2/consent", { accept: true, oauth_query: consentQuery }, cookiesA);
     expect(grantCount()).toBe(beforeGrant + 1);
-    expect(events.at(-1)).toMatchObject({ outcome: "mcp_oauth_authorized", team_id: teamA, member_id: memberA });
+    expect(events.at(-1)).toMatchObject({ outcome: "mcp_oauth_authorized", team_id: null, member_id: memberA });
     expect(consent.status, await consent.clone().text()).toBe(200);
     const callback = new URL((await consent.json()).url);
     expect(callback.searchParams.get("state")).toBe("fixture-state");
@@ -292,6 +297,39 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
   it("rejects cross-team and missing identity claims", async () => {
     expect(await contextFromClaims({ sub: memberA, hive_member_id: memberA, hive_team_id: teamB })).toBeNull();
     expect(await contextFromClaims({ sub: memberA })).toBeNull();
+  });
+  it("asks fresh person-wide consent and follows later memberships without widening a team token", async () => {
+    const scope = "hive hive:person offline_access";
+    const registration = await request("/api/auth/oauth2/register", { client_name: "Person fixture", application_type: "native", redirect_uris: [`${baseUrl}/person-callback`], token_endpoint_auth_method: "none", grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], scope });
+    expect(registration.status, await registration.clone().text()).toBe(201);
+    personClientId = (await registration.json()).client_id;
+    const verifier = randomBytes(32).toString("base64url");
+    const query = new URLSearchParams({ client_id: personClientId, redirect_uri: `${baseUrl}/person-callback`, response_type: "code", scope, code_challenge: createHash("sha256").update(verifier).digest("base64url"), code_challenge_method: "S256", state: "person-fixture", resource: `${baseUrl}/api/mcp` });
+    const authorize = await request(`/api/auth/oauth2/authorize?${query}`, undefined, cookiesA);
+    const location = new URL(authorize.headers.get("location")!, baseUrl);
+    expect(location.pathname).toBe("/app/consent");
+    const consent = await request("/api/auth/oauth2/consent", { accept: true, oauth_query: location.search.slice(1) }, cookiesA);
+    const callback = new URL((await consent.json()).url);
+    const exchange = await fetch(`${baseUrl}/api/auth/oauth2/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", client_id: personClientId, code: callback.searchParams.get("code")!, code_verifier: verifier, redirect_uri: `${baseUrl}/person-callback`, resource: `${baseUrl}/api/mcp` }) });
+    expect(exchange.status, await exchange.clone().text()).toBe(200);
+    const token = (await exchange.json()).access_token;
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    expect(payload).toMatchObject({ hive_member_id: memberA, hive_team_id: `team_personal_${memberA}`, hive_access: "person", hive_credential_version: 2 });
+    const recent = async (credential: string) => {
+      const response = await fetch(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${credential}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "hive_recent", arguments: { since: "7d", limit: 50 } } }) });
+      expect(response.status).toBe(200);
+      return response.text();
+    };
+    expect(await recent(token)).toContain("Team Alpha visible canary");
+    expect(await recent(token)).not.toContain("Team Beta private canary");
+    await getSql()`INSERT INTO hive_memberships (member_id,team_id) VALUES (${memberA},${teamB})`;
+    try {
+      expect(await recent(token)).toContain("Team Beta private canary");
+      expect(await recent(accessToken)).not.toContain("Team Beta private canary");
+    } finally { await getSql()`DELETE FROM hive_memberships WHERE member_id=${memberA} AND team_id=${teamB}`; }
+    expect(await contextFromClaims({ ...payload, hive_credential_version: 1 })).toBeNull();
+    expect(await contextFromClaims({ ...payload, hive_credential_epoch: -1 })).toBeNull();
+    expect(await contextFromClaims({ ...payload, scope: "hive" })).toBeNull();
   });
   it("accepts scoped OAuth and keys in MCP while the Stop gate requires project selection", async () => {
     for (const token of [accessToken, legacyKey]) {
@@ -331,7 +369,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     const response = await fetch(`${baseUrl}/api/auth/oauth2/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", client_id: clientId, refresh_token: refreshToken, resource: `${baseUrl}/api/mcp` }) });
     expect(response.status, await response.clone().text()).toBe(200);
     const tokens = await response.json();
-    await getSql()`UPDATE members SET removed_at = now() WHERE id = ${memberA} AND team_id = ${teamA}`;
+    await getSql()`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${memberA} AND team_id = ${teamA}`;
     const mcp = await fetch(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${tokens.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
     expect(mcp.status).toBe(403);
     const beforeReports = events.length;
@@ -341,7 +379,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     }
     expect(events).toHaveLength(beforeReports);
   });
-  it("preserves legacy session hashes during the additive member migration", async () => {
+  it("keeps hash-only sessions in their explicit membership context", async () => {
     const sql = getSql();
     const legacy = await authenticateApiKey(legacyKey);
     const member = legacy!.memberId;
@@ -349,7 +387,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     const id = newId("ses");
     const hash = hashToken("legacy-fixture-session");
     await sql`INSERT INTO web_sessions (id, member_id, team_id, token_hash, expires_at) VALUES (${id}, ${member}, ${team}, ${hash}, now() + interval '1 day')`;
-    await sql.begin(async (tx) => tx.unsafe(await readFile(new URL("../../drizzle/0011_better_auth.sql", import.meta.url), "utf8")));
+    expect((await sessionMemberContext(member, id))?.teamId).toBe(team);
     const rows = await sql`SELECT token_hash, token FROM web_sessions WHERE id = ${id}`;
     expect(rows[0]).toMatchObject({ token_hash: hash, token: null });
   });

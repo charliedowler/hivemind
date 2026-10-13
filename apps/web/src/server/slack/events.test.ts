@@ -50,7 +50,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         "web_sessions",
         "members",
       ])
-        await sql`DELETE FROM ${sql(table)} WHERE team_id=${ctx.teamId}`;
+        await sql`DELETE FROM ${sql(table)} WHERE ${table === "members" ? sql`id IN (SELECT member_id FROM hive_memberships WHERE team_id=${ctx.teamId})` : sql`team_id=${ctx.teamId}`}`;
       await sql`DELETE FROM teams WHERE id=${ctx.teamId}`;
       vi.unstubAllEnvs();
       await sql.end();

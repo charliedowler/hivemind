@@ -75,6 +75,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     const sql = getSql();
     for (const table of ["slack_tool_actions", "capture_rule_applications", "capture_rule_previews", "capture_rule_instructions", "capture_rules", "learning_evidence", "learning_pushes", "learnings", "api_keys", "web_sessions", "members", "teams"]) {
       if (table === "teams") await sql`DELETE FROM teams WHERE id = ANY(${teams}::text[])`;
+      else if (table === "members") await sql`DELETE FROM members WHERE id IN (SELECT member_id FROM hive_memberships WHERE team_id = ANY(${teams}::text[]))`;
       else await sql`DELETE FROM ${sql(table)} WHERE team_id = ANY(${teams}::text[])`;
     }
     await sql.end();

@@ -4,9 +4,18 @@ import type { JWTPayload } from "jose";
 import { getAuth, mcpResource } from "./better-auth";
 import { authenticateApiKey } from "./auth";
 import { memberContext } from "./identity/enrollment";
+import { personalMemberContext } from "./identity/enrollment";
+import { credentialVersion, credentialEpoch, personScope, withCredentialScope } from "./identity/credential-scope";
 
 export async function contextFromClaims(claims: JWTPayload): Promise<HiveContext | null> {
   if (typeof claims.hive_member_id !== "string" || typeof claims.hive_team_id !== "string" || claims.sub !== claims.hive_member_id) return null;
+  if (claims.hive_credential_version !== credentialVersion || claims.hive_credential_epoch !== await credentialEpoch()) return null;
+  if (claims.hive_access === "person") {
+    if (typeof claims.scope !== "string" || !claims.scope.split(" ").includes(personScope)) return null;
+    const personal = await personalMemberContext(claims.hive_member_id);
+    return personal?.teamId === claims.hive_team_id ? personal : null;
+  }
+  if (claims.hive_access !== "team" || typeof claims.scope !== "string" || claims.scope.split(" ").includes(personScope)) return null;
   return memberContext(claims.hive_member_id, claims.hive_team_id);
 }
 
@@ -21,6 +30,6 @@ export async function withHiveBearerAuth(request: Request, handler: (request: Re
   return requireMcpAuth(auth, async (req, claims) => {
     const ctx = await contextFromClaims(claims);
     if (!ctx) return Response.json({ error: "This token has no active membership in its hive." }, { status: 403 });
-    return handler(req, ctx, claims);
-  }, { resource, requiredScopes: ["hive"] })(request);
+    return withCredentialScope(ctx.memberId, claims.hive_access === "person", () => handler(req, ctx, claims));
+  }, { resource, requiredScopes: ["hive"], challengeScopes: ["hive", personScope] })(request);
 }

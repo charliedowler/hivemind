@@ -40,7 +40,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Atomic Slack admin actions", () => {
       "web_sessions",
       "members",
     ])
-      await sql`DELETE FROM ${sql(table)} WHERE team_id=ANY(${teams}::text[])`;
+      await sql`DELETE FROM ${sql(table)} WHERE ${table === "members" ? sql`id IN (SELECT member_id FROM hive_memberships WHERE team_id=ANY(${teams}::text[]))` : sql`team_id=ANY(${teams}::text[])`}`;
     await sql`DELETE FROM teams WHERE id=ANY(${teams}::text[])`;
   }, 30000);
   async function schedule(messageTs: string, threadTs = messageTs) {
@@ -188,7 +188,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Atomic Slack admin actions", () => {
   it("refuses another admin in the same team", async () => {
     const s = await schedule("1800000065.1");
     const memberId = newId("mem");
-    await getSql()`INSERT INTO members(id,team_id,name,role) VALUES(${memberId},${actor.teamId},'Second admin','admin')`;
+    await getSql()`INSERT INTO members(id,name) VALUES(${memberId},'Second admin')`;
+    await getSql()`INSERT INTO hive_memberships(member_id,team_id,role) VALUES(${memberId},${actor.teamId},'admin')`;
     await expect(undoLastAction({ ...s.context, memberId })).rejects.toThrow(
       "Only the admin who made",
     );
@@ -227,7 +228,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Atomic Slack admin actions", () => {
     await expect(undoLastAction(context)).rejects.toThrow("changed after");
   });
   it("rechecks admin permission even with a forged isAdmin flag", async () => {
-    await getSql()`UPDATE members SET role='member' WHERE id=${actor.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role='member' WHERE member_id=${actor.memberId} AND team_id=${actor.teamId}`;
     await expect(
       runReversibleAction(
         { ...ctx, messageTs: "1800000070.1" },
@@ -238,6 +239,6 @@ describe.skipIf(!process.env.DATABASE_URL)("Atomic Slack admin actions", () => {
       ),
     ).rejects.toThrow("admin");
     await expect(undoLastAction(ctx)).rejects.toThrow("admin");
-    await getSql()`UPDATE members SET role='admin' WHERE id=${actor.memberId}`;
+    await getSql()`UPDATE hive_memberships SET role='admin' WHERE member_id=${actor.memberId} AND team_id=${actor.teamId}`;
   });
 });

@@ -126,6 +126,12 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   let captured;
   const server = createServer(async (request, response) => {
     if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [], policy: selectedPolicy })); return; }
+    if (request.url === '/api/mcp') {
+      let body = ''; for await (const chunk of request) body += chunk;
+      const message = JSON.parse(body);
+      if (!message.id) { response.writeHead(202).end(); return; }
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({jsonrpc: '2.0', id: message.id, result: message.method === 'initialize' ? {protocolVersion: '2025-03-26'} : {content: [{type: 'text', text: JSON.stringify({id: 'lrn_fixture'})}]}})); return;
+    }
     assert.equal(request.url, '/api/app/capture');
     assert.equal(request.headers.authorization, 'Bearer fixture');
     if (request.url === '/api/app/capture-rules/effective') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rules: [], policy: selectedPolicy })); return; }
@@ -141,7 +147,7 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   assert.equal(captured.observations, 1);
   assert.ok(captured.text.length <= 6000);
   decision = 'capture';
-  assert.equal(JSON.parse(await run('stop.mjs', { cwd: home, session_id: 'jev-capture', transcript_path: transcript }, env)).decision, 'block');
+  assert.equal(await run('stop.mjs', { cwd: home, session_id: 'jev-capture', transcript_path: transcript }, env), '');
 });
 
 test('Stop fails closed when the capture gate is unavailable', async t => {
@@ -257,3 +263,117 @@ for (const state of ['outage', 'empty', 'unknown', 'contradiction', 'unselected'
     assert.equal(received[0].body, '');
   });
 }
+
+async function captureHive(t, { policy = selectedPolicy, gate = 'capture' } = {}) {
+  const gates = [], pushes = [], urls = [];
+  const server = createServer(async (request, response) => {
+    urls.push(request.url);
+    const send = value => response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(value));
+    if (request.url === '/api/app/capture-rules/effective') { send({rules: [], policy}); return; }
+    let body = ''; for await (const chunk of request) body += chunk;
+    const value = JSON.parse(body);
+    if (request.url === '/api/app/capture') { gates.push(value); send({decision: gate}); return; }
+    assert.equal(request.url, '/api/mcp');
+    if (!value.id) { response.writeHead(202).end(); return; }
+    if (value.method === 'tools/call') pushes.push(value.params.arguments);
+    send({jsonrpc: '2.0', id: value.id, result: value.method === 'initialize' ? {protocolVersion: '2025-03-26'} : {content: [{type: 'text', text: JSON.stringify({id: 'lrn_fixture', pushId: 'psh_fixture'})}]}});
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  return { gates, pushes, urls, baseUrl: `http://127.0.0.1:${server.address().port}` };
+}
+function learnedTranscript(home, text) {
+  const file = join(home, 'learned.jsonl');
+  writeFileSync(file, JSON.stringify({type: 'assistant', message: {content: [{type: 'text', text}]}}));
+  return file;
+}
+
+test('a mid-session MCP push receipt prevents the Stop sweep from uploading the same fact', async t => {
+  const hive = await captureHive(t);
+  const home = scratchRepo();
+  const observation = 'Discovered that a cancelled worker can retain the migration lock.';
+  const transcript = learnedTranscript(home, observation);
+  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const base = {cwd: home, session_id: 'mid-push', transcript_path: transcript};
+  assert.equal(await run('stop.mjs', {...base, hook_event_name: 'PostToolUse', tool_name: 'mcp__hive__hive_push', tool_input: {observation}, tool_response: {content: [{type: 'text', text: JSON.stringify({id: 'lrn_fixture'})}]}}, env), '');
+  assert.equal(await run('stop.mjs', {...base, hook_event_name: 'Stop'}, env), '');
+  assert.equal(hive.gates.length, 0);
+  assert.equal(hive.pushes.length, 0);
+});
+
+test('successful transcript receipts dedupe, but a failed mid-session push is still swept', async t => {
+  const hive = await captureHive(t);
+  const home = scratchRepo();
+  const observation = 'Fixed the migration failure by closing the cancelled worker connection.';
+  const file = learnedTranscript(home, observation);
+  const records = [
+    {type: 'assistant', message: {content: [{type: 'text', text: observation}, {type: 'tool_use', id: 'push', name: 'mcp__hive__hive_push', input: {observation}}]}},
+    {type: 'user', message: {content: [{type: 'tool_result', tool_use_id: 'push', content: [{type: 'text', text: JSON.stringify({id: 'lrn_fixture'})}]}]}},
+  ];
+  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  writeFileSync(file, records.map(record => JSON.stringify(record)).join('\n'));
+  assert.equal(await run('stop.mjs', {cwd: home, session_id: 'transcript-dedupe', transcript_path: file}, env), '');
+  assert.equal(hive.pushes.length, 0);
+  records[1].message.content[0].is_error = true;
+  writeFileSync(file, records.map(record => JSON.stringify(record)).join('\n'));
+  assert.equal(await run('stop.mjs', {cwd: home, session_id: 'failed-mid-push', transcript_path: file}, env), '');
+  assert.equal(hive.gates.length, 1);
+  assert.equal(hive.pushes.length, 1);
+  assert.equal(hive.pushes[0].observation, observation);
+});
+
+for (const event of ['PreCompact', 'SubagentStop']) test(`${event} uses the project/Jev gate and shares dedupe with Stop`, async t => {
+  const hive = await captureHive(t);
+  const home = scratchRepo();
+  const file = learnedTranscript(home, 'Discovered a reliable workaround for the migration lock failure.');
+  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const base = {cwd: home, session_id: event, transcript_path: file, agent_transcript_path: file};
+  assert.equal(await run('stop.mjs', {...base, hook_event_name: event}, env), '');
+  assert.equal(hive.gates.length, 1);
+  assert.equal(hive.pushes.length, 1);
+  assert.equal(await run('stop.mjs', {...base, hook_event_name: 'Stop'}, env), '');
+  assert.equal(hive.gates.length, 1);
+  assert.equal(hive.pushes.length, 1);
+});
+
+test('PreCompact respects a Jev skip and unselected projects send no text', async t => {
+  for (const selected of [true, false]) {
+    const hive = await captureHive(t, {policy: {include: selected ? selectedPolicy.include : [], exclude: [], revision: 1}, gate: 'skip'});
+    const home = scratchRepo();
+    const file = learnedTranscript(home, 'Discovered a workaround that is private until its project is selected.');
+    const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+    assert.equal(await run('stop.mjs', {cwd: home, session_id: 'gated', transcript_path: file, hook_event_name: 'PreCompact'}, env), '');
+    assert.equal(hive.gates.length, selected ? 1 : 0);
+    assert.equal(hive.pushes.length, 0);
+  }
+});
+
+test('PostToolUse nudges only the same test/build failing then passing and never captures', async t => {
+  const hive = await captureHive(t);
+  const home = scratchRepo();
+  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const base = {cwd: home, session_id: 'fail-pass', tool_name: 'Bash', tool_input: {command: 'pnpm test'}, hook_event_name: 'PostToolUse'};
+  assert.equal(await run('stop.mjs', {...base, tool_response: {exit_code: 0}}, env), '');
+  assert.equal(await run('stop.mjs', {...base, hook_event_name: 'PostToolUseFailure', tool_response: {exit_code: 1}}, env), '');
+  assert.equal(await run('stop.mjs', {...base, tool_input: {command: 'pnpm build'}, tool_response: {exit_code: 0}}, env), '');
+  const nudge = JSON.parse(await run('stop.mjs', {...base, tool_response: {exit_code: 0}}, env));
+  assert.equal(nudge.hookSpecificOutput.hookEventName, 'PostToolUse');
+  assert.ok(nudge.hookSpecificOutput.additionalContext.includes('cause, fix and evidence'));
+  assert.equal(nudge.decision, undefined);
+  assert.equal(await run('stop.mjs', {...base, tool_response: {exit_code: 0}}, env), '');
+  assert.equal(await run('stop.mjs', {...base, tool_input: {command: 'git status'}, tool_response: {exit_code: 0}}, env), '');
+  assert.equal(hive.gates.length, 0);
+  assert.equal(hive.pushes.length, 0);
+});
+
+test('PostToolUse never nudges an unselected project or an ambiguous result', async t => {
+  const hive = await captureHive(t, {policy: {include: [], exclude: [], revision: 1}});
+  const home = scratchRepo();
+  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const base = {cwd: home, session_id: 'private-fail-pass', tool_name: 'Bash', tool_input: {command: 'pnpm test'}, hook_event_name: 'PostToolUse'};
+  assert.equal(await run('stop.mjs', {...base, tool_response: {exit_code: 1}}, env), '');
+  assert.equal(await run('stop.mjs', {...base, tool_response: {exit_code: 0}}, env), '');
+  assert.equal(await run('stop.mjs', {...base, tool_response: {stdout: 'some output', stderr: ''}}, env), '');
+  assert.equal(hive.gates.length, 0);
+  assert.equal(hive.pushes.length, 0);
+});

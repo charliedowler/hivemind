@@ -8,7 +8,7 @@ export async function authAccess(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const sql = getAnalyticsSql();
-    const query = sql`SELECT id, team_id, role FROM members WHERE ${"memberId" in identity ? sql`id = ${identity.memberId}` : sql`email = ${identity.email.trim().toLowerCase()}`} AND removed_at IS NULL`;
+    const query = sql`SELECT m.id FROM members m WHERE ${"memberId" in identity ? sql`m.id = ${identity.memberId}` : sql`m.email = ${identity.email.trim().toLowerCase()}`} AND m.disabled_at IS NULL AND NOT m.provisional`;
     const rows = await Promise.race([
       query,
       new Promise<never>((_, reject) => {
@@ -21,8 +21,8 @@ export async function authAccess(
       name: "access.changed",
       outcome,
       key: key ? `${outcome}:${key}` : undefined,
-      origin: { ...(currentOrigin() ?? originFor()), teamId: member?.team_id ?? null, memberId: member?.id ?? null, apiKeyId: null, sessionKind: member ? "web_session" : "anonymous" },
-      properties: { actorKind: member ? "member" : "anonymous", role: member?.role ?? null },
+      origin: { ...(currentOrigin() ?? originFor()), teamId: null, memberId: member?.id ?? null, apiKeyId: null, sessionKind: member ? "web_session" : "anonymous" },
+      properties: { actorKind: member ? "member" : "anonymous", role: null },
     });
   } catch {
   } finally {

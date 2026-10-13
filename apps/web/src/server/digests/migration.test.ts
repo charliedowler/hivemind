@@ -29,6 +29,7 @@ async function dryRun(populated: boolean) {
       const schema = newId("digest_migration");
       await tx`CREATE SCHEMA ${tx(schema)}`;
       await tx`SELECT set_config('search_path',${schema + ",public"},true)`;
+      await tx`CREATE TABLE members (id text PRIMARY KEY, team_id text NOT NULL, name text NOT NULL, role text NOT NULL DEFAULT 'member', UNIQUE(id,team_id), UNIQUE(team_id,id))`;
       await tx`CREATE TABLE _migrations(name text PRIMARY KEY)`;
       await tx.unsafe(await forward());
       await tx.unsafe(await forward());
@@ -36,7 +37,7 @@ async function dryRun(populated: boolean) {
         const team = newId("team"),
           member = newId("mem");
         await tx`INSERT INTO public.teams(id,name,invite_code,invite_expires_at)VALUES(${team},'Migration fixture',${newId("invite")},now()+interval '1 day')`;
-        await tx`INSERT INTO public.members(id,team_id,name,role)VALUES(${member},${team},'Admin','admin')`;
+        await tx`INSERT INTO members(id,team_id,name,role)VALUES(${member},${team},'Admin','admin')`;
         await tx`INSERT INTO slack_digest_schedules(id,team_id,channel_id,channel_name,cadence,local_time,timezone,next_due_at,created_by) VALUES(${newId("dgs")},${team},'CFIXTURE','fixture','daily','09:00','UTC',now(),${member})`;
       }
       await tx.unsafe(await rollback());
@@ -65,6 +66,7 @@ it.skipIf(!url)(
           const schema = newId("digest_audit");
           await tx`CREATE SCHEMA ${tx(schema)}`;
           await tx`SELECT set_config('search_path',${schema + ",public"},true)`;
+      await tx`CREATE TABLE members (id text PRIMARY KEY, team_id text NOT NULL, name text NOT NULL, role text NOT NULL DEFAULT 'member', UNIQUE(id,team_id), UNIQUE(team_id,id))`;
           await tx.unsafe(await forward());
           await tx`CREATE TABLE slack_decisions (LIKE public.slack_decisions INCLUDING ALL)`;
           const body = await readFile(

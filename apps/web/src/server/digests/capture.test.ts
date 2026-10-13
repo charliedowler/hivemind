@@ -36,7 +36,7 @@ it.skipIf(!url)(
           const team = newId("team"),
             member = newId("mem");
           await tx`INSERT INTO teams (id, name, invite_code) VALUES (${team}, 'Digest fixture', ${newId("invite")})`;
-          await tx`INSERT INTO members(id,team_id,name)VALUES(${member},${team},'Fixture contributor')`;
+          await tx`INSERT INTO members(id,name)VALUES(${member},'Fixture contributor')`;
           const visible = newId("lrn");
           await tx`INSERT INTO learnings(id,team_id,member_id,title,body,kind,source,confidence)VALUES(${visible},${team},${member},'Visible learning','Body','learning','codex',0.9)`;
           const since = new Date(Date.now() - 86400000);

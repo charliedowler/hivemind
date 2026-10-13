@@ -32,8 +32,6 @@ export const teams = pgTable("teams", {
 
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
-  teamId: text("team_id")
-    .references(() => teams.id),
   name: text("name").notNull(),
   createdAt: createdAt(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -44,8 +42,6 @@ export const members = pgTable("members", {
   actorType: text("actor_type").notNull().default("human"),
   email: text("email").unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
-  role: text("role").notNull().default("member"),
-  removedAt: timestamp("removed_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 });
 

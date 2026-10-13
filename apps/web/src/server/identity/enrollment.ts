@@ -20,8 +20,22 @@ export function registrationForStorage(value: unknown): string | null {
 
 export async function memberContext(memberId: string, teamId?: string): Promise<HiveContext | null> {
   const sql = getSql();
-  const rows = await sql`SELECT m.id, m.name, h.role, h.team_id, t.name AS team_name FROM members m JOIN hive_memberships h ON h.member_id = m.id JOIN teams t ON t.id = h.team_id WHERE m.id = ${memberId} AND m.disabled_at IS NULL AND NOT m.provisional AND h.removed_at IS NULL ${teamId ? sql`AND h.team_id = ${teamId}` : sql``} AND (h.owner_member_id IS NULL OR EXISTS (SELECT 1 FROM hive_memberships owner_h JOIN members owner_m ON owner_m.id = owner_h.member_id WHERE owner_h.member_id = h.owner_member_id AND owner_h.team_id = h.team_id AND owner_h.removed_at IS NULL AND owner_m.disabled_at IS NULL AND (t.personal_owner_member_id IS NOT NULL OR (owner_m.email_verified AND NOT owner_m.provisional)))) ORDER BY (h.team_id = m.team_id) DESC, (t.personal_owner_member_id IS NOT NULL) DESC, h.joined_at, h.team_id LIMIT 1`;
+  const rows = await sql`SELECT m.id, m.name, h.role, h.team_id, t.name AS team_name FROM members m JOIN hive_memberships h ON h.member_id = m.id JOIN teams t ON t.id = h.team_id WHERE m.id = ${memberId} AND m.disabled_at IS NULL AND NOT m.provisional AND h.removed_at IS NULL ${teamId ? sql`AND h.team_id = ${teamId}` : sql``} AND (h.owner_member_id IS NULL OR EXISTS (SELECT 1 FROM hive_memberships owner_h JOIN members owner_m ON owner_m.id = owner_h.member_id WHERE owner_h.member_id = h.owner_member_id AND owner_h.team_id = h.team_id AND owner_h.removed_at IS NULL AND owner_m.disabled_at IS NULL AND (t.personal_owner_member_id IS NOT NULL OR (owner_m.email_verified AND NOT owner_m.provisional)))) ORDER BY (t.personal_owner_member_id IS NOT NULL) DESC, h.joined_at, h.team_id LIMIT 1`;
   return rows[0] ? bindRole({ memberId: rows[0].id, memberName: rows[0].name, teamId: rows[0].team_id, teamName: rows[0].team_name }, rows[0].role) : null;
+}
+
+export async function personalMemberContext(memberId: string): Promise<HiveContext | null> {
+  const rows = await getSql()`SELECT h.team_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${memberId} AND h.removed_at IS NULL AND t.personal_owner_member_id IS NOT NULL`;
+  return rows[0] ? memberContext(memberId, rows[0].team_id) : null;
+}
+
+export async function listHiveContexts(memberId: string) {
+  const rows = await getSql()`SELECT h.team_id, t.personal_owner_member_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${memberId} AND h.removed_at IS NULL ORDER BY (t.personal_owner_member_id IS NOT NULL) DESC, t.name, t.id`;
+  const contexts = await Promise.all(rows.map(async row => {
+    const ctx = await memberContext(memberId, row.team_id);
+    return ctx ? { ...ctx, personal: row.personal_owner_member_id !== null } : null;
+  }));
+  return contexts.filter(ctx => ctx !== null);
 }
 
 export async function enrollMember(memberId: string, input?: HiveRegistration): Promise<HiveContext | null> {
@@ -34,10 +48,9 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
     await claimProvisionalHuman(tx, memberId);
     const personal = (await tx`SELECT hive_ensure_personal_hive(${memberId}) AS id`)[0].id;
     const registration = input ? JSON.parse(registrationForStorage(input)!) : member.hive_registration ? JSON.parse(member.hive_registration) : null;
-    const existing = await tx`SELECT h.team_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id WHERE h.member_id = ${memberId} AND h.team_id = ${member.team_id ?? ""} AND h.removed_at IS NULL AND t.personal_owner_member_id IS NULL`;
-    if (existing.length && !registration) {
+    if (!registration && !input) {
       await followOwnerMemberships(tx, memberId);
-      return;
+      return { teamId: String(personal), intent: null, email: String(member.email), promoted: false };
     }
     let teamId: string = personal;
     let intent: "create" | "invite" | "domain" | null = null;
@@ -60,13 +73,13 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
     await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId}, ${role}) ON CONFLICT DO NOTHING`;
     const active = await tx`SELECT role FROM hive_memberships WHERE member_id = ${memberId} AND team_id = ${teamId} AND removed_at IS NULL`;
     if (!active.length) throw new HiveError("This membership was removed. Ask your team admin.", 403);
-    await tx`UPDATE members SET team_id = ${teamId}, role = ${active[0].role}, removed_at = NULL, hive_registration = NULL, updated_at = now() WHERE id = ${memberId}`;
+    await tx`UPDATE members SET hive_registration = NULL, updated_at = now() WHERE id = ${memberId}`;
     if (intent === "create") await tx`SELECT hive_create_default_capture_rules(${teamId}, ${memberId})`;
     await tx`UPDATE web_sessions SET team_id = ${teamId} WHERE member_id = ${memberId} AND team_id IS NULL`;
     await followOwnerMemberships(tx, memberId);
-    return { intent, email: member.email as string, promoted: intent === "create" && member.role !== "admin" };
+    return { intent, email: member.email as string, teamId, promoted: intent === "create" };
   });
-  const ctx = await memberContext(memberId);
+  const ctx = await memberContext(memberId, enrollment?.teamId);
   if (ctx && enrollment?.intent) {
     await accessEvent(ctx, "signup", { earlyAccessId: await earlyAccessIdForEmail(enrollment.email) }, `enrollment:${memberId}:${ctx.teamId}`);
     await accessEvent(ctx, enrollment.intent === "create" ? "invite_created" : enrollment.intent === "invite" ? "invite_accepted" : "domain_join", {}, `enrollment:${memberId}:${ctx.teamId}`);

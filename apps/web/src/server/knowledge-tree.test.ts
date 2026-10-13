@@ -142,6 +142,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
       ]) {
         if (table === "teams")
           await sql`DELETE FROM teams WHERE id = ANY(${teams}::text[])`;
+        else if (table === "members")
+          await sql`DELETE FROM members WHERE id IN (SELECT member_id FROM hive_memberships WHERE team_id = ANY(${teams}::text[]))`;
         else
           await sql`DELETE FROM ${sql(table)} WHERE team_id = ANY(${teams}::text[])`;
       }
@@ -252,12 +254,13 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(
         (await unpack(await downloadKnowledge(bToken))).get("INDEX.md"),
       ).not.toContain("Tree cedar");
-      await getSql()`UPDATE members SET removed_at = now() WHERE id = ${b.memberId} AND team_id = ${b.teamId}`;
+      await getSql()`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${b.memberId} AND team_id = ${b.teamId}`;
       await expect(downloadKnowledge(bToken)).rejects.toThrow("expired");
     });
     it("keeps flagged owner trees in memory and excludes all flagged cells from shared files and snapshots", async () => {
       const owner = { ...a, memberId: newId("mem"), memberName: "Owner" };
-      await getSql()`INSERT INTO members (id, team_id, name) VALUES (${owner.memberId}, ${a.teamId}, ${owner.memberName})`;
+      await getSql()`INSERT INTO members (id, name) VALUES (${owner.memberId}, ${owner.memberName})`;
+      await getSql()`INSERT INTO hive_memberships (member_id,team_id) VALUES (${owner.memberId},${a.teamId})`;
       const privateId = newId("lrn"), adminId = newId("lrn"), publicId = newId("lrn");
       for (const [id, memberId, title, flagged] of [
         [privateId, owner.memberId, "Owner private tree", true],

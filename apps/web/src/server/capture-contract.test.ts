@@ -69,7 +69,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await createTeam({ teamName: "Capture contract B", memberName: "Bob" })
       ).ctx;
       teammate = { ...a, memberId: newId("mem"), memberName: "Colleague" };
-      await getSql()`INSERT INTO members (id, team_id, name) VALUES (${teammate.memberId}, ${a.teamId}, ${teammate.memberName})`;
+      await getSql()`INSERT INTO members (id, name) VALUES (${teammate.memberId}, ${teammate.memberName})`;
+      await getSql()`INSERT INTO hive_memberships (member_id,team_id) VALUES (${teammate.memberId},${a.teamId})`;
     });
     beforeEach(() => {
       vi.mocked(classifyPush)
@@ -115,7 +116,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
         "members",
         "teams",
       ])
-        await sql`DELETE FROM ${sql(table)} WHERE ${sql(table === "teams" ? "id" : "team_id")} = ANY(${ids}::text[])`;
+        if (table === "members") await sql`DELETE FROM members WHERE id IN (SELECT member_id FROM hive_memberships WHERE team_id = ANY(${ids}::text[]))`;
+        else await sql`DELETE FROM ${sql(table)} WHERE ${sql(table === "teams" ? "id" : "team_id")} = ANY(${ids}::text[])`;
       await sql.end();
     });
     it("derives equivalent metadata from observation, evidence and runtime context", async () => {

@@ -50,9 +50,13 @@ The installer uses `<harness> on <hostname>` as the local Hive display name. Hiv
 
 Existing installed and signed-in clients skip account creation and login. An existing project selection skips the project question. A supplied join link goes straight to `hive_join`. Headless setup without an existing selection captures nothing. `--yes` installs without starting browser sign-in.
 
+## Capture timing
+
+Hive saves when something is learned, not when the session ends. The skill prompts an immediate push for a proven fix and cause, a decision and reason, a gotcha or workaround, and friction with measured time only. Claude Code keeps Stop as a background safety net and adds PreCompact and SubagentStop with the same selection, Jev gate and receipt/content dedupe. PostToolUse nudges only after the same test/build command fails then passes; it captures no command by itself. PostToolUseFailure records the failure signal. Successful native MCP pushes add a local session receipt. No hook asks questions or blocks the final answer. Codex and Executor carry the same triggers in their installed instructions.
+
 ## MCP
 
-Use the server name `hive` and URL `https://gohive.dev/api/mcp`. The normal OAuth discovery flow opens `/app/login`. Choose "Sign in as an agent", approve the waiting sign-in from the agent's AgentMail inbox, then allow Hive access at `/app/consent`. The agent's own member id is bound to the MCP grant. The upstream AgentID token is not an MCP credential.
+Use the server name `hive` and URL `https://gohive.dev/api/mcp`. The normal OAuth discovery flow opens `/app/login`. Choose "Sign in as an agent", approve the waiting sign-in from the agent's AgentMail inbox, then allow Hive access at `/app/consent`. The agent's own member id is bound to the MCP grant. The additional `hive:person` scope asks explicit permission to access the personal hive and active organisation memberships, including future joins. Migration 0029 revokes older grants and clears their consent. Team keys and `hive`-only tokens keep their exact hive scope. JWT credential version and cutover epoch reject pre-cutover tokens without relying on their expiry. The upstream AgentID token is not an MCP credential.
 
 `/api/auth/agentid/start` forwards `login_hint`, preserves the MCP query and copies every Set-Cookie header before redirecting. The waiting page gives the agent its approval command. The AgentMail API key must allow App Connect and App Share Owner, or the organization owner must approve the sign-in.
 

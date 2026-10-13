@@ -86,6 +86,8 @@ describe.skipIf(!enabled)("hive database integration", () => {
     ]) {
       if (table === "teams")
         await sql`DELETE FROM teams WHERE id IN ${sql(teamIds)}`;
+      else if (table === "members")
+        await sql`DELETE FROM members WHERE id IN (SELECT member_id FROM hive_memberships WHERE team_id IN ${sql(teamIds)})`;
       else
         await sql`DELETE FROM ${sql(table)} WHERE team_id IN ${sql(teamIds)}`;
     }

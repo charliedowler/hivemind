@@ -305,3 +305,27 @@ test('a failed agent sign-in does not prevent hook sign-in or a useful doctor re
   assert.ok(f.output[0].endsWith('Connected'));
   assert.ok(f.output[1].endsWith('Run codex mcp login hive'));
 });
+
+
+test('Claude installs non-blocking sweeps and narrow tool hooks and owns their removal', () => {
+  const f = fixture();
+  install(f.options);
+  const settings = JSON.parse(f.read('.claude/settings.json'));
+  for (const event of ['Stop', 'PreCompact', 'SubagentStop']) assert.equal(settings.hooks[event][0].hooks[0].async, true);
+  assert.equal(settings.hooks.PostToolUse[0].matcher, 'Bash|mcp__.*__hive_push');
+  assert.equal(settings.hooks.PostToolUseFailure[0].matcher, 'Bash');
+  const again = install(f.options);
+  assert.equal(again.ownedHooks.length, 6);
+  uninstall(f.options);
+  assert.equal(JSON.parse(f.read('.claude/settings.json')).hooks, undefined);
+});
+
+test('Executor installs the same trigger instructions without native agents or hooks', () => {
+  const f = fixture();
+  install({...f.options, agents: [], executor: true, registerMcp: false});
+  assert.ok(f.read('.hive/EXECUTOR.md').includes('Hive saves when something is learned'));
+  assert.ok(f.read('.hive/skills/hive/SKILL.md').includes('Capture immediately'));
+  assert.equal(existsSync(join(f.home, '.claude/settings.json')), false);
+  uninstall({...f.options, agents: []});
+  assert.equal(f.read('.hive/EXECUTOR.md'), '');
+});

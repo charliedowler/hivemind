@@ -16,10 +16,12 @@ import * as oauthSchema from "./db/oauth-schema";
 import { hashToken, newId } from "./db/ids";
 import { deliverCode } from "./identity/email";
 import { rateLimit } from "./identity/rate-limit";
-import { enrollMember, memberContext, registrationForStorage } from "./identity/enrollment";
+import { enrollMember, memberContext, personalMemberContext, registrationForStorage } from "./identity/enrollment";
 import { agentClaims, isAgentMember, storeAgentOwner } from "./identity/agent-enrollment";
 import { agentidProvider } from "./identity/agentid-provider";
 import { welcomeClaimPlugin } from "./identity/claim-plugin";
+import { credentialVersion, credentialEpoch, personScope } from "./identity/credential-scope";
+import { sessionMemberContext } from "./identity/session-context";
 
 export function createHiveAuth(baseUrl: string, delivery = deliverCode, resourceUrl = baseUrl) {
   const secret = process.env.BETTER_AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "hive-local-development-secret-change-before-deploy" : undefined);
@@ -63,11 +65,8 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
       },
       additionalFields: {
         actorType: { type: "string", required: false, defaultValue: "human", input: false, returned: false },
-        teamId: { type: "string", required: false, input: false, returned: false },
-        role: { type: "string", required: false, defaultValue: "member", input: false, returned: false },
         provisional: { type: "boolean", required: false, defaultValue: false, input: false, returned: false },
         disabledAt: { type: "date", required: false, input: false, returned: false },
-        removedAt: { type: "date", required: false, input: false, returned: false },
         hiveRegistration: { type: "string", required: false, returned: false },
       },
     },
@@ -96,7 +95,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
           await recordEvent({ name: "access.changed", outcome: "login_failed", reasonCode: result.statusCode === 401 ? "invalid_credentials" : "access_denied", properties: { actorKind: "anonymous" } });
         }
         if (ctx.path === "/oauth2/consent" && ctx.body?.accept === true && !isAPIError(result) && ctx.context.session?.user && result && typeof result === "object" && "url" in result && typeof result.url === "string") {
-          const granted = new URL(result.url).searchParams;
+          const granted = new URL(result.url, baseUrl).searchParams;
           if (granted.has("code") && !granted.has("error")) await authAccess({ memberId: ctx.context.session.user.id }, "mcp_oauth_authorized");
         }
       }),
@@ -180,20 +179,21 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
         loginPage: "/app/login",
         consentPage: "/app/consent",
         resource: `${resourceUrl}/api/mcp`,
-        scopes: ["openid", "profile", "email", "offline_access", "hive"],
+        scopes: ["openid", "profile", "email", "offline_access", "hive", personScope],
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
         grantTypes: ["authorization_code", "refresh_token"],
         postLogin: {
           page: "/app/join",
           shouldRedirect: async ({ user }) => !await memberContext(user.id),
-          consentReferenceId: async ({ user }) => (await memberContext(user.id))?.teamId,
+          consentReferenceId: async ({ user, session, scopes }) => (scopes.includes(personScope) ? await personalMemberContext(user.id) : await sessionMemberContext(user.id, session.id))?.teamId,
         },
-        customAccessTokenClaims: async ({ user, referenceId }) => {
+        customAccessTokenClaims: async ({ user, referenceId, scopes }) => {
           if (!user) throw new APIError("FORBIDDEN", { message: "A hive member must sign in." });
-          const ctx = await memberContext(user.id, referenceId);
+          const ctx = scopes.includes(personScope) ? await personalMemberContext(user.id) : await memberContext(user.id, referenceId);
           if (!ctx) throw new APIError("FORBIDDEN", { message: "Join a hive before connecting your agent." });
-          return { hive_member_id: ctx.memberId, hive_team_id: ctx.teamId };
+          if (ctx.teamId !== referenceId) throw new APIError("FORBIDDEN", { message: "Sign in again to grant the requested hive access." });
+          return { hive_member_id: ctx.memberId, hive_team_id: ctx.teamId, hive_access: scopes.includes(personScope) ? "person" : "team", hive_credential_version: credentialVersion, hive_credential_epoch: await credentialEpoch() };
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: "mcp-2026-07-28" }),

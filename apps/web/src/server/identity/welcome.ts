@@ -64,7 +64,7 @@ export async function deliverWelcome(memberId: string): Promise<void> {
     if (!people[0]?.provisional) return;
     const member = await provisional(tx, memberId);
     const value = await state(tx, memberId, member.email);
-    if (value.delivered || value.expires <= Math.floor(Date.now() / 1000) || value.attempts >= 3) return;
+    if (value.delivered || value.expires <= Math.floor(Date.now() / 1000)) return;
     value.message ??= { subject: "Your personal Hive is ready", text: `Your agent set up your personal Hive. Open Hive to see its learnings and join your organisation.\n\n${await link(memberId, value)}\n\nThis link expires in 24 hours.` };
     value.attempts++;
     value.delivered = await deliverEmail(value.email, value.message.subject, value.message.text, `hive-welcome/${memberId}/${value.nonce}`, value.message.html);

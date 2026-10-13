@@ -111,7 +111,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
       b = (await createTeam({ teamName: "Decisions B", memberName: "B" })).ctx;
       teams.push(a.teamId, b.teamId);
       member = { ...a, memberId: newId("mem"), memberName: "Member" };
-      await getSql()`INSERT INTO members (id, team_id, name) VALUES (${member.memberId}, ${a.teamId}, 'Member')`;
+      await getSql()`INSERT INTO members (id, name) VALUES (${member.memberId}, 'Member')`;
+      await getSql()`INSERT INTO hive_memberships (member_id,team_id) VALUES (${member.memberId},${a.teamId})`;
     });
     beforeEach(() => {
       vi.mocked(judgeMemory).mockResolvedValue({ relations: [], tags: [] });
@@ -140,6 +141,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const sql = getSql();
         if (table === "teams")
           await sql`DELETE FROM teams WHERE id = ANY(${teams}::text[])`;
+        else if (table === "members")
+          await sql`DELETE FROM members WHERE id IN (SELECT member_id FROM hive_memberships WHERE team_id = ANY(${teams}::text[]))`;
         else
           await sql`DELETE FROM ${sql(table)} WHERE team_id = ANY(${teams}::text[])`;
       }

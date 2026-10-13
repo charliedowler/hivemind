@@ -45,7 +45,7 @@ async function main() {
   const executorOptions = { home, endpoint: executorUrl };
   if (executorClient) {
     if (command === 'install') {
-      if (agents.length) install({ ...options, registerMcp: false });
+      install({ ...options, registerMcp: false, executor: true });
       installExecutor({ ...executorOptions, open: !yes && !!process.stdout.isTTY });
       await reportDoctor([{ agent: 'executor', healthy: doctorExecutor(executorOptions) }], home);
     } else if (command === 'doctor') {

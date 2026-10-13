@@ -132,7 +132,7 @@ export async function joinByPhrase(ctx: HiveContext, phrase: string, options: Jo
     await followOwnerMemberships(tx, human.id);
     const active = await tx`SELECT role FROM hive_memberships WHERE member_id = ${ctx.memberId} AND team_id = ${team.id} AND removed_at IS NULL`;
     if (!active.length) throw failure();
-    await tx`UPDATE members SET team_id = ${team.id}, role = ${active[0].role}, removed_at = NULL, hive_registration = NULL, updated_at = now() WHERE id = ${ctx.memberId}`;
+    await tx`UPDATE members SET hive_registration = NULL, updated_at = now() WHERE id = ${ctx.memberId}`;
     return { memberId: ctx.memberId, teamId: String(team.id) };
   });
   const result = await memberContext(member.memberId, member.teamId);

@@ -17,6 +17,7 @@ import { hashToken, newId, newToken, randomBase32 } from "./db/ids";
 import { HiveInputError, HiveNotFoundError } from "./errors";
 import { memberContext } from "./identity/enrollment";
 import { requireHuman } from "./identity/agent-enrollment";
+import { sessionMemberContext } from "./identity/session-context";
 
 export async function createTeam(
   input: CreateTeamInput,
@@ -37,7 +38,8 @@ export async function createTeam(
   const keyId = newId("key");
   await getSql().begin(async (tx) => {
     await tx`INSERT INTO teams (id, name, invite_code) VALUES (${ctx.teamId}, ${ctx.teamName}, ${hashToken(inviteCode)})`;
-    await tx`INSERT INTO members (id, team_id, name, role) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName}, 'admin')`;
+    await tx`INSERT INTO members (id, name) VALUES (${ctx.memberId}, ${ctx.memberName})`;
+    await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${ctx.memberId}, ${ctx.teamId}, 'admin')`;
     await tx`SELECT hive_ensure_personal_hive(${ctx.memberId})`;
     await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${keyId}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
   });
@@ -71,7 +73,8 @@ export async function joinTeam(
   const apiKey = `hm_${newToken()}`;
   const keyId = newId("key");
   await sql.begin(async (tx) => {
-    await tx`INSERT INTO members (id, team_id, name, role) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName}, 'member')`;
+    await tx`INSERT INTO members (id, name) VALUES (${ctx.memberId}, ${ctx.memberName})`;
+    await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${ctx.memberId}, ${ctx.teamId}, 'member')`;
     await tx`SELECT hive_ensure_personal_hive(${ctx.memberId})`;
     await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${keyId}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
   });
@@ -134,9 +137,10 @@ export async function startWebSession(ctx: HiveContext): Promise<void> {
 export async function getWebContext(): Promise<HiveContext | null> {
   const jar = await cookies();
   if (jar.get("better-auth.session_token") || jar.get("__Secure-better-auth.session_token")) {
-    const [{ getAuth }, { memberContext }] = await Promise.all([import("./better-auth"), import("./identity/enrollment")]);
+    const { getAuth } = await import("./better-auth");
     const session = await (await getAuth()).api.getSession({ headers: await headers() });
-    return session?.user.emailVerified ? memberContext(session.user.id, (session.session as unknown as { teamId?: string }).teamId) : null;
+    if (!session?.user.emailVerified) return null;
+    return sessionMemberContext(session.user.id, session.session.id);
   }
   const token = jar.get("hm_session")?.value;
   if (!token) return null;

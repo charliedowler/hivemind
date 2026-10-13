@@ -43,7 +43,8 @@ async function main() {
       });
     }
     await sql`INSERT INTO teams (id, name, invite_code) VALUES (${fixtureTeam}, 'Analytics fixture', 'fixture-invite-a'), (${fixtureOtherTeam}, 'Other fixture', 'fixture-invite-b')`;
-    await sql`INSERT INTO members (id, team_id, name, role) VALUES (${fixtureMember}, ${fixtureTeam}, 'Fixture admin', 'admin'), (${fixtureOtherMember}, ${fixtureOtherTeam}, 'Other admin', 'admin'), ('mem_cccccccccccc', ${fixtureTeam}, 'Fixture member', 'member')`;
+    await sql`INSERT INTO members (id, name) VALUES (${fixtureMember}, 'Fixture admin'), (${fixtureOtherMember}, 'Other admin'), ('mem_cccccccccccc', 'Fixture member')`;
+    await sql`INSERT INTO hive_memberships (member_id,team_id,role) VALUES (${fixtureMember},${fixtureTeam},'admin'), (${fixtureOtherMember},${fixtureOtherTeam},'admin'), ('mem_cccccccccccc',${fixtureTeam},'member')`;
     await sql`INSERT INTO web_sessions (id, member_id, team_id, token_hash, expires_at) VALUES ('ses_aaaaaaaaaaaa', ${fixtureMember}, ${fixtureTeam}, ${hashToken("analytics-local-fixture-session")}, now() + interval '1 day'), ('ses_cccccccccccc', 'mem_cccccccccccc', ${fixtureTeam}, ${hashToken("analytics-local-fixture-member")}, now() + interval '1 day')`;
     await sql`INSERT INTO early_access (id, email, source) VALUES ('ea_aaaaaaaaaaaa', 'fixture@example.invalid', 'waitlist')`;
     await seedFixture(sql);

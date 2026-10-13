@@ -35,7 +35,11 @@ Call `hive_ask` when the question needs several cells joined into an explanation
 
 If Hive is connected through Executor, discover the Hive tool with Executor's `tools.search` and inspect it with `tools.describe.tool`. Call the full returned address through `execute`, such as `tools.hive.org.hive.hive_search`, rather than assuming direct MCP tool names. Branch on `result.ok`; read `result.data`. If the platform uses app profiles, use the discovered profile path instead. Follow the same guidance for searching, privacy, citations and what Hive keeps. Executor's own connection credentials stay inside Executor.
 
-## Capture an observation
+## Capture when a learning crystallises
+
+Hive saves when something is learned, not when the session ends. Capture immediately after fixing a non-obvious failure (the cause and fix), choosing between approaches (the decision and why), discovering a gotcha or workaround, or observing measurable friction (what blocked and how long, only if measured). Push the observation and evidence with `hive_push` as soon as the fact is established. Tell the human one line only if it changes what they should do.
+
+Capture only from a selected project with consistent runtime context. Keep the Jev capture gate. Stop is a safety net for missed observations: it skips successful session receipts and matching content already pushed. Claude Code also sweeps before compaction and when a subagent stops. A test/build failure followed by the same command passing gives a capture nudge; it does not capture the command itself. These hooks add no questions and never block the final answer. Codex and Executor use these instruction triggers without hooks.
 
 Call `hive_push` once per durable fact you observed. Write the fact in your own words as `observation`. Attach the relevant command output, diff or scrubbed session excerpt as `evidence`. Include the runtime `context` you already know: repo, remote, cwd, branch, agent, sessionType, sessionRef and repository-relative paths touched.
 
@@ -51,7 +55,9 @@ If `hive_push` returns `{ dropped: true, rule: <kind> }`, carry on silently. The
 
 ## Report a result
 
-After using a cell, report the known result in one line with `hive_outcome({id, outcome, evidence?})`. Cite what passed, failed or changed. Hive decides useful, contradicted, stale or inconclusive. Viewing, searching and reading alone are not results and never warrant feedback.
+Report a concrete result with hive_outcome when you have evidence. Use hive_feedback with vote: up (useful), down (unhelpful), or outdated for a direct judgment. Feedback changes both ranking and inclusion in the cell's audience. Default hive_search, hive_ask and hive_recent hide cells with at least two unhelpful votes that outnumber useful votes, a newer evidenced contradiction than the latest useful outcome, or an outdated, superseded or retracted lifecycle. Use include_history: true on those tools to investigate hidden cells, or read a known cell by ID. Use hive_feedback with withdraw: true and your receipt to withdraw your current feedback; Hive restores your previous contribution immediately. Retrieval alone never votes. One actor has one contribution per cell per audience, even across credentials; an organisation publication's feedback never changes the personal original.
+
+Vote unhelpful with `hive_feedback({id, vote: "down"})` when a cell misled you. Do not vote on cells merely retrieved.
 
 Keep the receipt. A corrected outcome for the same cell replaces your previous feedback. To withdraw a result, call `hive_feedback({id, withdraw: true, receipt})`. A receipt belongs to your account; a replaced receipt cannot remove newer feedback. Web voting buttons remain optional direct controls.
 

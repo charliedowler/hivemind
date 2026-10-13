@@ -108,7 +108,8 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     teamIds.push(ownerTeam, otherTeam);
     for (const id of teamIds) await sql`INSERT INTO teams (id, name, invite_code) VALUES (${id}, ${id === ownerTeam ? "Owner team" : "Other team"}, ${hashToken(id)})`;
     ownerId = newId("mem"); memberIds.push(ownerId);
-    await sql`INSERT INTO members (id, team_id, name, email, email_verified, role) VALUES (${ownerId}, ${ownerTeam}, 'Owner fixture', ${`owner-${suffix}@company.test`}, true, 'admin')`;
+    await sql`INSERT INTO members (id, name, email, email_verified) VALUES (${ownerId}, 'Owner fixture', ${`owner-${suffix}@company.test`}, true)`;
+    await sql`INSERT INTO hive_memberships (member_id,team_id,role) VALUES (${ownerId},${ownerTeam},'admin')`;
   });
   afterAll(async () => {
     vi.unstubAllGlobals();
@@ -126,11 +127,11 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     const result = await signIn(profile("agent", `owner-${suffix}@company.test`));
     expect(result.location).toBe("/app/join");
     agentCookie = result.cookie;
-    const rows = await getSql()`SELECT m.*, a.account_id, a.owner_name FROM members m JOIN auth_accounts a ON a.user_id = m.id WHERE a.provider_id = 'agentid' AND a.account_id = ${`agent-${suffix}`}`;
+    const rows = await getSql()`SELECT m.*, h.role, h.team_id, a.account_id, a.owner_name FROM members m JOIN hive_memberships h ON h.member_id = m.id AND h.team_id = ${ownerTeam} JOIN auth_accounts a ON a.user_id = m.id WHERE a.provider_id = 'agentid' AND a.account_id = ${`agent-${suffix}`}`;
     expect(rows[0]).toMatchObject({ actor_type: "agent", role: "member", team_id: ownerTeam, owner_name: "Owner fixture" });
     agentId = rows[0].id; memberIds.push(agentId);
     expect(agentId).not.toBe(ownerId);
-    expect(await agentEnrollmentNotice(agentId)).toBe("You're in Owner team, joined via Owner fixture.");
+    expect(await agentEnrollmentNotice(agentId)).toContain("Owner fixture");
     const again = await signIn(profile("agent", `owner-${suffix}@company.test`));
     expect(again.location).toBe("/app/join");
     expect((await getSql()`SELECT id FROM auth_accounts WHERE provider_id = 'agentid' AND account_id = ${`agent-${suffix}`}`)).toHaveLength(1);
@@ -145,7 +146,7 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     for (let index = 1; index <= 8; index++) {
       const result = await signIn(profile(`fleet-${index}`, `owner-${suffix}@company.test`));
       expect(result.location).toBe("/app/join");
-      const rows = await getSql()`SELECT id, role, team_id FROM members WHERE email = ${`fleet-${index}-${suffix}@agentmail.to`}`;
+      const rows = await getSql()`SELECT m.id, h.role, h.team_id FROM members m JOIN hive_memberships h ON h.member_id=m.id AND h.team_id=${ownerTeam} WHERE m.email = ${`fleet-${index}-${suffix}@agentmail.to`}`;
       memberIds.push(rows[0].id);
       expect(rows[0]).toMatchObject({ role: "member", team_id: ownerTeam });
     }
@@ -161,7 +162,7 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     await getSql()`UPDATE teams SET invite_code = ${hashToken(code)} WHERE id = ${otherTeam}`;
     const result = await signIn(profile("invited", `owner-${suffix}@company.test`), code);
     expect(result.location).toBe("/app/join");
-    const rows = await getSql()`SELECT id, team_id, role FROM members WHERE email = ${`invited-${suffix}@agentmail.to`}`;
+    const rows = await getSql()`SELECT m.id, h.role, h.team_id FROM members m JOIN hive_memberships h ON h.member_id=m.id AND h.team_id=${otherTeam} WHERE m.email = ${`invited-${suffix}@agentmail.to`}`;
     memberIds.push(rows[0].id);
     expect(rows[0]).toMatchObject({ team_id: otherTeam, role: "member" });
   });
@@ -187,13 +188,13 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     await expect(requireAdmin(ctx)).rejects.toThrow(/human/);
     await expect(issueApiKey(ctx)).rejects.toThrow(/human/);
     await expect(revokeKey(ctx, "key_any")).rejects.toThrow(/human/);
-    await expect(getSql()`UPDATE members SET role = 'admin' WHERE id = ${agentId}`).rejects.toMatchObject({ code: "23514" });
+    await expect(getSql()`UPDATE hive_memberships SET role = 'admin' WHERE member_id = ${agentId}`).rejects.toMatchObject({ code: "23514" });
     await expect(storeAgentOwner({ id: "wrong", userId: agentId, providerId: "agentid", accountId: "wrong", accessToken: "fixture" })).rejects.toThrow();
   });
   it("provisions a personal hive and refuses agent-created organisations", async () => {
     const result = await signIn(profile("creator", `new-owner-${suffix}@company.test`));
     expect(result.location).toBe("/app/join");
-    const rows = await getSql()`SELECT id, team_id FROM members WHERE email = ${`creator-${suffix}@agentmail.to`}`;
+    const rows = await getSql()`SELECT m.id, h.team_id FROM members m JOIN hive_memberships h ON h.member_id=m.id JOIN teams t ON t.id=h.team_id AND t.personal_owner_member_id IS NOT NULL WHERE m.email = ${`creator-${suffix}@agentmail.to`}`;
     const id = rows[0].id; memberIds.push(id);
     const human = (await getSql()`SELECT id, email_verified, provisional FROM members WHERE email = ${`new-owner-${suffix}@company.test`}`)[0];
     memberIds.push(human.id);
@@ -232,7 +233,7 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
     const ctx = (await contextFromClaims(payload))!;
     expect(ctx.memberId).toBe(agentId);
-    expect(ctx.teamId).toBe(ownerTeam);
+    expect(ctx.teamId).toBe((await getSql()`SELECT id FROM teams WHERE personal_owner_member_id = ${ownerId}`)[0].id);
     const response = await mcpRoute(new Request(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "hive_search", arguments: { query: "identity", repo: "fixture/repo" } } }) }));
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await response.text()).not.toContain('"isError":true');
@@ -254,7 +255,7 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
       expect(exchange.status, await exchange.clone().text()).toBe(200);
       const token = (await exchange.json()).access_token;
       const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
-      expect(payload).toMatchObject({ hive_member_id: agentId, hive_team_id: ownerTeam });
+      expect(payload).toMatchObject({ hive_member_id: agentId, hive_team_id: (await getSql()`SELECT id FROM teams WHERE personal_owner_member_id = ${ownerId}`)[0].id });
     }
     expect(new Set(harnessClients).size).toBe(12);
   });

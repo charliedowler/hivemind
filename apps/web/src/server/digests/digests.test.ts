@@ -75,9 +75,11 @@ describe.skipIf(!enabled)(
       vi.stubEnv("ANTHROPIC_API_KEY", "fixture");
       for (const ctx of [a, b]) {
         await getSql()`INSERT INTO teams(id,name,invite_code,invite_expires_at)VALUES(${ctx.teamId},${ctx.teamName},${newId("invite")},now()+interval '1 day')`;
-        await getSql()`INSERT INTO members(id,team_id,name,role)VALUES(${ctx.memberId},${ctx.teamId},${ctx.memberName},'admin')`;
+        await getSql()`INSERT INTO members(id,name)VALUES(${ctx.memberId},${ctx.memberName})`;
+        await getSql()`INSERT INTO hive_memberships(member_id,team_id,role)VALUES(${ctx.memberId},${ctx.teamId},'admin')`;
       }
-      await getSql()`INSERT INTO members(id,team_id,name,role)VALUES(${member.memberId},${a.teamId},'Member','member')`;
+      await getSql()`INSERT INTO members(id,name)VALUES(${member.memberId},'Member')`;
+      await getSql()`INSERT INTO hive_memberships(member_id,team_id)VALUES(${member.memberId},${a.teamId})`;
     });
     afterEach(() => vi.useRealTimers());
     afterAll(async () => {
@@ -91,7 +93,7 @@ describe.skipIf(!enabled)(
       await getSql()`DELETE FROM slack_digest_schedules WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM learning_pushes WHERE team_id=ANY(${ids}::text[])`;
       await getSql()`DELETE FROM learnings WHERE team_id=ANY(${ids}::text[])`;
-      await getSql()`DELETE FROM members WHERE team_id=ANY(${ids}::text[])`;
+      await getSql()`DELETE FROM members WHERE id IN (SELECT member_id FROM hive_memberships WHERE team_id=ANY(${ids}::text[]))`;
       await getSql()`DELETE FROM teams WHERE id=ANY(${ids}::text[])`;
       vi.unstubAllEnvs();
     });

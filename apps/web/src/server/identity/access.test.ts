@@ -81,7 +81,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
         "team_domains",
         "members",
       ])
-        await sql`DELETE FROM ${sql(table)} WHERE team_id IN ${sql(teams)}`;
+        if (table === "members") await sql`DELETE FROM members WHERE id IN (SELECT member_id FROM hive_memberships WHERE team_id IN ${sql(teams)})`;
+        else await sql`DELETE FROM ${sql(table)} WHERE team_id IN ${sql(teams)}`;
       await sql`DELETE FROM teams WHERE id IN ${sql(teams)}`;
       vi.unstubAllEnvs();
       await sql.end();
@@ -135,7 +136,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(rows[0].code_hash).not.toContain(sent.code);
       expect(rows[0].token_hash).toBe(hashToken(sent.verificationToken));
       const members =
-        await getSql()`SELECT email, email_verified, role FROM members WHERE id = ${member.memberId} AND team_id = ${a.teamId}`;
+        await getSql()`SELECT m.email, m.email_verified, h.role FROM members m JOIN hive_memberships h ON h.member_id=m.id WHERE m.id = ${member.memberId} AND h.team_id = ${a.teamId}`;
       expect(members[0]).toMatchObject({
         email: sent.email,
         email_verified: true,
