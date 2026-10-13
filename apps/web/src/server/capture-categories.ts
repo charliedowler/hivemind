@@ -4,6 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { TypeSafeClient, noul } from "@typesafe-ai/sdk";
 import {
   redactSecrets,
+  gateCapturePrivacy,
   type CaptureCategory,
   type CaptureEvaluationInput,
 } from "@hivemind/core";
@@ -163,6 +164,9 @@ export async function classifyCaptureCategories(
 ): Promise<Verdicts> {
   const requested = [...new Set(categories)].sort();
   if (!requested.length) return {};
+  const privacy = gateCapturePrivacy(input);
+  if (privacy.action === "refuse") return Object.fromEntries(requested.map(category => [category, true]));
+  input = privacy.input;
   const key = createHash("sha256")
     .update(
       JSON.stringify({

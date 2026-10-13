@@ -243,12 +243,12 @@ describe.skipIf(!enabled)("hive database integration", () => {
     const pushed = await pushLearning(
       a,
       hivePushInput.parse({
-        title: `Credential ghp_${"a".repeat(36)}`,
+        title: `The parser uses ghp_${"a".repeat(36)} for requests`,
         body: `Connect postgres://user:password@host/db with hm_${"b".repeat(43)}`,
       }),
     );
     expect(pushed.redactions).toBe(3);
-    expect(pushed.learning.title).toBe("Credential [redacted]");
+    expect(pushed.learning.title).toBe("The parser uses [redacted] for requests");
     expect(pushed.learning.body).not.toContain("password");
     expect(pushed.learning.body).not.toContain("b".repeat(43));
   });

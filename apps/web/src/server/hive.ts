@@ -12,6 +12,7 @@ import {
   rankCandidates,
   type RankCandidate,
   redactSecrets,
+  redactCaptureSecrets,
   type AskResult,
   type EarlyAccessInput,
   type HiveAskInput,
@@ -236,6 +237,8 @@ async function pushLearningAction(
     return { dropped: true, rule: matched.kind };
   }
   const captureRedacted = capture.redacted;
+  const privacyRedactions = redactSecrets(data.title ?? "").count + redactSecrets(rawBody).count + redactSecrets(data.workaround ?? "").count;
+  data = redactCaptureSecrets(data).input;
   const captureFlagged = capture.flagged;
   const captureRuleIds = capture.matches.map((match) => match.ruleId);
   const captureContext = captureRedacted
@@ -421,7 +424,7 @@ async function pushLearningAction(
           votes: { up: 0, down: 0, outdated: 0 },
           evidence: [
             {
-              payload: JSON.parse(redactSecrets(JSON.stringify(data)).text),
+              payload: redactCaptureSecrets(data).input,
               digest: "incoming",
               createdAt: new Date().toISOString(),
             },
@@ -593,7 +596,7 @@ async function pushLearningAction(
         merged,
         pushCount: learning.pushCount,
         redactions:
-          title.count + body.count + workaround.count + Number(captureRedacted),
+          privacyRedactions + title.count + body.count + workaround.count + Number(captureRedacted),
         learning,
       };
     }),

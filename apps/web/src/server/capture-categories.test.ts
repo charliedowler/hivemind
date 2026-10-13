@@ -150,33 +150,35 @@ describe("capture category policy", () => {
     expect(mocks.systemOne).toHaveBeenCalledTimes(1);
   });
 
-  it("redacts known secrets from every field and detects credentials before model calls", async () => {
+  it("refuses secret-only fields before either provider is created", async () => {
     const secret = `ghp_${"a".repeat(25)}`;
-    const raw = {
-      title: secret,
-      body: `-----BEGIN PRIVATE KEY-----\nprivate material\n-----END PRIVATE KEY-----`,
-      repo: secret,
-      remote: "postgres://user:private-password@database/app",
-      cwd: secret,
-      paths: [secret],
-      agent: secret,
-      sessionType: secret,
-    };
-    mocks.systemOne.mockResolvedValue(probabilities({ personal_info: 0.5 }));
-    mocks.parse.mockResolvedValue(fallback({ personal_info: false }));
-    expect(await classify(raw, ["credentials", "personal_info"])).toEqual({ credentials: true, personal_info: false });
-    expect(mocks.systemOne.mock.calls[0][0].questions).not.toHaveProperty("credentials");
-    const classifierRequest = JSON.stringify(mocks.systemOne.mock.calls[0][0]);
-    const fallbackRequest = JSON.stringify(mocks.parse.mock.calls[0][0]);
-    for (const request of [classifierRequest, fallbackRequest]) {
-      expect(request).not.toContain(secret);
-      expect(request).not.toContain("private material");
-      expect(request).not.toContain("private-password");
-      expect(request).toContain("[redacted]");
+    const raw = {...input, body: secret};
+    expect(await classify(raw, ["credentials", "personal_info"])).toEqual({credentials: true, personal_info: true});
+    expect(mocks.createClassifier).not.toHaveBeenCalled();
+    expect(mocks.createFallback).not.toHaveBeenCalled();
+    expect(mocks.beginCall).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {body: "The service password is example-only-password."},
+    {body: "Alex has diabetes."},
+    {body: "customer_id=example-123"},
+    {paths: ["alex@example.com"]},
+  ])("blocks sensitive fields even when only a different category is requested: %j", async (changed) => {
+    expect(await classify({...input, ...changed}, ["non_work"])).toEqual({non_work: true});
+    expect(mocks.systemOne).not.toHaveBeenCalled();
+    expect(mocks.parse).not.toHaveBeenCalled();
+  });
+
+  it("sends only sanitized useful facts to the fast provider and fallback", async () => {
+    mocks.systemOne.mockResolvedValue(probabilities({credentials: 0, personal_info: 0.5}));
+    mocks.parse.mockResolvedValue(fallback({personal_info: false}));
+    const raw = {...input, body: 'The parser test uses password: "example-only-password" in tests/auth.test.ts.'};
+    expect(await classify(raw, ["credentials", "personal_info"])).toEqual({credentials: false, personal_info: false});
+    for (const request of [mocks.systemOne.mock.calls[0][0], mocks.parse.mock.calls[0][0]]) {
+      expect(JSON.stringify(request)).not.toContain("example-only-password");
+      expect(JSON.stringify(request)).toContain("[redacted]");
     }
-    expect(await classify(raw, ["credentials"])).toEqual({ credentials: true });
-    expect(mocks.systemOne).toHaveBeenCalledTimes(1);
-    expect(mocks.parse).toHaveBeenCalledTimes(1);
   });
 
   it("does not treat redacted placeholders or credential names as actual credentials", async () => {

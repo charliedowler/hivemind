@@ -19,7 +19,9 @@ Each rule belongs to a team and has a member or team scope, a typed configuratio
 | `keyword` | Case-insensitive terms or a bounded, restricted regular expression against title and body. |
 | `content_category` | Personal information, credentials, customer data or non-work activity. |
 
-Hive evaluates repo, path, agent and keyword rules first. It asks the content classifier only when an effective content rule needs a decision. A low-confidence or unavailable fast classifier uses the server's model fallback. A stored cell caches the category decision. Rules cannot make the existing secret redaction less strict.
+Hive runs a deterministic local privacy gate before capture classification or storage. It checks the observation, evidence and context even when content exclusions are off. It refuses personal facts, customer identifiers and records, known customer names from customer exclusions, and captures whose only fact is a secret. Credential assignments, bearer values, private keys, connection passwords and cookies are removed when a useful technical fact remains. A refusal returns one line without the submitted text: "This observation may contain a secret or personal data. Remove identifying details before sharing it." The structured refusal event contains only a category and a fixed reason.
+
+Hive then evaluates repo, path, agent and keyword rules. It asks the content classifier only when an effective content rule needs a decision. A low-confidence or unavailable fast classifier uses the server's model fallback. A stored cell caches the category decision. Rules cannot make the existing secret redaction less strict.
 
 ## Actions and privacy
 
@@ -63,7 +65,7 @@ This automatic path already supports an instruction to remove matching existing 
 
 The packaged hook fetches `GET /api/app/capture-rules/effective` with its OAuth token or member key. A local cache lasts 30 seconds and is bound to the endpoint and credential. It contains rules, never captured text. The hook skips sending an observation when a cheap drop rule matches its repo, remote, path, agent, session type or summary keywords. It uses the matcher from `packages/core`, packaged with the CLI.
 
-Content rules stay on the server. The server checks every ingress even when local filtering succeeds or the cache is stale. A standalone Stop snippet uses the installed hook module when present; server enforcement remains active without that module. Quiet sessions keep their existing local pre-gate.
+The hook and server share the pure privacy gate in `packages/core/src/capture-privacy.mjs`. The hook checks candidate text before upload and uses the sanitized text for both the Stop summary and `hive_push`. The category classifier remains on the server and receives only text that passes the local gate. Pattern matching is conservative; it does not establish that arbitrary prose is free of sensitive information. Content rules provide the second check on text that passes. The server checks every ingress even when local filtering succeeds or the cache is stale. A standalone Stop snippet uses the installed hook module when present; server enforcement remains active without that module. Quiet sessions keep their existing local pre-gate.
 
 Hooks send working directory, remote URL, repo name, branch, agent and session metadata with the bounded capture summary. These fields are for rule evaluation, not generic analytics. Capture analytics contain fixed rule/action/ingress/agent metadata only.
 

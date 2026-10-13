@@ -6,7 +6,7 @@ import {
   score,
   type SystemOneResult,
 } from "@typesafe-ai/sdk";
-import { redactSecrets } from "@hivemind/core";
+import { redactSecrets, redactCaptureSecrets } from "@hivemind/core";
 import { z } from "zod";
 import { beginCall } from "./analytics/events";
 import { jevModel } from "./classify";
@@ -163,9 +163,7 @@ export async function judgeConflict(
   newer: ConflictCell,
 ): Promise<ConflictJudgment> {
   const start = performance.now();
-  const state = JSON.parse(
-    redactSecrets(JSON.stringify({ older, newer })).text,
-  );
+  const state = JSON.parse(JSON.stringify(redactCaptureSecrets({ older, newer }).input));
   let jev: ConflictJev | null = null;
   if (process.env.TYPESAFE_API_KEY) {
     const finish = await beginCall("classifier", "conflicts", jevModel);

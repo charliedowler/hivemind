@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   captureRuleInputSchema,
   evaluateCaptureRules,
+  gateCapturePrivacy,
   redactSecrets,
   type CaptureRule,
   type CaptureRuleInput,
@@ -137,6 +138,12 @@ async function evaluateWithCategories(rules: CaptureRule[], input: EvaluationInp
 
 export async function enforceCaptureRules(ctx: HiveContext, input: EvaluationInput, ingress?: Ingress, additionalText: string[] = []) {
   const rules = await effectiveRules(ctx);
+  const privacy = gateCapturePrivacy({...input, additionalText}, {rules});
+  if (privacy.action === "refuse") {
+    await withActor(ctx, () => recordEvent({name: "capture.rule_dropped", outcome: "refused", reasonCode: "sensitive_refused", properties: {privacyCategory: privacy.category, privacyReason: privacy.reason, ingress: ingress ?? "unknown"}}));
+    throw new HiveInputError(privacy.message);
+  }
+  ({additionalText, ...input} = privacy.input);
   const sidecars: EvaluationInput[] = [];
   for (const value of additionalText) {
     for (let offset = 0; offset < value.length; offset += 19744)

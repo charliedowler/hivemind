@@ -153,7 +153,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const secret = `ghp_${"z".repeat(36)}`;
       const result = await push("Tree cedar", {
         evidence: {
-          session_excerpt: `Token ${secret}`,
+          session_excerpt: `The parser uses token ${secret} for requests`,
           diff: "+ recorded fact",
         },
       });
@@ -179,7 +179,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(evidence.uploaded_at).not.toBeNull();
       expect(evidence.payload).toBeNull();
       const raw = (await readPrivateObject(evidence.object_key)).toString();
-      expect(JSON.parse(raw).evidence.session_excerpt).toBe("Token [redacted]");
+      expect(JSON.parse(raw).evidence.session_excerpt).toBe("The parser uses token [redacted] for requests");
       expect(JSON.parse(raw).evidence.diff).toBe("+ recorded fact");
       expect(raw).toContain("[redacted]");
       expect(raw).not.toContain(secret);

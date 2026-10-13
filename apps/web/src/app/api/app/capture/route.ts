@@ -1,5 +1,6 @@
 import { withOrigin, originFor, recordEvent } from "@/server/analytics/events";
 import { z } from "zod";
+import { redactCaptureSecrets } from "@hivemind/core";
 import { withHiveBearerAuth } from "@/server/bearer-auth";
 import { HiveError } from "@/server/errors";
 import { enforceCaptureRules } from "@/server/capture-rules";
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
         await recordEvent({name: "hook.fired", outcome: "skip", reasonCode: "capture_rule", properties: {hookKind: "stop", gateDecision: "skip", pushedCount: null}});
         return {decision: "skip" as const, dropped: true, rule: matched.kind, classification: null};
       }
-      const result = await classifyCapture({...input, text: capture.body});
+      const result = await classifyCapture({...redactCaptureSecrets(input).input, text: capture.body});
       await recordEvent({
         name: "hook.fired",
         outcome: result.decision,

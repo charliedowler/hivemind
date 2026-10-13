@@ -2,6 +2,7 @@ export * from "./schemas";
 export * from "./contracts";
 export * from "./ranking";
 export * from "./redaction";
+export { gateCapturePrivacy, redactCaptureSecrets, capturePrivacyMessage, type CapturePrivacyOptions, type CapturePrivacyResult, type PrivacyCategory, type PrivacyReason } from "./capture-privacy.mjs";
 export * from "./normalize";
 export * from "./capture-rules";
 export * from "./digest";

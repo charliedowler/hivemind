@@ -139,6 +139,8 @@ const conflictProbabilities = z.object({
   decision: z.record(conflictChoices, probability),
 });
 export const propertiesSchema = z.object({
+  privacyCategory: nullable(z.enum(["credentials", "personal_info", "customer_data"])),
+  privacyReason: nullable(z.enum(["email", "phone", "postal_address", "national_id", "health", "home_family", "card_number", "customer_name", "customer_identifier", "customer_record", "customer_rows", "secret_only"])),
   captureInstructionId: nullable(z.string().regex(/^cinstr_[a-z2-7]{12}$/)),
   instructionClear: nullable(z.boolean()),
   instructionSpecific: nullable(z.boolean()),

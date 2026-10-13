@@ -192,7 +192,7 @@ const scenarios = [
       assert.ok(result.isError || result.value?.dropped === true, `Sensitive ${kind} ${location} was saved: ${result.text}`);
       if (result.isError) assert.match(result.text, /secret|personal|sensitive|credential|customer|excluded/i);
       else assert.equal(result.value.rule, 'content_category');
-      assert.ok(events.some(event => event.kind === 'model' && event.method === 'classifyCaptureCategories'), 'Privacy rejection must exercise the category boundary fixture');
+      assert.deepEqual(events.filter(event => event.kind === 'model'), [], 'Local privacy refusal must not reach any provider');
       assert.deepEqual(events.filter(event => event.kind === 'model' && modelMethods.has(event.method)), [], 'Rejected content reached extraction, classifier or embedding');
       assert.equal((await ctx.sql`SELECT id FROM learnings WHERE owner_member_id = ${actor.memberId}`).length, 0);
     },
@@ -401,7 +401,7 @@ scenarios.push({
     const result = await ctx.mcp(actor.token, 'hive_push', { observation: `The synthetic fixture contains ${fixtureCredential}`, context: { repo, agent: 'codex' } });
     assert.ok(result.isError || result.value?.dropped);
     const calls = ctx.events.slice(start).filter(event => event.kind === 'model');
-    assert.ok(calls.length, 'Exercise the real category provider boundary');
+    assert.deepEqual(calls, [], 'Secret-only captures must stop before the category provider');
     assert.equal(JSON.stringify(calls).includes(fixtureCredential), false, 'Recognized credentials must never reach a provider');
     assert.equal((await ctx.sql`SELECT id FROM learnings WHERE owner_member_id = ${actor.memberId}`).length, 0);
     await ctx.artifact('redaction.json', { calls, result });
@@ -409,15 +409,57 @@ scenarios.push({
 });
 
 for (const kind of ['credentials', 'personal', 'customer']) scenarios.push({
-  name: `capture-privacy-${kind}-blocked-before-model`, fast: false,
+  name: `capture-privacy-${kind}-blocked-before-model`, fast: true,
   async run(ctx) {
     const actor = await owner(ctx);
+    await ctx.sql`UPDATE capture_rules SET enabled = false WHERE team_id = ${actor.teamId}`;
     const start = ctx.events.length;
     const result = await ctx.mcp(actor.token, 'hive_push', { observation: synthetic[kind], context: { repo, agent: 'codex' } });
     assert.ok(result.isError || result.value?.dropped, 'Sensitive content must be refused');
     const calls = ctx.events.slice(start).filter(event => event.kind === 'model');
     await ctx.artifact('pre-model-privacy.json', { result, calls });
     assert.deepEqual(calls, [], 'The requested privacy contract blocks sensitive content before any model call');
+    assert.equal((await ctx.sql`SELECT id FROM learnings WHERE owner_member_id = ${actor.memberId}`).length, 0);
+    const refusal = await ctx.sql`SELECT reason_code, properties FROM analytics_events WHERE team_id = ${actor.teamId} AND event_name = 'capture.rule_dropped' ORDER BY occurred_at DESC LIMIT 1`;
+    await ctx.artifact('privacy-refusal.json', refusal);
+    assert.equal(refusal[0]?.reason_code, 'sensitive_refused');
+    assert.ok(refusal[0]?.properties.privacyReason);
+    assert.equal(JSON.stringify(refusal).includes(synthetic[kind]), false, 'Refusal telemetry must not echo the observation');
+  },
+});
+
+scenarios.push({
+  name: 'capture-useful-credential-fact-redacted-before-provider', fast: true,
+  async run(ctx) {
+    const actor = await owner(ctx);
+    const start = ctx.events.length;
+    const password = 'example-only-parser-password';
+    const result = await ctx.mcp(actor.token, 'hive_push', {observation: `The parser test uses password: "${password}" in tests/auth.test.ts.`, context: {repo, agent: 'codex'}});
+    assert.equal(result.isError, false, result.text);
+    assert.ok(result.value?.id, 'Useful sanitized facts must remain capturable');
+    const calls = ctx.events.slice(start).filter(event => event.kind === 'model');
+    assert.ok(calls.some(event => event.method === 'classifyCaptureCategories'), 'Exercise the real category provider boundary with a safe fact');
+    assert.ok(calls.some(event => event.method === 'classifyPush'), 'Exercise downstream inference with a safe fact');
+    assert.equal(JSON.stringify(calls).includes(password), false, 'A redacted credential must not reach any provider');
+    const rows = await ctx.sql`SELECT body FROM learnings WHERE id = ${result.value.id}`;
+    assert.ok(rows[0].body.includes('[redacted]'));
+    assert.equal(rows[0].body.includes(password), false);
+    await ctx.artifact('redaction.json', {result, calls, rows});
+  },
+});
+
+scenarios.push({
+  name: 'capture-hook-context-redacted-before-provider', fast: true,
+  async run(ctx) {
+    const actor = await owner(ctx);
+    const password = 'example-only-hook-password';
+    const start = ctx.events.length;
+    const result = await ctx.request('/api/app/capture', {token: actor.token, body: {text: synthetic.observation, changes: 1, errors: 1, observations: 1, repo, agent: 'codex', branch: `The config parser uses PASSWORD=${password}`}});
+    assert.equal(result.status, 200, result.text);
+    const calls = ctx.events.slice(start).filter(event => event.kind === 'model');
+    assert.ok(calls.some(event => event.method === 'classifyCapture'), 'Exercise the hook summary provider boundary');
+    assert.equal(JSON.stringify(calls).includes(password), false, 'Context credentials must not reach providers');
+    await ctx.artifact('redaction.json', {result, calls});
   },
 });
 
