@@ -1,6 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import ts from "typescript";
 import { composeDigest } from "@hivemind/core";
 import { expect, it } from "vitest";
@@ -109,39 +108,25 @@ function catalogue(file: string, errorsOnly = false) {
 }
 
 it("keeps signed-in labels, replies and cell badges in Hive's vocabulary", () => {
-  const files = execFileSync(
-    "rg",
-    [
-      "--files",
-      "src/components",
-      "src/app",
-      "src/lib",
-      "src/server/identity",
-      "-g",
-      "*.ts",
-      "-g",
-      "*.tsx",
-      "-g",
-      "!*.test.*",
-    ],
-    { encoding: "utf8" },
-  )
-    .trim()
-    .split("\n")
-    .filter(
-      (file) =>
-        file !== "src/app/page.tsx" &&
-        !file.startsWith("src/app/privacy/") &&
-        !file.startsWith("src/app/terms/") &&
-        !file.endsWith("/stop-hook.ts"),
+  const sourceFiles = (directories: string[]) =>
+    directories.flatMap((directory) =>
+      readdirSync(directory, { recursive: true, encoding: "utf8" })
+        .map((file) => join(directory, file))
+        .filter((file) => /\.tsx?$/.test(file) && !file.includes(".test.")),
     );
-  const serverFiles = execFileSync(
-    "rg",
-    ["--files", "src/server", "src/mcp", "-g", "*.ts", "-g", "!*.test.*"],
-    { encoding: "utf8" },
-  )
-    .trim()
-    .split("\n");
+  const files = sourceFiles([
+    "src/components",
+    "src/app",
+    "src/lib",
+    "src/server/identity",
+  ]).filter(
+    (file) =>
+      file !== "src/app/page.tsx" &&
+      !file.startsWith("src/app/privacy/") &&
+      !file.startsWith("src/app/terms/") &&
+      !file.endsWith("/stop-hook.ts"),
+  );
+  const serverFiles = sourceFiles(["src/server", "src/mcp"]);
   const strings = [
     ...files.flatMap((file) => catalogue(resolve(file))),
     ...serverFiles.flatMap((file) => catalogue(resolve(file), true)),
