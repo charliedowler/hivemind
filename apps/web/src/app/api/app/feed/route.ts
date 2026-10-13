@@ -10,6 +10,7 @@ export async function GET(request: Request) {
       limit: Number(params.get("limit") ?? 50),
       repo: params.get("repo") || undefined,
       kind: params.get("kind") || undefined,
+      include_history: params.get("include_history") === "true",
     });
     return Response.json({ learnings: await recentLearnings(ctx, input) });
   });

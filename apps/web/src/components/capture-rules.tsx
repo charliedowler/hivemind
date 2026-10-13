@@ -33,7 +33,7 @@ function description(rule: CaptureRule) {
   return `${actions[rule.action]} ${target}.`;
 }
 
-function useCaptureChoices(initial: Data, scope: "team" | "personal") {
+function useCaptureChoices(initial: Data, scope: "team" | "personal", onPolicySaved?: (policy: OwnerCapturePolicy) => void) {
   const [rules, setRules] = useState(initial.rules);
   const [projectPolicy, setProjectPolicy] = useState(initial.policy);
   const [text, setText] = useState("");
@@ -87,6 +87,7 @@ function useCaptureChoices(initial: Data, scope: "team" | "personal") {
         setSummary(result.question ?? "What should Hive leave out?");
       } else if (result.status === "saved" && result.policy) {
         setProjectPolicy(result.policy);
+        onPolicySaved?.(result.policy);
         setSummary(result.restatement);
         setUndo(undefined);
       } else if (result.status === "saved" && result.rule) {
@@ -182,7 +183,7 @@ function ExclusionList({ custom, pending, editable, toggle, remove, personal }: 
   );
 }
 
-function ProjectSelection({ initial }: {initial: OwnerCapturePolicy}) {
+function ProjectSelection({ initial, onSaved }: {initial: OwnerCapturePolicy; onSaved?: (policy: OwnerCapturePolicy) => void}) {
   const policy = useRef(initial);
   const [include, setInclude] = useState(() => initial.include.join(", "));
   const [exclude, setExclude] = useState(() => initial.exclude.join(", "));
@@ -198,6 +199,7 @@ function ProjectSelection({ initial }: {initial: OwnerCapturePolicy}) {
     try {
       const saved = await requestJson<OwnerCapturePolicy>(`${endpoint}/projects`, {include: patterns(include), exclude: patterns(exclude), revision: policy.current.revision, humanInstruction: `Learn privately from ${include || "no projects"}; exclude ${exclude || "none"}.`});
       policy.current = saved;
+      onSaved?.(saved);
       setInclude(saved.include.join(", "));
       setExclude(saved.exclude.join(", "));
       setMessage("Saved your projects for private capture.");
@@ -213,8 +215,8 @@ function ProjectSelection({ initial }: {initial: OwnerCapturePolicy}) {
   </form>;
 }
 
-export function CaptureRules({ initial, scope = "team" }: { initial: Data; scope?: "team" | "personal" }) {
-  const choices = useCaptureChoices(initial, scope);
+export function CaptureRules({ initial, scope = "team", onPolicySaved }: { initial: Data; scope?: "team" | "personal"; onPolicySaved?: (policy: OwnerCapturePolicy) => void }) {
+  const choices = useCaptureChoices(initial, scope, onPolicySaved);
   const personal = scope === "personal";
   const title = personal ? "What your agents keep" : "What Hive keeps";
   return (
@@ -224,7 +226,7 @@ export function CaptureRules({ initial, scope = "team" }: { initial: Data; scope
         <p className="muted">{personal ? "Choose the projects your agents may learn from privately. Organisation sharing is separate." : "Choose what every member's agents leave out."}</p>
       </div>
       {!choices.editable ? <p className="small">Only team admins can change these choices.</p> : null}
-      {personal && choices.projectPolicy ? <ProjectSelection key={choices.projectPolicy.revision} initial={choices.projectPolicy} /> : null}
+      {personal && choices.projectPolicy ? <ProjectSelection key={choices.projectPolicy.revision} initial={choices.projectPolicy} onSaved={onPolicySaved} /> : null}
       <DefaultContent {...choices} />
       <CaptureFeedback {...choices} />
       <CaptureDescription {...choices} />

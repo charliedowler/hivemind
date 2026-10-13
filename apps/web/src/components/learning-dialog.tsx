@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type {
   FeedbackResult,
   FeedbackVote,
+  LearningStanding,
   LearningView,
 } from "@hivemind/core";
 import {
@@ -37,12 +38,12 @@ export function LearningDetail({
   canModerate,
   onModerated,
 }: {
-  learning: LearningView;
+  learning: LearningStanding;
   canModerate?: boolean;
   onModerated?: () => void;
   onFeedback?: (id: string, votes: LearningView["votes"]) => void;
 }) {
-  const [refreshed, setRefreshed] = useState<LearningView>();
+  const [refreshed, setRefreshed] = useState<LearningStanding>();
   const learning =
     refreshed?.id === initialLearning.id ? refreshed : initialLearning;
   const [feedback, setFeedback] = useState<{
@@ -102,6 +103,7 @@ export function LearningDetail({
           This cell is marked outdated. Check the learning before you cite it.
         </p>
       ) : null}
+      {learning.unhelpfulLabel ? <p className="cell-warning">{learning.unhelpfulLabel}</p> : null}
       <CaptureNotice learning={learning} />
       <LifecycleNotice learning={learning} />
       {!learning.id.startsWith("slk_") ? (

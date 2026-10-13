@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { type LearningView, type SearchHit } from "@hivemind/core";
+import { excludedFromRetrieval, type LearningStanding, type LearningView, type SearchHit } from "@hivemind/core";
 import {
   Badge,
   Button,
@@ -10,6 +10,7 @@ import {
   CombGrid as CellGrid,
   Input,
   Select,
+  Switch,
   Sprite,
 } from "@hivemind/design-system";
 import { errorMessage, requestJson } from "@/lib/client";
@@ -21,7 +22,9 @@ function SearchResults({
   query,
   repo,
   onOpen,
+  includeHistory,
 }: {
+  includeHistory: boolean;
   query: string;
   repo: string;
   onOpen: (id: string) => void;
@@ -34,7 +37,7 @@ function SearchResults({
     const timer = setTimeout(() => {
       requestJson<{ hits: SearchHit[] }>(
         "/api/app/search",
-        { query, repo: repo || undefined, limit: 25 },
+        { query, repo: repo || undefined, limit: 25, include_history: includeHistory },
         controller.signal,
       )
         .then(setResult)
@@ -47,11 +50,11 @@ function SearchResults({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, repo]);
+  }, [query, repo, includeHistory]);
   if (result.error) return <ErrorPanel message={result.error} />;
   if (!result.hits)
     return <LoadingPanel>Searching for matching cells.</LoadingPanel>;
-  const hits = result.hits.filter((hit) => hit.lifecycle !== "retracted");
+  const hits = result.hits.filter((hit) => includeHistory || !excludedFromRetrieval(hit));
   return (
     <div className="stack">
       <p className="small muted" role="status">
@@ -60,7 +63,7 @@ function SearchResults({
       {hits.length ? (
         <div className="search-results">
           {hits.map((hit) => (
-            <SearchHitCard key={hit.id} hit={hit} onOpen={onOpen} />
+            <SearchHitCard key={hit.id} hit={hit} onOpen={onOpen} includeHistory={includeHistory} />
           ))}
         </div>
       ) : (
@@ -75,7 +78,7 @@ function SearchResults({
 
 function useHiveFeed() {
   const [state, setState] = useState<{
-    learnings: LearningView[];
+    learnings: LearningStanding[];
     loaded: boolean;
     error: string;
     newIds: string[];
@@ -88,8 +91,8 @@ function useHiveFeed() {
     const controller = new AbortController();
     async function poll() {
       try {
-        const result = await requestJson<{ learnings: LearningView[] }>(
-          "/api/app/feed",
+        const result = await requestJson<{ learnings: LearningStanding[] }>(
+          "/api/app/feed?include_history=true",
           undefined,
           controller.signal,
         );
@@ -159,8 +162,9 @@ export function Feed({
   const [repo, setRepo] = useState("");
   const [searchRevision, setSearchRevision] = useState(0);
   const [selected, setSelected] = useState<string>();
+  const [includeHistory, setIncludeHistory] = useState(false);
   const cells = state.learnings
-    .filter((item) => item.lifecycle !== "retracted")
+    .filter((item) => includeHistory || !excludedFromRetrieval(item))
     .sort((a, b) => Date.parse(b.lastPushedAt) - Date.parse(a.lastPushedAt));
   const repos = [
     ...new Set(cells.flatMap((item) => (item.repo ? [item.repo] : []))),
@@ -174,7 +178,7 @@ export function Feed({
     setState((previous) => ({
       ...previous,
       learnings: previous.learnings.map((item) =>
-        item.id === id ? { ...item, votes } : item,
+        item.id === id ? { ...item, votes, unhelpfulLabel: votes.down ? `Marked unhelpful by ${votes.down}` : null } : item,
       ),
     }));
   }
@@ -231,16 +235,19 @@ export function Feed({
             ]}
           />
         </div>
+        <Switch label="Show history" checked={includeHistory} onChange={() => setIncludeHistory(value => !value)} />
         <div ref={list}>
           {query.trim() ? (
             <SearchResults
-              key={`${query.trim()}:${repo}:${searchRevision}`}
+              key={`${query.trim()}:${repo}:${searchRevision}:${includeHistory}`}
+              includeHistory={includeHistory}
               query={query.trim()}
               repo={repo}
               onOpen={setSelected}
             />
           ) : (
             <CellPanel
+              includeHistory={includeHistory}
               state={state}
               visible={visible}
               newIds={newIds}
@@ -268,13 +275,15 @@ export function Feed({
 }
 
 function CellPanel({
+  includeHistory,
   state,
   visible,
   newIds,
   onOpen,
 }: {
+  includeHistory: boolean;
   state: { loaded: boolean; error: string };
-  visible: LearningView[];
+  visible: LearningStanding[];
   newIds: Set<string>;
   onOpen: (id: string) => void;
 }) {
@@ -298,6 +307,7 @@ function CellPanel({
               <LearningCard
                 key={item.id}
                 learning={item}
+                includeHistory={includeHistory}
                 highlighted={newIds.has(item.id)}
                 onOpen={onOpen}
               />

@@ -34,6 +34,8 @@ export function Account({
   sharing?: Awaited<ReturnType<typeof projectShareState>>;
 }) {
   const [data, setData] = useState(initial);
+  const [editedPolicy, setEditedPolicy] = useState<OwnerCapturePolicy>();
+  const currentPolicy = editedPolicy && editedPolicy.revision >= (policy?.revision ?? 0) ? editedPolicy : policy;
   const [token, setToken] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
   const [error, setError] = useState("");
@@ -157,10 +159,11 @@ export function Account({
         </details>
       ) : null}
       <CaptureRules
-        initial={{ rules, policy, isAdmin: data.member.role === "admin" }}
+        initial={{ rules, policy: currentPolicy, isAdmin: data.member.role === "admin" }}
+        onPolicySaved={setEditedPolicy}
         scope="personal"
       />
-      {policy ? <ProjectSharing policy={policy} initial={sharing} /> : null}
+      {currentPolicy ? <ProjectSharing policy={currentPolicy} initial={sharing} /> : null}
       <Link href="/app/create-hive">Create a hive for your team</Link>
       <Button
         variant="ghost"

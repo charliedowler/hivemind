@@ -27,21 +27,7 @@ export default async function LoginPage({
   const error = params.error ? authError(reason) : undefined;
   const emailError = error?.href === "/app/login?email" ? error : undefined;
   if (error && !emailError) return <AuthErrorPage reason={reason} />;
-  const jar = await cookies();
-  if (
-    jar.get("better-auth.session_token") ||
-    jar.get("__Secure-better-auth.session_token")
-  ) {
-    const session = await (
-      await getAuth()
-    ).api.getSession({ headers: await headers() });
-    if (session?.user.emailVerified)
-      redirect(
-        params.client_id
-          ? `/api/auth/oauth2/authorize?${pageQuery(params)}`
-          : (returnTo ?? "/app/join"),
-      );
-  }
+  await redirectSignedIn(params, returnTo);
   try {
     return (
       <main className="page">
@@ -66,5 +52,23 @@ export default async function LoginPage({
         <ErrorPanel message={errorMessage(error)} />
       </main>
     );
+  }
+}
+
+async function redirectSignedIn(params: PageQuery, returnTo?: string) {
+  const jar = await cookies();
+  if (
+    jar.get("better-auth.session_token") ||
+    jar.get("__Secure-better-auth.session_token")
+  ) {
+    const session = await (
+      await getAuth()
+    ).api.getSession({ headers: await headers() });
+    if (session?.user.emailVerified)
+      redirect(
+        params.client_id
+          ? `/api/auth/oauth2/authorize?${pageQuery(params)}`
+          : (returnTo ?? "/app/join"),
+      );
   }
 }

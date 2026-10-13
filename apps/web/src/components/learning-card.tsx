@@ -1,6 +1,6 @@
 "use client";
 
-import type { LearningView, SearchHit } from "@hivemind/core";
+import type { LearningStanding, LearningView, SearchHit } from "@hivemind/core";
 import { Badge, Card, MemberBee, Sprite, Tag } from "@hivemind/design-system";
 import { relativeTime } from "@/lib/client";
 import {
@@ -14,13 +14,15 @@ import {
 export function LearningCard({
   learning,
   highlighted = false,
+  includeHistory = false,
   onOpen,
 }: {
-  learning: LearningView;
+  learning: LearningStanding;
   highlighted?: boolean;
+  includeHistory?: boolean;
   onOpen: (id: string) => void;
 }) {
-  if (learning.lifecycle === "retracted") return null;
+  if (!includeHistory && learning.lifecycle === "retracted") return null;
   const status = learningStatus(learning);
   return (
     <button
@@ -59,6 +61,7 @@ export function LearningCard({
             </div>
             <div className="hm-cell-votes">
               <LifecycleBadge learning={learning} />
+              {learning.unhelpfulLabel ? <span className="small">{learning.unhelpfulLabel}</span> : null}
               <Sprite name="thumb" scale={1} title="Useful votes" />
               {learning.votes.up}
             </div>
@@ -78,16 +81,19 @@ function LifecycleBadge({ learning }: { learning: LearningView }) {
 export function SearchHitCard({
   hit,
   onOpen,
+  includeHistory = false,
 }: {
-  hit: SearchHit;
+  hit: SearchHit & LearningStanding;
+  includeHistory?: boolean;
   onOpen: (id: string) => void;
 }) {
-  if (hit.lifecycle === "retracted") return null;
+  if (!includeHistory && hit.lifecycle === "retracted") return null;
   return (
     <Card className="search-hit" id={hit.id}>
       <div className="row between wrap">
         <span className="small">{kindLabel(hit.kind)}</span>
         <LifecycleBadge learning={hit} />
+        {hit.unhelpfulLabel ? <span className="small">{hit.unhelpfulLabel}</span> : null}
         {hit.verifyBeforeUse ? (
           <span className="small">Check this is still true</span>
         ) : null}

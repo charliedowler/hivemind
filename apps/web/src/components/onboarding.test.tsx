@@ -7,6 +7,7 @@ import { HiveInvite, InviteTeam } from "./hive-invite";
 import { Members } from "./members";
 import { CellSharing } from "./cell-sharing";
 import { LearningCard } from "./learning-card";
+import { Feed } from "./feed";
 import { PromptBlock } from "./prompt-block";
 import { setupPrompt } from "@/lib/agent-onboarding";
 import { renderWelcome } from "@/server/identity/welcome-template";
@@ -27,6 +28,7 @@ async function mount(element: React.ReactNode) {
   for (const key of ["window", "self", "document", "AbortController"] as const)
     vi.stubGlobal(key, dom.window[key]);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => { callback(); return 1; });
   const host = dom.window.document.getElementById("root")!;
   const root = createRoot(host);
   await act(async () => root.render(element));
@@ -235,4 +237,20 @@ it("escapes the welcome email and uses one claim link with no cell excerpts", ()
   expect(message.html).toContain("&lt;Charlie&gt;");
   expect(message.html).not.toContain("<Charlie>");
   expect(message.text.match(/token=claim/g)).toHaveLength(1);
+});
+
+it("shows excluded cells only when history is enabled", async () => {
+  const base = {id: "hidden", title: "Hidden cell", body: "body", kind: "learning", source: "codex", repo: null, paths: [], tags: [], confidence: 0.9, author: {id: "human", name: "Charlie"}, pushCount: 1, votes: {up: 0, down: 2, outdated: 0}, unhelpfulLabel: "Marked unhelpful by 2", lifecycle: "fresh", createdAt: "2026-10-13T10:00:00Z", updatedAt: "2026-10-13T10:00:00Z", lastPushedAt: "2026-10-13T10:00:00Z"};
+  mocks.request.mockResolvedValue({learnings: [base, {...base, id: "visible", title: "Visible cell", votes: {up: 0, down: 0, outdated: 0}, unhelpfulLabel: null}]});
+  const {host, close} = await mount(<Feed />);
+  try {
+    expect(host.textContent).toContain("Visible cell");
+    expect(host.textContent).not.toContain("Hidden cell");
+    expect(mocks.request).toHaveBeenCalledWith("/api/app/feed?include_history=true", undefined, expect.anything());
+    await act(async () => host.querySelector<HTMLInputElement>('input[role="switch"]')!.click());
+    expect(host.textContent).toContain("Hidden cell");
+    expect(host.textContent).toContain("Marked unhelpful by 2");
+    await act(async () => host.querySelector<HTMLInputElement>('input[role="switch"]')!.click());
+    expect(host.textContent).not.toContain("Hidden cell");
+  } finally {await close();}
 });
