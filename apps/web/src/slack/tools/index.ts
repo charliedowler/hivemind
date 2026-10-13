@@ -1,3 +1,4 @@
+import { decisionTools } from "./decisions";
 import { captureTools } from "./capture";
 import { decideDecisiveness } from "@/server/slack/decisiveness";
 import { undoLastAction } from "@/server/slack/actions";
@@ -49,6 +50,7 @@ const save = z.strictObject({
   wholeThread: z.boolean(),
 });
 export const slackTools: SlackTool[] = [
+  ...decisionTools,
   ...digestTools,
   ...captureTools,
   {

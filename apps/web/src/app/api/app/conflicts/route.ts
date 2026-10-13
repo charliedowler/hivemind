@@ -4,6 +4,7 @@ import {
   listDecisions,
   reverseDecision,
   decisionRepos,
+  updateDecisionReason,
 } from "@/server/conflict-decisions";
 import { decisionKinds } from "@/server/conflict-judgments";
 import { redactSecrets } from "@hivemind/core";
@@ -31,12 +32,15 @@ export async function POST(request: Request) {
     const data = z
       .object({
         id: z.string(),
-        action: z.literal("reverse"),
-        reason: z.string().trim().min(5).max(500),
+        action: z.enum(["reverse", "reason"]),
+        reason: z.string().trim().max(500).optional(),
       })
       .parse(await readJson(request));
-    return Response.json(
-      await reverseDecision(ctx, data.id, redactSecrets(data.reason).text),
-    );
+    const reason = data.reason?.trim() ? redactSecrets(data.reason).text : undefined;
+    const result = data.action === "reason"
+      ? await updateDecisionReason(ctx, data.id, reason ?? `Reversed by ${ctx.memberName} on the dashboard`)
+      : await reverseDecision(ctx, data.id, reason);
+    const record = (await listDecisions(ctx, { id: result.id }))[0];
+    return Response.json({ ...result, record });
   });
 }

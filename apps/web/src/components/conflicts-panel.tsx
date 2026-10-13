@@ -119,7 +119,7 @@ export function ConflictsPanel() {
               key={record.id}
               record={record}
               onOpen={setSelected}
-              onDecision={() => setRefresh((value) => value + 1)}
+              onDecision={(updated) => setState((current) => ({ ...current, decisions: current.decisions?.map((row) => row.id === record.id ? updated : row) }))}
             />
           ))}
         </div>
@@ -149,7 +149,7 @@ export function DecisionCard({
 }: {
   record: ConflictDecisionRecord;
   onOpen: (id: string) => void;
-  onDecision: () => void;
+  onDecision: (record: ConflictDecisionRecord) => void;
 }) {
   return (
     <Card id={record.id} className="stack conflict-card">
@@ -161,9 +161,8 @@ export function DecisionCard({
         </Badge>
         <time className="small muted" dateTime={record.createdAt}>
           {new Date(record.createdAt).toLocaleString("en-GB", {
-            timeZone: "UTC",
-          })}{" "}
-          UTC
+            dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
+          })} UTC
         </time>
       </div>
       <div className="conflict-pair">
@@ -183,7 +182,7 @@ export function DecisionCard({
         {record.latencyMs} ms
       </p>
       <p className="small muted">
-        Newer cell pushed by {record.author}
+        {record.model === "admin" ? "Decision by" : "Newer cell pushed by"} {record.author}
         {record.repo ? ` · ${record.repo}` : ""}
       </p>
       {record.jev ? (
@@ -216,75 +215,41 @@ export function DecisionCard({
           Jev probabilities are unavailable for this attempt.
         </p>
       )}
-      {record.canReverse ? (
-        <ReverseDecision id={record.id} onDecision={onDecision} />
-      ) : null}
+      {record.canReverse || record.canEditReason ? (
+        <ReverseDecision record={record} onDecision={onDecision} />
+      ) : record.model === "legacy" ? <p className="small muted">This decision has no reversible cell snapshots.</p> : null}
     </Card>
   );
 }
-function ReverseDecision({
-  id,
-  onDecision,
-}: {
-  id: string;
-  onDecision: () => void;
+function ReverseDecision({ record, onDecision }: {
+  record: ConflictDecisionRecord;
+  onDecision: (record: ConflictDecisionRecord) => void;
 }) {
-  const [reason, setReason] = useState("");
-  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<string>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  async function reverse() {
+  async function act(action: "reverse" | "reason") {
+    if (pending) return;
     setPending(true);
     setError("");
     try {
-      await requestJson("/api/app/conflicts", {
-        id,
-        action: "reverse",
-        reason,
+      const result = await requestJson<{ record: ConflictDecisionRecord }>("/api/app/conflicts", {
+        id: record.id, action, ...(action === "reason" ? { reason: reason ?? record.reason } : {}),
       });
-      onDecision();
+      onDecision(result.record);
     } catch (error) {
       setError(errorMessage(error));
-    } finally {
-      setPending(false);
-    }
+    } finally { setPending(false); }
   }
   return (
-    <div className="stack decision-reversal">
-      {open ? (
-        <form
-          className="stack"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void reverse();
-          }}
-        >
-          <Input
-            label="Reason for reversal"
-            value={reason}
-            minLength={5}
-            maxLength={500}
-            required
-            onChange={(event) => setReason(event.target.value)}
-          />
-          <div className="row wrap">
-            <Button disabled={pending || reason.trim().length < 5}>
-              Reverse this decision
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <Button variant="ghost" onClick={() => setOpen(true)}>
-          Reverse this decision
-        </Button>
-      )}
+    <div className="stack decision-reversal" aria-live="polite">
+      {record.canReverse ? <Button variant="ghost" disabled={pending} onClick={() => void act("reverse")}>
+        {record.decision === "reversed" ? "Undo" : "Reverse this decision"}
+      </Button> : null}
+      {record.canEditReason ? <form className="stack" onSubmit={(event) => { event.preventDefault(); void act("reason"); }}>
+        <Input label="Reason for reversal (optional)" value={reason ?? record.reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+        <Button variant="ghost" disabled={pending || reason === undefined || reason === record.reason}>Save reason</Button>
+      </form> : null}
       {error ? <ErrorPanel message={error} /> : null}
     </div>
   );

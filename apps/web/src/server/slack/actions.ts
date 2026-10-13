@@ -4,9 +4,11 @@ import type { SlackToolContext } from "@/slack/tools";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import { HiveError } from "../errors";
+import { reverseDecision } from "../conflict-decisions";
 import { lockLearningWrites } from "../lifecycle";
 
 const inverseSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("decision_reversed"), id: z.string() }),
   z.object({
     kind: z.literal("digest"),
     id: z.string(),
@@ -57,7 +59,7 @@ export async function runReversibleAction(
     }
     const result = await change(tx);
     const inverse = inverseSchema.parse(result.inverse);
-    const text = `${result.text.replace(/\s+/g, " ").trim()} Reply undo to ${result.undo.replace(/\s+/g, " ").trim()} within an hour.`;
+    const text = result.text.replace(/\s+/g, " ").trim();
     await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${messageTs},${toolName},${tx.json(inverse)},${text})`;
     return { text };
   });
@@ -115,6 +117,8 @@ export function undoLastAction(ctx: SlackToolContext) {
           409,
         );
       await tx`UPDATE slack_digest_schedules SET enabled=${inverse.enabled},updated_at=now() WHERE team_id=${ctx.teamId} AND id=${inverse.id}`;
+    } else if (inverse.kind === "decision_reversed") {
+      await reverseDecision({ teamId: ctx.teamId, memberId: ctx.memberId, memberName: "Slack admin", teamName: "" }, inverse.id, "Decision reapplied from Slack", tx);
     } else {
       await lockLearningWrites(tx, {
         teamId: ctx.teamId,
@@ -138,7 +142,7 @@ export function undoLastAction(ctx: SlackToolContext) {
     await tx`UPDATE slack_tool_actions SET undone_at=now() WHERE team_id=${ctx.teamId} AND id=${action.id}`;
     return {
       text:
-        inverse.kind === "digest"
+        inverse.kind === "decision_reversed" ? "Decision reapplied." : inverse.kind === "digest"
           ? inverse.enabled
             ? "Undone. The schedule is enabled again."
             : "Undone. The schedule is paused; any updates already sent remain in Slack."

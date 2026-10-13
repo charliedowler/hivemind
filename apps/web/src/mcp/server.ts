@@ -31,6 +31,8 @@ import {
 } from "@/server/knowledge-tree";
 import { HiveError } from "@/server/errors";
 
+import { reverseDecision } from "@/server/conflict-decisions";
+
 import { searchSlack } from "@/server/slack/search";
 
 const contextSchema = z.object({
@@ -256,6 +258,20 @@ export function registerHiveTools(server: McpServer) {
           "No learnings in this time window. Use hive_push once you learn something useful."
         );
       }, ctx),
+  );
+
+  server.registerTool(
+    "hive_reverse_decision",
+    {
+      title: "Reverse a decision",
+      description: "Reverse a conflict decision immediately by its decision ID. Requires a team admin and unchanged cells. Returns the new decision ID; reverse that ID to undo. Legacy decisions without snapshots cannot be reversed.",
+      inputSchema: z.object({ decision_id: z.string().min(1).max(100) }),
+    },
+    async (input, ctx) => reply(async () => {
+      const actor = getContext(ctx);
+      const result = await reverseDecision(actor, input.decision_id, undefined, undefined, "through MCP");
+      return `${result.id}: ${result.decision === "reversed" ? "Decision reversed." : "Decision reapplied."}`;
+    }, ctx),
   );
 
   server.registerTool(
