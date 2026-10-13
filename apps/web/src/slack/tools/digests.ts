@@ -20,8 +20,14 @@ const listInput = z.strictObject({
     .regex(/^dgs_[a-z2-7]{12}$/)
     .optional(),
 });
-async function instruction(ctx: SlackToolContext) {
-  const judgment = await decideDecisiveness(ctx.instructionText ?? "", ctx);
+async function instruction(
+  ctx: SlackToolContext,
+  actionType: "digest" | "digest_pause" = "digest",
+) {
+  const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
+    ...ctx,
+    actionType,
+  });
   if (!judgment.act) throw new HiveError(judgment.reason, 422);
 }
 const tools: SlackTool[] = [
@@ -75,7 +81,7 @@ const tools: SlackTool[] = [
       await toolActor(ctx);
       const input = listInput.parse(args);
       if (input.disableId) {
-        await instruction(ctx);
+        await instruction(ctx, "digest_pause");
         return runReversibleAction(
           ctx,
           "hive_list_digest_schedules",

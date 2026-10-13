@@ -20,4 +20,24 @@ describe("Admin instruction decisiveness", () => {
     expect(decisivenessDecision(true, { ...clear, allowed: 0.2 }).act).toBe(
       false,
     ));
+  it.each([
+    { instruction: 0.9, specific: 0.98, allowed: 0.97 },
+    { instruction: 0.81, specific: 0.97, allowed: 0.96 },
+    { instruction: 0.95, specific: 0.74, allowed: 0.97 },
+  ])(
+    "accepts verified clear schedule, capture and thread undo judgments",
+    (signals) => {
+      expect(decisivenessDecision(true, signals).act).toBe(true);
+    },
+  );
+  it.each([
+    { instruction: 0.28, specific: 0.98, allowed: 0.97 },
+    { instruction: 0.94, specific: 0.04, allowed: 0.97 },
+    { instruction: 0.63, specific: 0.92, allowed: 0.96 },
+  ])(
+    "refuses verified musing, incomplete schedule and informational question judgments",
+    (signals) => {
+      expect(decisivenessDecision(true, signals).act).toBe(false);
+    },
+  );
 });

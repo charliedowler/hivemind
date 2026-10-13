@@ -18,7 +18,10 @@ const tools: SlackTool[] = [
       { io: "input" },
     ) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
-      const judgment = await decideDecisiveness(ctx.instructionText ?? "", ctx);
+      const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
+        ...ctx,
+        actionType: "capture",
+      });
       if (!judgment.act) return { text: judgment.reason };
       const input = z
         .strictObject({ rule: captureRuleInputSchema })

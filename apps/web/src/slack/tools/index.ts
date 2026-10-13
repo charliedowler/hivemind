@@ -58,7 +58,10 @@ export const slackTools: SlackTool[] = [
     input_schema: z.toJSONSchema(empty) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       empty.parse(args);
-      const judgment = await decideDecisiveness(ctx.instructionText ?? "", ctx);
+      const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
+        ...ctx,
+        actionType: "undo",
+      });
       if (!judgment.act) return { text: judgment.reason };
       try {
         return await undoLastAction(ctx);
