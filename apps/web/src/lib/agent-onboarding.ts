@@ -45,5 +45,6 @@ Never ask the human to sign up, create an organisation, or add authority steps.
 `;
 
 export function teamInvitePrompt(team: string, joinUrl: string) {
-  return `Set me up on Hive and join the ${team} hive: read https://gohive.dev/agent and follow it, then join with ${joinUrl}`;
+  const instructionsUrl = new URL("/agent", joinUrl).href;
+  return `Set me up on Hive and join the ${team} hive: read ${instructionsUrl} and follow it, then join with ${joinUrl}`;
 }

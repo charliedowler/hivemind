@@ -219,17 +219,17 @@ describe("dashboard components", () => {
     const html = renderToStaticMarkup(
       <InstallPage baseUrl="https://hive.example" />,
     );
-    expect(html.indexOf("npx gohive install")).toBeLessThan(
+    expect(html.indexOf("npx --yes gohive@latest install")).toBeLessThan(
       html.indexOf("claude mcp add"),
     );
-    expect(html).toContain("npx gohive install");
+    expect(html).toContain("npx --yes gohive@latest install");
     expect(html).not.toContain(
       "Install from Git while the npm package is awaiting publication",
     );
     expect(html).not.toContain("github:charliedowler/hivemind gohive install");
     expect(html).toContain("skills/hive/SKILL.md");
     expect(html).toContain("Manual setup for Claude Code, Codex or Executor");
-    expect(html).toContain("npx gohive doctor");
+    expect(html).toContain("npx --yes gohive@latest doctor");
   });
 
   it("keeps OAuth commands and the headless key fallback last", () => {

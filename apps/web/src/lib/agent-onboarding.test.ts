@@ -8,6 +8,11 @@ import { GET } from "@/app/agent/route";
 import { GET as markdown } from "@/app/agent.md/route";
 
 describe("agent onboarding instructions", () => {
+  it("keeps invite instructions on the same local or hosted origin as the join link", () => {
+    for (const origin of ["http://localhost:3167", "https://hive.example"]) {
+      expect(teamInvitePrompt("Team", `${origin}/j/amber-honey-fox`)).toContain(`read ${origin}/agent`);
+    }
+  });
   it("gives the exact homepage prompt and current team locator", () => {
     expect(setupPrompt).toBe(
       "Set me up on Hive: read https://gohive.dev/agent and follow it.",
