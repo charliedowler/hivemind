@@ -1,0 +1,92 @@
+.digest-settings {
+  max-width: 960px;
+  margin-inline: auto;
+}
+.digest-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 12px;
+  flex-wrap: wrap;
+}
+.digest-tabs [aria-current] {
+  font-weight: 900;
+  text-decoration-thickness: 3px;
+}
+.digest-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.digest-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.digest-includes {
+  border: 2px solid var(--ink);
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.digest-includes legend {
+  padding-inline: 8px;
+  font-weight: 800;
+}
+.digest-includes label,
+.digest-options label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.digest-options {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.digest-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.digest-schedule-card,
+.digest-history .hm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.digest-history {
+  display: grid;
+  gap: 12px;
+}
+.digest-blocks {
+  margin-top: 16px;
+  border: 2px solid var(--ink);
+  border-left: 8px solid var(--honey-500);
+  background: var(--wax-50);
+  padding: 20px;
+  overflow-wrap: anywhere;
+}
+.digest-blocks p {
+  white-space: pre-wrap;
+  padding-block: 16px;
+  border-top: 2px solid var(--wax-300);
+}
+.digest-blocks h3 {
+  margin-block: 0 16px;
+}
+@media (max-width: 600px) {
+  .digest-form-grid,
+  .digest-includes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .digest-blocks {
+    padding: 12px;
+  }
+  .digest-settings .page-heading > .sprite {
+    display: none;
+  }
+}

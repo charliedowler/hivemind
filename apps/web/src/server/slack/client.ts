@@ -124,17 +124,35 @@ export async function postMessage(
   token: string,
   channel: string,
   text: string,
-  threadTs?: string,
+  threadTs: string,
   blocks?: Array<Record<string, unknown>>,
 ) {
+  if (!threadTs) throw new HiveError("A Slack reply requires a thread.", 400);
   const data = await slackCall(token, "chat.postMessage", {
     channel,
     text: text.slice(0, 12000),
-    ...(threadTs ? { thread_ts: threadTs } : {}),
+    thread_ts: threadTs,
+    reply_broadcast: false,
     ...(blocks ? { blocks: JSON.stringify(blocks) } : {}),
     unfurl_links: false,
     unfurl_media: false,
     parse: "none",
+  });
+  return z.string().parse(data.ts);
+}
+
+export async function startSlackCommandThread(
+  token: string,
+  channel: string,
+  request: string,
+) {
+  const data = await slackCall(token, "chat.postMessage", {
+    channel,
+    text: `Hive request: ${request.slice(0, 1000)}`,
+    parse: "none",
+    unfurl_links: false,
+    unfurl_media: false,
+    reply_broadcast: false,
   });
   return z.string().parse(data.ts);
 }

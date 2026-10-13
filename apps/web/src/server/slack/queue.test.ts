@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { retryPendingSlack, runBackfill } from "./queue";
+import { retryPendingSlack, runBackfill, enqueueSlack } from "./queue";
 const { send, query, admin, permission, page } = vi.hoisted(() => ({
   send: vi.fn(),
   query: vi.fn(),
@@ -53,6 +53,18 @@ describe("Slack job recovery", () => {
     await expect(retryPendingSlack(ctx)).rejects.toThrow(
       "publisher unavailable",
     );
+  });
+  it("marks only the first operational insert fresh when Slack retries delivery", async () => {
+    query
+      .mockResolvedValueOnce([{ id: "job1", status: "pending" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "job1", status: "pending" }]);
+    expect(
+      (await enqueueSlack(ctx.teamId, "command", "command1", {})).fresh,
+    ).toBe(true);
+    expect(
+      (await enqueueSlack(ctx.teamId, "command", "command1", {})).fresh,
+    ).toBe(false);
   });
   it("does not reuse a history cursor when beginning a thread", async () => {
     permission.mockResolvedValue({

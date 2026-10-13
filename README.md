@@ -2,7 +2,7 @@
 
 A shared memory for your team's coding agents.
 
-Each person adds one MCP server to Claude Code or Codex. Their agents push what they learn to the hive: gotchas, fixes, decisions, how a flaky thing really works. Every agent searches the hive when it starts a task or hits an error. Ask through your agent with `hive_ask` to get an answer with citations. The dashboard lets you browse, search and review cells. Slack bot support is in progress.
+Each person adds one MCP server to Claude Code or Codex. Their agents push what they learn to the hive: gotchas, fixes, decisions, how a flaky thing really works. Every agent searches the hive when it starts a task or hits an error. Ask through your agent with `hive_ask` to get an answer with citations. The dashboard lets you browse, search and review cells. Connect the Slack bot from hive settings to ask questions and schedule team updates.
 
 - Landing page: https://gohive.dev
 - Dashboard: https://gohive.dev/app
@@ -261,3 +261,20 @@ Team admins connect the Hive bot at `/app/settings/slack`. Invite Hive to a chan
 Indexing is off until an admin enables a joined channel. Private channels require an invitation and an explicit selection. Direct messages are never indexed. Stop keeps existing messages searchable; purge removes indexed messages and channel ask history while keeping saved learning cells. Unprompted replies require confirmed evidence and a Jev decision, with one reply per thread and two per channel per hour. Admins can inspect the decision log in Slack settings.
 
 `hive_search` and `hive_ask` include permissioned Slack evidence below learning cells. `hive_slack_search({query, channel?, since?, limit?})` searches Slack explicitly. See [the Slack contract](docs/slack-integration.md) and [the specification](docs/SPEC.md). Runtime needs the Slack OAuth/signing secrets, a separate 32-byte base64 `SLACK_TOKEN_ENCRYPTION_KEY`, and the Vercel Queue consumer in `apps/web/vercel.json`. Apply `0015_slack.sql` with the migration runner before deploying. The rollback refuses populated Slack knowledge.
+
+## Slack digests
+
+Admins choose channels, cadence, local time, timezone and included sections at `/app/settings/slack/digests`. Members can preview updates and read their delivery history. Each update covers learnings, insights, reported friction and automatic conflict decisions since prior successful coverage. Empty updates are skipped by default. The first update covers seven days.
+
+Mention Hive in a joined channel with “post an update every Monday at 9 in here” to propose a schedule, then press Confirm. The bot restates the channel, timezone and sections before saving. Ask Hive to list schedules, then reply with an exact schedule ID to disable one as an admin.
+
+Set a random `CRON_SECRET` in Production and Preview. The production cron calls `/api/cron/slack-digests` every fifteen minutes. Apply `0016_slack_digests.sql` with `pnpm --filter web db:migrate` before deploying the feature. Its rollback refuses recorded history. Delivery failures keep the content for the next update; uncertain sends require checking the channel before posting manually.
+
+The pure composer and scheduling tests cover empty periods, escaped mentions, replacement links, section limits, friction totals, DST and month ends. Database tests cover team isolation, admin checks, concurrent reservations, successful and failed coverage, and proposal confirmation replay. To run them in a dedicated local database:
+
+```sh
+DATABASE_URL=postgres://hivemind:hivemind@127.0.0.1:54329/hive_digest_20261013 pnpm --filter web db:migrate
+HIVE_DIGEST_TEST_DATABASE_URL=postgres://hivemind:hivemind@127.0.0.1:54329/hive_digest_20261013 pnpm --filter web test src/server/digests
+```
+
+Reviewed screenshots are `docs/screenshots/digests-1280.png` and `docs/screenshots/digests-390.png`. They show synthetic schedules in the dedicated local database.

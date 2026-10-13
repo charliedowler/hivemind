@@ -308,3 +308,74 @@ export const captureRuleApplications = pgTable("capture_rule_applications", {
   reversedBy: text("reversed_by"),
   reversalReason: text("reversal_reason"),
 });
+
+export const slackDigestSchedules = pgTable("slack_digest_schedules", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
+  channelId: text("channel_id").notNull(),
+  channelName: text("channel_name").notNull(),
+  cadence: text("cadence").notNull(),
+  weekday: integer("weekday").notNull().default(1),
+  monthDay: integer("month_day").notNull().default(1),
+  localTime: text("local_time").notNull(),
+  timezone: text("timezone").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  includeLearnings: boolean("include_learnings").notNull().default(true),
+  includeInsights: boolean("include_insights").notNull().default(true),
+  includeFriction: boolean("include_friction").notNull().default(true),
+  includeDecisions: boolean("include_decisions").notNull().default(true),
+  skipEmpty: boolean("skip_empty").notNull().default(true),
+  lastPostedAt: timestamp("last_posted_at", { withTimezone: true }),
+  lastCursor: timestamp("last_cursor", { withTimezone: true }).notNull(),
+  coverageStartAt: timestamp("coverage_start_at", {
+    withTimezone: true,
+  }).notNull(),
+  nextDueAt: timestamp("next_due_at", { withTimezone: true }).notNull(),
+  lastSlotAt: timestamp("last_slot_at", { withTimezone: true }),
+  createdBy: text("created_by").notNull(),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+export const slackDigestPosts = pgTable("slack_digest_posts", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  scheduleId: text("schedule_id").notNull(),
+  slotAt: timestamp("slot_at", { withTimezone: true }).notNull(),
+  trigger: text("trigger").notNull(),
+  status: text("status").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  postedAt: timestamp("posted_at", { withTimezone: true }),
+  slackTs: text("slack_ts"),
+  permalink: text("permalink"),
+  sinceCursor: timestamp("since_cursor", { withTimezone: true }).notNull(),
+  untilCursor: timestamp("until_cursor", { withTimezone: true }),
+  counts: jsonb("counts").notNull().default({}),
+  error: text("error"),
+});
+export const slackDigestReceipts = pgTable(
+  "slack_digest_receipts",
+  {
+    scheduleId: text("schedule_id").notNull(),
+    teamId: text("team_id").notNull(),
+    sourceKey: text("source_key").notNull(),
+    postId: text("post_id").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scheduleId, table.sourceKey] })],
+);
+export const slackDigestProposals = pgTable("slack_digest_proposals", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  memberId: text("member_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  schedule: jsonb("schedule").notNull(),
+  restatement: text("restatement").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  confirmedScheduleId: text("confirmed_schedule_id"),
+  createdAt: createdAt(),
+});

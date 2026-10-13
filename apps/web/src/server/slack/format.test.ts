@@ -1,30 +1,80 @@
-import { it, expect } from "vitest";
-import { slackAnswer, slackCaptureReply } from "./format";
-it("renders both cell and Slack citations, confidence and gaps without pings", () => {
-  const text = slackAnswer({
-    answer: "Read [lrn_abc] and [slk_def]. <!channel> <@USER>",
-    citations: [
-      { id: "lrn_abc", title: "Cell", why: "Evidence" },
-      {
-        id: "slk_def",
-        title: "Message",
-        why: "Evidence",
-        source: "slack",
-        permalink: "https://example.slack.com/archives/C123/p1800000000000000",
-      },
-    ],
-    confidence: "medium",
-    gaps: "No release date.",
-    synthesized: true,
+import { describe, it, expect } from "vitest";
+import type { AskResult } from "@hivemind/core";
+import { slackAnswer, shortCitationTitle, slackCaptureReply } from "./format";
+const result: AskResult = {
+  answer:
+    "No. Hive never indexes direct messages [lrn_abc]. Channel indexing needs an admin selection [lrn_abc] and the bot being invited [slk_def].\n\nAs of 2026-10-12.",
+  citations: [
+    {
+      id: "lrn_abc",
+      title: "Hive never indexes direct messages",
+      why: "Evidence",
+      date: "2026-10-12",
+      permalink: "https://example.slack.com/archives/C123/p1800000000000000",
+      source: "slack",
+    },
+    {
+      id: "slk_def",
+      title: "Same evidence",
+      why: "Evidence",
+      permalink: "https://example.slack.com/archives/C123/p1800000000000000",
+      source: "slack",
+    },
+    { id: "lrn_abc", title: "Duplicate", why: "Duplicate" },
+  ],
+  confidence: "high",
+  gaps: null,
+  synthesized: true,
+};
+describe("Slack answer presentation", () => {
+  it("renders prose, one short marker and one source for repeated cells and duplicate Slack evidence", () => {
+    const text = slackAnswer(result);
+    expect(text).toBe(
+      "No. Hive never indexes direct messages. Channel indexing needs an admin selection and the bot being invited [1].\n\nSources\n1. <https://gohive.dev/app/cells/lrn_abc|Hive never indexes direct messages> (2026-10-12)",
+    );
+    expect(text.match(/\[1\]/g)).toHaveLength(1);
+    expect(text).not.toContain("Confidence");
+    expect(text).not.toContain("Gap");
+    expect(text).not.toContain("As of");
   });
-  expect(text).toContain("/app/cells/lrn_abc|Cell>");
-  expect(text).toContain(
-    "https://example.slack.com/archives/C123/p1800000000000000|Message>",
+  it("collects multiple sources into at most one marker per sentence and lists each cell once", () => {
+    const text = slackAnswer({
+      ...result,
+      answer: "Use [lrn_a] and [lrn_b] [lrn_a].",
+      citations: [
+        { id: "lrn_a", title: "Alpha", why: "A" },
+        { id: "lrn_b", title: "Beta", why: "B" },
+      ],
+    });
+    expect(text).toContain("Use and [1, 2].");
+    expect(text.match(/app\/cells\/lrn_a/g)).toHaveLength(1);
+    expect(text.match(/app\/cells\/lrn_b/g)).toHaveLength(1);
+  });
+  it("shortens long titles at a word boundary within 80 characters", () => {
+    const title =
+      "Hive never indexes direct messages. Channel indexing requires an admin selection and the bot being invited";
+    const short = shortCitationTitle(title);
+    expect(short.length).toBeLessThanOrEqual(80);
+    expect(short).toMatch(/…$/);
+    expect(title).toContain(short.slice(0, -1) + " ");
+  });
+  it.each(["medium", "low"] as const)(
+    "shows %s confidence and only a real gap, without Slack pings",
+    (confidence) => {
+      const text = slackAnswer({
+        ...result,
+        answer: "Read [lrn_abc]. <!channel> <@USER>",
+        confidence,
+        gaps: "No release date.",
+      });
+      expect(text).toContain(
+        confidence === "medium" ? "moderately confident" : "confidence is low",
+      );
+      expect(text).toContain("Gap: No release date.");
+      expect(text).not.toContain("<!channel>");
+      expect(text).not.toContain("<@USER>");
+    },
   );
-  expect(text).toContain("Confidence: medium.");
-  expect(text).toContain("Gap: No release date.");
-  expect(text).not.toContain("<!channel>");
-  expect(text).not.toContain("<@USER>");
 });
 
 it("never quotes a dropped or owner-private capture", () => {

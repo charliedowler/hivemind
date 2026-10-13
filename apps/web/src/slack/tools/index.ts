@@ -1,3 +1,4 @@
+import { digestTools } from "./digests";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { HiveContext } from "@hivemind/core";
@@ -73,6 +74,7 @@ const save = z.strictObject({
   wholeThread: z.boolean(),
 });
 export const slackTools: SlackTool[] = [
+  ...digestTools,
   {
     name: "hive_ask",
     description:

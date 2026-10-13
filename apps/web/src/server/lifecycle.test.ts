@@ -29,9 +29,19 @@ import { createCaptureRule, deleteCaptureRule } from "./capture-rules";
 import { applyConflictDecision, conflictCell, decisionRepos, listDecisions, reverseDecision, retryRelatedConflicts } from "./conflict-decisions";
 import { embedText } from "./llm/embeddings";
 import { judgeConflict } from "./conflict-judgments";
-vi.mock("./conflict-judgments", async importOriginal => {
+vi.mock("./conflict-judgments", async (importOriginal) => {
   const module = await importOriginal<typeof import("./conflict-judgments")>();
-  return { ...module, judgeConflict: vi.fn(async () => ({ decision: "undecided", reason: "Both models remain uncertain.", confidence: 0.4, model: "unavailable", jev: null, latencyMs: 0 })) };
+  return {
+    ...module,
+    judgeConflict: vi.fn(async () => ({
+      decision: "undecided",
+      reason: "Both models remain uncertain.",
+      confidence: 0.4,
+      model: "unavailable",
+      jev: null,
+      latencyMs: 0,
+    })),
+  };
 });
 import { judgeMemory } from "./memory-judgments";
 vi.mock("./llm/embeddings", () => ({ embedText: vi.fn(async () => null) }));
@@ -274,12 +284,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
     it("keeps old cells readable, excludes them from default search and cites the chain", async () => {
       const old = await push(
         a,
-        "Capybara gate",
+        "Capybara gate before the port change",
         "Capybara gate runs on port 3000.",
       );
       const current = await push(
         a,
-        "Capybara gate",
+        "Capybara gate on port 3001",
         "Capybara gate now runs on port 3001.",
         { supersedes: old.id, verify_after: "2020-01-01T00:00:00Z" },
       );
@@ -438,7 +448,14 @@ describe.skipIf(!process.env.DATABASE_URL)(
       });
     });
     it("applies automatic decisions for author and environment corrections", async () => {
-      vi.mocked(judgeConflict).mockResolvedValue({ decision: "supersede", reason: "New evidence replaces earlier guidance.", confidence: 0.99, model: "claude-sonnet-5-5", jev: null, latencyMs: 10 });
+      vi.mocked(judgeConflict).mockResolvedValue({
+        decision: "supersede",
+        reason: "New evidence replaces earlier guidance.",
+        confidence: 0.99,
+        model: "claude-sonnet-5-5",
+        jev: null,
+        latencyMs: 10,
+      });
       vi.mocked(judgeMemory).mockImplementation(async (_, candidates) => ({
         tags: [],
         relations: candidates.map((item) => ({
