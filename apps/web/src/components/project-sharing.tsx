@@ -40,8 +40,8 @@ export function ProjectSharing({
           ? `Your agents may learn from ${policy.include.join(", ")}.`
           : "No projects selected yet."}{" "}
         {policy.exclude.length
-          ? `Kept private: ${policy.exclude.join(", ")}.`
-          : "Everything else stays private."}
+          ? `Your agents leave out ${policy.exclude.join(", ")}.`
+          : "Other projects stay out of Hive."}
       </p>
       {organisations.map((org) => (
         <div className="stack" key={org.teamId}>
