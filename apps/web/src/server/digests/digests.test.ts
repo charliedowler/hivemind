@@ -275,7 +275,9 @@ describe.skipIf(!enabled)(
         digestInstruction(ctx, ctx.requestText, input.timezone),
       ]);
       expect(first.text).toBe(second.text);
-      expect(first).toEqual({ text: "Set. Every Monday at 9am in #digest-fixture (London time). First update Monday 19 October." });
+      expect(first).toEqual({
+        text: "Set. Every Monday at 9am in #digest-fixture (London time). First update Monday 19 October.",
+      });
       expect(first).not.toHaveProperty("blocks");
       const audit = (
         await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`

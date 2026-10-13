@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { respondToSlack } from "./respond";
 import { dispatchSlackAction, slackTools } from "./tools";
-const { create, latest } = vi.hoisted(() => ({ create: vi.fn(), latest: vi.fn(async () => null) }));
-vi.mock("./tools/undo", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./tools/undo")>()),
-  latestThreadAction: latest,
-}));
+const { create } = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("@anthropic-ai/sdk", () => ({
   default: vi.fn(function () {
     return { messages: { create } };
@@ -15,7 +11,7 @@ vi.mock("@/server/digests/connection", () => ({
   slackMemberTimezone: async () => "Europe/London",
 }));
 vi.mock("./tools/undo", async (importOriginal) => ({
-  ...await importOriginal<typeof import("./tools/undo")>(),
+  ...(await importOriginal<typeof import("./tools/undo")>()),
   latestThreadAction: async () => null,
 }));
 const ctx = {
@@ -120,16 +116,27 @@ it("dispatches explicit undo even when the model selects another mutation", asyn
   vi.stubEnv("ANTHROPIC_API_KEY", "synthetic");
   const undo = slackTools.find((tool) => tool.name === "undo_last_action")!;
   const schedule = slackTools.find((tool) => tool.name === "hive_schedule_digest")!;
-  const handler = vi.spyOn(undo, "handler").mockResolvedValue({ react: "white_check_mark" });
+  const handler = vi.spyOn(undo, "handler").mockResolvedValue({
+    react: "white_check_mark",
+  });
   const mutation = vi.spyOn(schedule, "handler");
   create.mockResolvedValue({
     stop_reason: "tool_use",
-    content: [{ type: "tool_use", name: "hive_schedule_digest", input: { text: "set Mondays" } }],
+    content: [
+      {
+        type: "tool_use",
+        name: "hive_schedule_digest",
+        input: { text: "set Mondays" },
+      },
+    ],
   });
   expect(await respondToSlack(ctx, "undo", "1800000000.002", [])).toEqual({
     text: "",
     react: "white_check_mark",
   });
-  expect(handler).toHaveBeenCalledWith(expect.objectContaining({ instructionText: "undo" }), {});
+  expect(handler).toHaveBeenCalledWith(
+    expect.objectContaining({ instructionText: "undo" }),
+    {},
+  );
   expect(mutation).not.toHaveBeenCalled();
 });
