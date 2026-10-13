@@ -29,6 +29,7 @@ export type ReversibleChange = {
   inverse: SlackActionInverse;
   text: string;
   undo?: string;
+  react?: string | false;
 };
 async function authorize(tx: postgres.TransactionSql, ctx: SlackToolContext) {
   const rows =
@@ -54,17 +55,23 @@ export async function runReversibleAction(
     await lockThread(tx, ctx);
     await authorize(tx, ctx);
     const prior =
-      await tx`SELECT reply,member_id FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${messageTs}`;
+      await tx`SELECT reply,inverse,member_id FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${messageTs}`;
     if (prior[0]) {
       if (prior[0].member_id !== ctx.memberId)
         throw new HiveError("This action belongs to another member.", 403);
-      return { text: slackToolReply(String(prior[0].reply), ctx) };
+      return {
+        text: slackToolReply(String(prior[0].reply), ctx),
+        ...(prior[0].inverse?.replyReact === null
+          ? {}
+          : { react: prior[0].inverse?.replyReact ?? "+1" }),
+      };
     }
     const result = await change(tx);
     const inverse = inverseSchema.parse(result.inverse);
+    const react = result.react === false ? null : (result.react ?? "+1");
     const text = slackToolReply(result.text, ctx).replace(/\s+/g, " ").trim();
-    await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${messageTs},${toolName},${tx.json(inverse)},${text})`;
-    return { text };
+    await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${messageTs},${toolName},${tx.json({ ...inverse, replyReact: react })},${text})`;
+    return { text, ...(react ? { react } : {}) };
   });
 }
 export async function hasThreadAction(
@@ -165,6 +172,7 @@ export async function undoLastAction(ctx: SlackToolContext) {
     }
     await tx`UPDATE slack_tool_actions SET undone_at=now() WHERE team_id=${ctx.teamId} AND id=${action.id}`;
     return {
+      react: "+1",
       text:
         inverse.kind === "decision_reversed"
           ? decisionReply!
