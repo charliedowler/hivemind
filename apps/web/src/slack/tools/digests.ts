@@ -14,7 +14,7 @@ const tools: SlackTool[] = [
   {
     name: "hive_schedule_digest",
     description:
-      "Set a digest schedule from the full original request. Clear admin instructions save immediately. Use also for undo or cancel that in a digest thread within one hour. Missing time or ambiguity asks one question; no confirmation buttons.",
+      "Set a digest schedule from the full original request. Clear admin instructions and fully specified suggestions save immediately, including Maybe we should schedule a digest here every Wednesday at 9am London time. Use also for undo or cancel that in a digest thread within one hour. Missing time or ambiguity asks one question; no confirmation buttons.",
     input_schema: z.toJSONSchema(input) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       const { text } = input.parse(args);

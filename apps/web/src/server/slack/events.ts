@@ -388,9 +388,8 @@ export async function handleMessage(
             });
       if (reply.silent && mentioned)
         reply = {
-          text: /^(?:thanks|thank you|cheers)\b/i.test(stripped)
-            ? "You’re welcome."
-            : "No change made.",
+          text: "",
+          react: "+1",
         };
       await sql`UPDATE slack_jobs SET payload=${sql.json({ decision, reply } as never)} WHERE team_id=${teamId} AND id=${receipt[0].id}`;
       if (reply.react) {

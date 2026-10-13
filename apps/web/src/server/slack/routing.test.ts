@@ -157,7 +157,7 @@ describe("Slack reply placement", () => {
     );
     expect(post).not.toHaveBeenCalled();
   });
-  it("answers explicit mentions even when the selected tool is silent", async () => {
+  it("acknowledges a silent mention with a reaction", async () => {
     respond.mockResolvedValue({ text: "", silent: true });
     await handleMessage("team_fixture", {
       type: "app_mention",
@@ -166,9 +166,11 @@ describe("Slack reply placement", () => {
       ts: "1800000000.1",
       text: "<@UHIVE> Maybe we should set up a digest.",
     });
-    expect(post).toHaveBeenCalledTimes(1);
-    expect(post.mock.calls[0][2]).toBe("No change made.");
-    expect(post.mock.calls[0][3]).toBe("1800000000.1");
+    expect(post).not.toHaveBeenCalled();
+    expect(react).toHaveBeenCalledWith(
+      { teamId: "team_fixture", channelId: "C123", messageTs: "1800000000.1" },
+      "+1",
+    );
   });
   it("reads human thread answers for the gate without indexing the context", async () => {
     page.mockResolvedValue({
