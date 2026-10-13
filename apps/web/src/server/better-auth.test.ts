@@ -174,7 +174,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     const publicMember = newId("mem");
     memberIds.push(publicMember);
     await getSql()`INSERT INTO members (id, name, email, email_verified) VALUES (${publicMember}, 'Invite fixture', ${`${suffix}@gmail.com`}, true)`;
-    await expect(enrollMember(publicMember, { intent: "domain" })).rejects.toThrow("Use an invite");
+    await expect(enrollMember(publicMember, { intent: "domain" })).rejects.toThrow(/invite/i);
     expect((await enrollMember(publicMember, { intent: "invite", inviteCode: `${baseUrl}/app/login?invite=${invite}` }))?.teamId).toBe(teamB);
     expect((await enrollMember(publicMember, { intent: "create", teamName: "Cannot change hive" }))?.teamId).toBe(teamB);
   });

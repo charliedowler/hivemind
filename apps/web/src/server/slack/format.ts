@@ -109,3 +109,26 @@ export function slackCaptureReply(result: PushResult | null) {
     return `Kept privately for your review: <${url}|Review cell>. Confirm it before sharing.`;
   return `Saved <${url}|${slackEscape(result.learning.title).replace(/\|/g, "/")}>.`;
 }
+
+export function slackDecisionSignals(
+  value: unknown,
+): Record<string, number> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const outer = value as Record<string, unknown>;
+  const signals =
+    outer.signals &&
+    typeof outer.signals === "object" &&
+    !Array.isArray(outer.signals)
+      ? outer.signals
+      : outer;
+  const numbers = Object.fromEntries(
+    Object.entries(signals).filter(
+      ([, score]) =>
+        typeof score === "number" &&
+        Number.isFinite(score) &&
+        score >= 0 &&
+        score <= 1,
+    ),
+  ) as Record<string, number>;
+  return Object.keys(numbers).length ? numbers : null;
+}
