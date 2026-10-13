@@ -345,11 +345,10 @@ export async function handleMessage(
       }
       if (decision.decision === "stay_silent") return;
       if (decision.decision === "react_only") {
-        await slackCall(inst.token, "reactions.add", {
-          channel,
-          timestamp: message.ts,
-          name: "+1",
-        });
+        await reactToSlack(
+          { teamId, channelId: channel, messageTs: message.ts },
+          "+1",
+        );
         await getSql()`UPDATE slack_decisions SET delivery='sent' WHERE team_id=${teamId} AND id=${decision.id}`;
         return;
       }
@@ -388,8 +387,23 @@ export async function handleMessage(
             });
       if (reply.silent && mentioned)
         reply = {
-          text: "",
-          react: "+1",
+          react: /^(?:thanks|thank you|cheers)\b/i.test(stripped)
+            ? "+1"
+            : "eyes",
+        };
+      if (
+        !reply.react &&
+        /^(?:no change made|done|agreed|noted|looking|saved)[.!]?$/i.test(
+          reply.text?.trim() ?? "",
+        )
+      )
+        reply = {
+          ...reply,
+          react: /^(?:noted|looking|no change)/i.test(reply.text ?? "")
+            ? "eyes"
+            : /^saved/i.test(reply.text ?? "")
+              ? "white_check_mark"
+              : "+1",
         };
       await sql`UPDATE slack_jobs SET payload=${sql.json({ decision, reply } as never)} WHERE team_id=${teamId} AND id=${receipt[0].id}`;
       if (reply.react) {

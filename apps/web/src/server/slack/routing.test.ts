@@ -169,7 +169,7 @@ describe("Slack reply placement", () => {
     expect(post).not.toHaveBeenCalled();
     expect(react).toHaveBeenCalledWith(
       { teamId: "team_fixture", channelId: "C123", messageTs: "1800000000.1" },
-      "+1",
+      "eyes",
     );
   });
   it("reads human thread answers for the gate without indexing the context", async () => {

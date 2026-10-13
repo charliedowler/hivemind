@@ -102,7 +102,11 @@ export const slackTools: SlackTool[] = [
         ...ctx,
         actionType: "undo",
       });
-      if (!judgment.act) return { text: judgment.reason };
+      if (!judgment.act)
+        return {
+          text: judgment.reason,
+          ...(judgment.react ? { react: judgment.react } : {}),
+        };
       try {
         return await undoLastAction(ctx);
       } catch (error) {
@@ -173,7 +177,24 @@ export const slackTools: SlackTool[] = [
       );
       return {
         text: slackCaptureReply(result),
+        ...(!result || (!result.dropped && !result.learning.captureFlagged)
+          ? { react: "white_check_mark" }
+          : {}),
       };
+    },
+  },
+  {
+    name: "react",
+    description:
+      "Acknowledge with a real reaction instead of text when the entire reply would be done, agreed, noted or no change. Use +1 for done or agreed, eyes for noted or looking, white_check_mark for saved. Do not use instead of executing an admin instruction or asking for a missing detail.",
+    input_schema: z.toJSONSchema(
+      z.strictObject({ emoji: z.enum(["+1", "eyes", "white_check_mark"]) }),
+    ) as Anthropic.Tool.InputSchema,
+    async handler(_ctx, args) {
+      const input = z
+        .strictObject({ emoji: z.enum(["+1", "eyes", "white_check_mark"]) })
+        .parse(args);
+      return { react: input.emoji };
     },
   },
   {
