@@ -34,9 +34,6 @@ jobs:
       DATABASE_URL: postgres://hivemind:hivemind@127.0.0.1:54329/hive_capture_rules_hive_digest_ci
       HIVE_DIGEST_TEST_DATABASE_URL: postgres://hivemind:hivemind@127.0.0.1:54329/hive_capture_rules_hive_digest_ci
       HIVE_ANALYTICS_TEST_DATABASE_URL: postgres://hivemind:hivemind@127.0.0.1:54329/hivemind
-      PUBLIC_URL: http://localhost:3000
-      BETTER_AUTH_URL: http://localhost:3000
-      BETTER_AUTH_SECRET: ci-only-placeholder-not-a-production-secret
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v6
@@ -64,4 +61,8 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - name: Build with local URLs and a CI-only auth secret; no external provider credentials
+        env:
+          PUBLIC_URL: http://localhost:3000
+          BETTER_AUTH_URL: http://localhost:3000
+          BETTER_AUTH_SECRET: ci-only-placeholder-not-a-production-secret
         run: pnpm --filter web build
