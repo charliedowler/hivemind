@@ -14,7 +14,7 @@ The normative contract is the 13 October onboarding plan, including Addendum 5, 
 | Hooks | SessionStart, no selection, fail-to-pass PostToolUse, PreCompact, Stop dedupe, SubagentStop | stdin, JSONL, hook output, HTTP upload trace |
 | Capture boundaries | selected/unselected/missing/contradictory repo, private only, organisation search privacy, chat refusal | model-call counts, database rows, MCP responses |
 | Capture contract | observation/evidence inference, correction, two downvotes/history, outcome mapping, one vote per actor | MCP, receipts, rows |
-| Privacy | credentials, personal data, customer data rejected before extraction/embedding | rejection and boundary-call counts |
+| Privacy | credentials, personal data, customer data rejected before any model call; recognised credential redaction as a positive control | real category-provider payloads, rejection and boundary-call counts |
 | Output | forbidden vocabulary, ISO times, undo hints, extra confirmations, one missing-detail question | inspected human-facing output (not raw protocol metadata) |
 | Real agents | Claude fresh/existing/second machine/join/share, Codex onboarding, actual Bash fail/pass, no selection, unanswered question | CLI versions, stream transcripts, native tool/hook calls, sandbox cleanup |
 
