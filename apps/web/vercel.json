@@ -1,0 +1,24 @@
+{
+  "functions": {
+    "src/app/api/queues/slack/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "hive-slack",
+          "maxConcurrency": 1
+        }
+      ]
+    }
+  },
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/slack-digests",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/capture-rules",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

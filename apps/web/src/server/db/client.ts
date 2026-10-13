@@ -5,6 +5,7 @@ import { HiveUnavailableError } from "../errors";
 
 const state = globalThis as typeof globalThis & {
   hiveSql?: ReturnType<typeof postgres>;
+  hiveAuthSql?: ReturnType<typeof postgres>;
 };
 
 export function getSql() {
@@ -17,7 +18,12 @@ export function getSql() {
 }
 
 export function getDb() {
-  return drizzle(getSql(), { schema });
+  if (!process.env.DATABASE_URL) throw new HiveUnavailableError();
+  state.hiveAuthSql ??= postgres(process.env.DATABASE_URL, {
+    prepare: false,
+    max: 2,
+  });
+  return drizzle(state.hiveAuthSql, { schema });
 }
 
 let embeddingColumn: Promise<boolean> | undefined;

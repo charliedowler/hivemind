@@ -1,3 +1,9 @@
+import {
+  recordEvent,
+  withOperation,
+  currentOrigin,
+  originFor,
+} from "./analytics/events";
 import { createHash, randomBytes } from "node:crypto";
 import { posix } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -12,6 +18,7 @@ import {
 } from "@hivemind/core";
 import { getSql } from "./db/client";
 import { learningView } from "./learning-view";
+import { learningVisible, learningVisibleSql } from "./capture-visibility";
 import {
   HiveError,
   HiveInputError,
@@ -39,13 +46,13 @@ export function knowledgePath(path: string): string {
     /[\x00-\x1f\x7f]/.test(path) ||
     path.length > 500
   )
-    throw new HiveInputError("Use a relative hive path without traversal.");
+    throw new HiveInputError("Use a path relative to the hive root. Leave out . and .. segments.");
   const normalized = path.replace(/\/$/, "");
   if (
     normalized &&
     normalized.split("/").some((part) => !part || part === "." || part === "..")
   )
-    throw new HiveInputError("Use a relative hive path without traversal.");
+    throw new HiveInputError("Use a path relative to the hive root. Leave out . and .. segments.");
   return normalized;
 }
 
@@ -57,8 +64,20 @@ function cellPath(cell: LearningView) {
 }
 
 export function renderKnowledgeTree(
-  cells: LearningView[],
+  cells: (LearningView & { captureFlagged?: boolean })[],
+  ctx?: HiveContext,
 ): Map<string, string> {
+  cells = cells.filter((cell) =>
+    ctx ? learningVisible(ctx, cell) : !cell.captureFlagged,
+  );
+  const visibleIds = new Set(cells.map((cell) => cell.id));
+  cells = cells.map((cell) => ({
+    ...cell,
+    supersededBy:
+      cell.supersededBy && visibleIds.has(cell.supersededBy)
+        ? cell.supersededBy
+        : null,
+  }));
   const files = new Map<string, string>();
   const groups = new Map<string, { title: string; cells: LearningView[] }>();
   const add = (path: string, title: string, cell: LearningView) => {
@@ -125,7 +144,7 @@ export function renderKnowledgeTree(
   const currentIds = new Set(current.map((cell) => cell.id));
   files.set(
     "INDEX.md",
-    `# The hive\n\nGenerated from the team's cells. This view is read-only. Use hive_push to add or correct a learning. Verification dates must be checked against today's date even in an older snapshot.\n\n## Current cells\n\n${links(current) || "No current cells."}\n\n## History\n\n${links(cells.filter((cell) => !currentIds.has(cell.id))) || "No historical cells."}\n`,
+    `# The hive\n\nThis tree contains your team's cells. Use hive_push to add or correct a learning. You cannot edit the tree directly. Check verification dates against today's date, including in older snapshots.\n\n## Current cells\n\n${links(current) || "No current cells."}\n\n## History\n\n${links(cells.filter((cell) => !currentIds.has(cell.id))) || "No historical cells."}\n`,
   );
   return files;
 }
@@ -214,13 +233,13 @@ export async function ensureKnowledge(
         manifest: state.manifest as Manifest,
       };
     const rows =
-      await sql`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} ORDER BY l.id LIMIT 10001`;
+      await sql`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND l.capture_flagged = false ORDER BY l.id LIMIT 10001`;
     if (rows.length > 10000)
       throw new HiveUnavailableError(
         "This hive needs a streamed rebuild before it can publish more than 10000 cells.",
       );
     const renderedAt = Date.now();
-    const files = renderKnowledgeTree(rows.map(learningView));
+    const files = renderKnowledgeTree(rows.map(row => learningView(row, ctx)));
     const oldManifest = state.manifest as Manifest;
     const manifest: Manifest = {};
     await withStorageWorkers(files, async ([path, content]) => {
@@ -244,7 +263,19 @@ export async function ensureKnowledge(
       : null;
     const published =
       await sql`UPDATE knowledge_state SET next_verify_at = ${nextVerifyAt}, manifest = ${sql.json(manifest)}, published_revision = ${state.revision} WHERE team_id = ${ctx.teamId} AND revision = ${state.revision} RETURNING published_revision`;
-    if (published.length) return { revision: Number(state.revision), manifest };
+    if (published.length) {
+      await recordEvent({
+        name: "tree.rebuilt",
+        key: `${ctx.teamId}:${state.revision}`,
+        properties: { revision: Number(state.revision), files: files.size },
+        origin: {
+          ...(currentOrigin() ?? originFor(ctx, "scheduled", "system")),
+          teamId: ctx.teamId,
+          memberId: ctx.memberId,
+        },
+      });
+      return { revision: Number(state.revision), manifest };
+    }
   }
   throw new HiveError(
     "The hive changed during publication. Retry to read the latest tree.",
@@ -264,15 +295,37 @@ export function scheduleKnowledge(ctx: HiveContext) {
   } catch {}
 }
 
-export async function browseKnowledge(
+export async function invalidateKnowledgeSnapshots(
+  tx: LearningTransaction,
+  ctx: HiveContext,
+) {
+  await tx`DELETE FROM knowledge_snapshots WHERE team_id = ${ctx.teamId}`;
+}
+
+export function browseKnowledge(ctx: HiveContext, path = "") {
+  return withOperation(ctx, "tree_browse", () =>
+    browseKnowledgeAction(ctx, path),
+  );
+}
+async function contextKnowledge(ctx: HiveContext) {
+  const { revision } = await ensureKnowledge(ctx);
+  const rows =
+    await getSql()`SELECT l.*, m.name AS author_name FROM learnings l JOIN members m ON m.id = l.member_id AND m.team_id = l.team_id WHERE l.team_id = ${ctx.teamId} AND ${learningVisibleSql(ctx)} ORDER BY l.id LIMIT 10001`;
+  if (rows.length > 10000)
+    throw new HiveUnavailableError(
+      "This hive needs a streamed rebuild before it can read more than 10000 cells.",
+    );
+  return { revision, files: renderKnowledgeTree(rows.map(row => learningView(row, ctx)), ctx) };
+}
+async function browseKnowledgeAction(
   ctx: HiveContext,
   path = "",
 ): Promise<KnowledgeListing> {
   path = knowledgePath(path);
-  const { revision, manifest } = await ensureKnowledge(ctx);
+  const { revision, files } = await contextKnowledge(ctx);
   const prefix = path ? `${path}/` : "";
   const entries = new Map<string, KnowledgeListing["entries"][number]>();
-  for (const name of Object.keys(manifest)) {
+  for (const name of files.keys()) {
     if (!name.startsWith(prefix)) continue;
     const [child, rest] = name.slice(prefix.length).split("/");
     entries.set(child, {
@@ -283,6 +336,10 @@ export async function browseKnowledge(
   }
   if (path && !entries.size)
     throw new HiveNotFoundError("Directory not found in your hive.");
+  await recordEvent({
+    name: "tree.read",
+    properties: { revision, files: entries.size },
+  });
   return {
     path,
     revision,
@@ -292,23 +349,29 @@ export async function browseKnowledge(
   };
 }
 
-export async function readKnowledge(
+export function readKnowledge(ctx: HiveContext, path: string) {
+  return withOperation(ctx, "tree_read", () => readKnowledgeAction(ctx, path));
+}
+async function readKnowledgeAction(
   ctx: HiveContext,
   path: string,
 ): Promise<KnowledgeFile> {
   path = knowledgePath(path);
-  const { revision, manifest } = await ensureKnowledge(ctx);
-  const file = manifest[path];
-  if (!file) throw new HiveNotFoundError("File not found in your hive.");
-  const content = await readPrivateObject(file.key);
-  if (digest(content) !== file.digest)
-    throw new HiveUnavailableError(
-      "This hive file failed its integrity check. Rebuild the tree.",
-    );
-  return { path, revision, content: content.toString("utf8") };
+  const { revision, files } = await contextKnowledge(ctx);
+  const content = files.get(path);
+  if (content === undefined)
+    throw new HiveNotFoundError("File not found in your hive.");
+  await recordEvent({
+    name: "tree.read",
+    properties: { revision, files: 1, bytes: Buffer.byteLength(content) },
+  });
+  return { path, revision, content };
 }
 
-export async function snapshotKnowledge(ctx: HiveContext) {
+export function snapshotKnowledge(ctx: HiveContext) {
+  return withOperation(ctx, "snapshot", () => snapshotKnowledgeAction(ctx));
+}
+async function snapshotKnowledgeAction(ctx: HiveContext) {
   const { revision, manifest } = await ensureKnowledge(ctx);
   const pack = tar.pack(),
     chunks: Buffer[] = [];
@@ -349,6 +412,14 @@ export async function snapshotKnowledge(ctx: HiveContext) {
     const token = randomBytes(32).toString("base64url"),
       expiresAt = new Date(Date.now() + 15 * 60000);
     await getSql()`INSERT INTO knowledge_snapshots (token_hash, team_id, member_id, revision, object_key, expires_at) VALUES (${digest(token)}, ${ctx.teamId}, ${ctx.memberId}, ${revision}, ${key}, ${expiresAt})`;
+    await recordEvent({
+      name: "snapshot.exported",
+      properties: {
+        revision,
+        files: Object.keys(manifest).length,
+        bytes: archive.length,
+      },
+    });
     return {
       revision,
       url: `${process.env.PUBLIC_URL ?? "https://gohive.dev"}/api/knowledge/snapshot?token=${token}`,

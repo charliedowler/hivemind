@@ -1,3 +1,4 @@
+import { beginCall, recordEvent, reportedModel } from "./analytics/events";
 import {
   choice,
   noul,
@@ -273,8 +274,22 @@ async function evaluate<
         latencyMs: 0,
       }),
     );
+    await recordEvent({
+      name: "classifier.completed",
+      outcome: "unconfigured",
+      reasonCode: "not_configured",
+      properties: {
+        purpose: point === "capture" ? "hook" : point,
+        model: jevModel,
+      },
+    });
     return null;
   }
+  const finish = await beginCall(
+    "classifier",
+    point === "capture" ? "hook" : point,
+    jevModel,
+  );
   const start = performance.now();
   try {
     const client = new TypeSafeClient({
@@ -294,12 +309,15 @@ async function evaluate<
           ? z.object({ worthSharing: noulAnswer })
           : z.object({ relevant: noulAnswer })
     ).parse(response.answers) as SystemOneResult<Q>["answers"];
+    const latencyMs = Math.round(performance.now() - start);
+    await finish("completed", null, { model: reportedModel(response.model) });
     return {
       model: response.model,
-      latencyMs: Math.round(performance.now() - start),
+      latencyMs,
       answers,
     };
   } catch {
+    await finish("failed", "provider_failed");
     console.info(
       JSON.stringify({
         event: "jev",
@@ -337,7 +355,11 @@ export async function classifyPush(input: {
   cost?: number;
   kind?: LearningKind;
 }) {
-  const classification = await evaluate("push", { ...input, cost: input.cost ?? null, kind: input.kind ?? null }, pushQuestions);
+  const classification = await evaluate(
+    "push",
+    { ...input, cost: input.cost ?? null, kind: input.kind ?? null },
+    pushQuestions,
+  );
   const decision = decide({
     point: "push",
     callerKind: input.kind,

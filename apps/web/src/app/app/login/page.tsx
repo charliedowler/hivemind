@@ -1,33 +1,28 @@
+import { AuthErrorPage } from "@/components/auth-error-page";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { cookies, headers } from "next/headers";
 import { Sprite } from "@hivemind/design-system";
 import { Login } from "@/components/login";
-import { publicUrl } from "@/lib/public-url";
 import { ErrorPanel } from "@/components/primitives";
 import { errorMessage } from "@/lib/client";
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ invite?: string }>;
-}) {
-  try {
-    const [baseUrl, params] = await Promise.all([publicUrl(), searchParams]);
-    return (
-      <main className="page">
-        <Link className="brand login-brand" href="/">
-          <Sprite name="bee" scale={3} />
-          Hive
-        </Link>
-        <Login
-          baseUrl={baseUrl}
-          invite={typeof params.invite === "string" ? params.invite : ""}
-        />
-      </main>
-    );
-  } catch (error) {
-    return (
-      <main className="page">
-        <ErrorPanel message={errorMessage(error)} />
-      </main>
-    );
+import { enabledSignInProviders } from "@/lib/auth-providers";
+import { pageQuery, type PageQuery } from "@/lib/oauth-query";
+import { getAuth } from "@/server/better-auth";
+
+export const dynamic = "force-dynamic";
+export default async function LoginPage({ searchParams }: { searchParams: Promise<PageQuery> }) {
+  const params = await searchParams;
+  if (params.error) return <AuthErrorPage reason={typeof params.error === "string" ? params.error : "unknown"} />;
+  const jar = await cookies();
+  if (jar.get("better-auth.session_token") || jar.get("__Secure-better-auth.session_token")) {
+    const session = await (await getAuth()).api.getSession({ headers: await headers() });
+    if (session?.user.emailVerified) redirect(params.client_id ? `/api/auth/oauth2/authorize?${pageQuery(params)}` : "/app/join");
   }
+  try {
+    return <main className="page">
+      <Link className="brand login-brand" href="/"><Sprite name="bee" scale={3} />Hive</Link>
+      <Login invite={typeof params.invite === "string" ? params.invite : ""} providers={enabledSignInProviders()} initialError={params.error ? "Sign-in could not finish. Try again or use your email." : ""} />
+    </main>;
+  } catch (error) { return <main className="page"><ErrorPanel message={errorMessage(error)} /></main>; }
 }

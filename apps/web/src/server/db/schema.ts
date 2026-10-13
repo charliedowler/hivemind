@@ -26,10 +26,12 @@ export const teams = pgTable("teams", {
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
   teamId: text("team_id")
-    .notNull()
     .references(() => teams.id),
   name: text("name").notNull(),
   createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  image: text("image"),
+  hiveRegistration: text("hive_registration"),
   email: text("email").unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   role: text("role").notNull().default("member"),
@@ -59,9 +61,12 @@ export const webSessions = pgTable("web_sessions", {
     .notNull()
     .references(() => members.id),
   teamId: text("team_id")
-    .notNull()
     .references(() => teams.id),
   tokenHash: text("token_hash").notNull().unique(),
+  token: text("token").unique(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
   createdAt: createdAt(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
@@ -74,6 +79,11 @@ export const learnings = pgTable("learnings", {
   memberId: text("member_id")
     .notNull()
     .references(() => members.id),
+  captureContext: jsonb("capture_context").notNull().default({}),
+  captureCategories: jsonb("capture_categories").notNull().default({}),
+  captureFlagged: boolean("capture_flagged").notNull().default(false),
+  captureRedacted: boolean("capture_redacted").notNull().default(false),
+  captureRuleIds: text("capture_rule_ids").array().notNull().default([]),
   classification: jsonb("classification"),
   title: text("title").notNull(),
   body: text("body").notNull(),
@@ -247,4 +257,167 @@ export const knowledgeSnapshots = pgTable("knowledge_snapshots", {
   objectKey: text("object_key").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: createdAt(),
+});
+
+export const captureRules = pgTable("capture_rules", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull().references(() => teams.id),
+  memberId: text("member_id").references(() => members.id),
+  createdBy: text("created_by").notNull().references(() => members.id),
+  name: text("name").notNull(),
+  scope: text("scope").notNull(),
+  kind: text("kind").notNull(),
+  action: text("action").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  config: jsonb("config").notNull(),
+  source: text("source").notNull().default("web"),
+  naturalText: text("natural_text"),
+  revision: integer("revision").notNull().default(1),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const captureRulePreviews = pgTable("capture_rule_previews", {
+  tokenHash: text("token_hash").primaryKey(),
+  ruleId: text("rule_id").notNull(),
+  teamId: text("team_id").notNull(),
+  memberId: text("member_id").notNull(),
+  ruleRevision: integer("rule_revision").notNull(),
+  cells: jsonb("cells").notNull(),
+  nextCursor: text("next_cursor"),
+  scanned: integer("scanned").notNull(),
+  truncated: boolean("truncated").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+});
+
+export const captureRuleApplications = pgTable("capture_rule_applications", {
+  id: text("id").primaryKey(),
+  instructionId: text("instruction_id"),
+  teamId: text("team_id").notNull(),
+  ruleId: text("rule_id").notNull(),
+  learningId: text("learning_id").notNull(),
+  memberId: text("member_id").notNull(),
+  previousState: text("previous_state").notNull(),
+  action: text("action").notNull().default("drop"),
+  ruleName: text("rule_name").notNull(),
+  beforeSnapshot: jsonb("before_snapshot").notNull().default({}),
+  appliedRevision: integer("applied_revision").notNull(),
+  reasonCode: text("reason_code").notNull().default("capture_rule"),
+  createdAt: createdAt(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  reversedBy: text("reversed_by"),
+  reversalReason: text("reversal_reason"),
+});
+
+export const slackDigestSchedules = pgTable("slack_digest_schedules", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id),
+  channelId: text("channel_id").notNull(),
+  channelName: text("channel_name").notNull(),
+  cadence: text("cadence").notNull(),
+  weekday: integer("weekday").notNull().default(1),
+  monthDay: integer("month_day").notNull().default(1),
+  localTime: text("local_time").notNull(),
+  timezone: text("timezone").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  includeLearnings: boolean("include_learnings").notNull().default(true),
+  includeInsights: boolean("include_insights").notNull().default(true),
+  includeFriction: boolean("include_friction").notNull().default(true),
+  includeDecisions: boolean("include_decisions").notNull().default(true),
+  skipEmpty: boolean("skip_empty").notNull().default(true),
+  lastPostedAt: timestamp("last_posted_at", { withTimezone: true }),
+  lastCursor: timestamp("last_cursor", { withTimezone: true }).notNull(),
+  coverageStartAt: timestamp("coverage_start_at", {
+    withTimezone: true,
+  }).notNull(),
+  nextDueAt: timestamp("next_due_at", { withTimezone: true }).notNull(),
+  lastSlotAt: timestamp("last_slot_at", { withTimezone: true }),
+  createdBy: text("created_by").notNull(),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+export const slackDigestPosts = pgTable("slack_digest_posts", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  scheduleId: text("schedule_id").notNull(),
+  slotAt: timestamp("slot_at", { withTimezone: true }).notNull(),
+  trigger: text("trigger").notNull(),
+  status: text("status").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  postedAt: timestamp("posted_at", { withTimezone: true }),
+  slackTs: text("slack_ts"),
+  permalink: text("permalink"),
+  sinceCursor: timestamp("since_cursor", { withTimezone: true }).notNull(),
+  untilCursor: timestamp("until_cursor", { withTimezone: true }),
+  counts: jsonb("counts").notNull().default({}),
+  error: text("error"),
+});
+export const slackDigestReceipts = pgTable(
+  "slack_digest_receipts",
+  {
+    scheduleId: text("schedule_id").notNull(),
+    teamId: text("team_id").notNull(),
+    sourceKey: text("source_key").notNull(),
+    postId: text("post_id").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scheduleId, table.sourceKey] })],
+);
+export const slackDigestProposals = pgTable("slack_digest_proposals", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull(),
+  memberId: text("member_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  schedule: jsonb("schedule").notNull(),
+  restatement: text("restatement").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  confirmedScheduleId: text("confirmed_schedule_id"),
+  createdAt: createdAt(),
+});
+
+export const captureRuleInstructions = pgTable("capture_rule_instructions", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull().references(() => teams.id),
+  memberId: text("member_id").notNull(),
+  source: text("source").notNull(),
+  channelId: text("channel_id"),
+  threadTs: text("thread_ts"),
+  decision: jsonb("decision").notNull(),
+  outcome: text("outcome").notNull(),
+  ruleId: text("rule_id"),
+  ruleRevision: integer("rule_revision"),
+  ruleSnapshot: jsonb("rule_snapshot"),
+  restatement: text("restatement").notNull(),
+  naturalText: text("natural_text").notNull(),
+  question: text("question"),
+  jobStatus: text("job_status").notNull().default("complete"),
+  jobCursor: text("job_cursor"),
+  undoCursor: text("undo_cursor"),
+  counts: jsonb("counts").notNull().default({scanned: 0, matched: 0, applied: 0, skipped: 0, restored: 0, retained: 0}),
+  undoUntil: timestamp("undo_until", {withTimezone: true}),
+  undoStartedAt: timestamp("undo_started_at", {withTimezone: true}),
+  undoneAt: timestamp("undone_at", {withTimezone: true}),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", {withTimezone: true}).notNull().defaultNow(),
+});
+
+export const slackToolActions = pgTable("slack_tool_actions", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull().references(() => teams.id),
+  memberId: text("member_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  threadTs: text("thread_ts").notNull(),
+  messageTs: text("message_ts").notNull(),
+  toolName: text("tool_name").notNull(),
+  inverse: jsonb("inverse").notNull(),
+  reply: text("reply").notNull(),
+  createdAt: createdAt(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
 });

@@ -34,20 +34,55 @@ async function main() {
   facts.text = notes.join("\n").slice(-6000);
   if (facts.text.trim().length < 20 || facts.changes + facts.errors + facts.observations === 0) return;
   fs.writeFileSync(marker, "", { flag: "wx", mode: 0o600 });
-  let key = process.env.HIVE_KEY;
+  let key;
+  const home = process.env.HIVE_HOME || os.homedir();
+  const oauthPath = path.join(home, ".hive", "oauth.json");
+  try {
+    const stored = JSON.parse(fs.readFileSync(oauthPath, "utf8"));
+    if (stored.baseUrl === hiveUrl && typeof stored.access_token === "string") {
+      if (!stored.expires_at || stored.expires_at > Date.now() + 30000) key = stored.access_token;
+      else if (stored.refresh_token && stored.client_id && new URL(stored.token_endpoint).origin === new URL(hiveUrl).origin) {
+        const response = await fetch(stored.token_endpoint, {
+          method: "POST", signal: AbortSignal.timeout(2000),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: stored.refresh_token, client_id: stored.client_id, resource: hiveUrl + "/api/mcp" }),
+        });
+        if (response.ok) {
+          const tokens = await response.json();
+          if (typeof tokens.access_token === "string") {
+            const temp = oauthPath + "." + crypto.randomUUID();
+            fs.writeFileSync(temp, JSON.stringify({ ...stored, ...tokens, expires_at: Date.now() + (tokens.expires_in || 3600) * 1000 }), { mode: 0o600 });
+            fs.renameSync(temp, oauthPath);
+            key = tokens.access_token;
+          }
+        }
+      }
+    }
+  } catch {}
+  key ||= process.env.HIVE_KEY;
   if (!key) {
     try {
-      const config = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude.json"), "utf8"));
+      const config = JSON.parse(fs.readFileSync(path.join(home, ".claude.json"), "utf8"));
       const server = config.mcpServers?.hive;
       if (server?.url?.replace(/\/$/, "") === hiveUrl + "/api/mcp") key = server.headers?.Authorization?.replace(/^Bearer /i, "");
     } catch {}
   }
+  let context = { cwd: input.cwd || process.cwd(), home, agent: "claude-code", sessionType: process.env.CLAUDE_CODE_ENTRYPOINT || "cli", sessionRef: input.session_id };
+  try {
+    const hooks = await import(require("node:url").pathToFileURL(path.join(home, ".claude", "skills", "hive", "scripts", "capture-rules.mjs")).href);
+    context = hooks.captureContext(input);
+    if (key) {
+      const rules = await hooks.effectiveCaptureRules({ token: key, baseUrl: hiveUrl, home });
+      const decision = await hooks.localCaptureDecision(rules, { ...context, title: "", body: facts.text });
+      if (decision.dropped || decision.action === "drop") return;
+    }
+  } catch {}
   if (key) {
     try {
       const response = await fetch(hiveUrl + "/api/app/capture", {
         method: "POST",
         headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify(facts),
+        body: JSON.stringify({ ...facts, ...context }),
         signal: AbortSignal.timeout(2000),
       });
       if (response.ok && (await response.json()).decision === "skip") return;

@@ -1,14 +1,16 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { cx } from "../cx";
 import { Sprite } from "../sprites/Sprite";
 import type { AgentKind } from "./MemberBee";
 
 export interface InstallOption {
-  agent: AgentKind;
+  agent: AgentKind | "executor";
   label: string;
   code: string;
+  description?: string;
+  details?: ReactNode;
 }
 
 export interface InstallSnippetProps {
@@ -19,7 +21,7 @@ export interface InstallSnippetProps {
 
 export function InstallSnippet({
   options,
-  footnote = "Your agent joins the hive.",
+  footnote = "Run this command in your terminal to connect your agent.",
   className,
 }: InstallSnippetProps) {
   const panelId = useId();
@@ -79,30 +81,32 @@ export function InstallSnippet({
         ))}
       </div>
       <div
-        className="hm-install-body"
         role="tabpanel"
         id={panelId}
         aria-labelledby={`${panelId}-${selected}`}
       >
-        <pre
-          className="hm-install-code"
-          tabIndex={0}
-          aria-label={`${option.label} install command`}
-        >
-          <code>
-            <span className="hm-prompt">$ </span>
-            {option.code}
-          </code>
-        </pre>
-        <button
-          type="button"
-          className="hm-install-copy"
-          data-copied={copied}
-          onClick={copy}
-        >
-          <Sprite name={copied ? "icon-check" : "icon-copy"} scale={1} />
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <div className="hm-install-body">
+          <pre
+            className="hm-install-code"
+            tabIndex={0}
+            aria-label={`${option.label} connection details`}
+          >
+            <code>
+              {option.agent !== "executor" && <span className="hm-prompt">$ </span>}
+              {option.code}
+            </code>
+          </pre>
+          <button
+            type="button"
+            className="hm-install-copy"
+            data-copied={copied}
+            onClick={copy}
+          >
+            <Sprite name={copied ? "icon-check" : "icon-copy"} scale={1} />
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+        {option.details}
       </div>
       {copyError ? (
         <p role="alert" className="hm-install-foot">
@@ -111,10 +115,10 @@ export function InstallSnippet({
       ) : null}
       <div className="hm-install-foot" aria-live="polite">
         <Sprite
-          name={option.agent === "claude" ? "bee-claude" : "bee-codex"}
+          name={option.agent === "claude" ? "bee-claude" : option.agent === "codex" ? "bee-codex" : "bee-face"}
           scale={1}
         />
-        {copied ? "Command copied. Your forager is ready." : footnote}
+        {copied ? option.agent === "executor" ? "Server URL copied. Add it to your executor organisation." : "Command copied. Run it in your terminal." : option.description ?? footnote}
       </div>
     </div>
   );

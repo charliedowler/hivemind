@@ -1,3 +1,4 @@
+import { formatRecency } from "@hivemind/core";
 export async function requestJson<T>(
   url: string,
   body?: unknown,
@@ -14,21 +15,14 @@ export async function requestJson<T>(
   });
   if (response.status === 204) return undefined as T;
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error ?? "Something went wrong.");
+  if (!response.ok) throw new Error(data.error ?? "The request failed. Please try again.");
   return data as T;
 }
 
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong.";
+  return error instanceof Error ? error.message : "The request failed. Please try again.";
 }
 
 export function relativeTime(date: string): string {
-  const minutes = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(date).getTime()) / 60000),
-  );
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
-  return `${Math.floor(minutes / 1440)}d ago`;
+  return formatRecency(date);
 }

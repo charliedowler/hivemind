@@ -1,42 +1,107 @@
 "use client";
+import { formatHumanDateTime } from "@hivemind/core";
 import { useEffect, useState } from "react";
-import type { LearningConflict } from "@hivemind/core";
-import { Badge, Button, Card, Sprite } from "@hivemind/design-system";
+import type { ConflictDecisionRecord } from "@hivemind/core";
+import {
+  Badge,
+  Button,
+  Card,
+  Input,
+  Select,
+  Sprite,
+} from "@hivemind/design-system";
 import { errorMessage, requestJson } from "@/lib/client";
 import { CellCitation } from "./cell-citation";
 import { LearningDialog } from "./learning-dialog";
-import { Markdown } from "./markdown";
 import { ErrorPanel, LoadingPanel } from "./primitives";
 
+const decisionLabels = {
+  supersede: "Newer replaces older",
+  keep_both: "Keep both cells",
+  keep_old: "Merge into older",
+  mark_outdated: "Verify both cells",
+  retract_new: "Retract newer",
+  undecided: "Retry automatically",
+  reversed: "Decision reversed",
+};
 export function ConflictsPanel() {
-  const [history, setHistory] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<string>();
+  const [state, setState] = useState<{
+    decisions?: ConflictDecisionRecord[];
+    repos?: string[];
+    error?: string;
+  }>({});
+  const [decision, setDecision] = useState("");
+  const [repo, setRepo] = useState("");
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams();
+    if (decision) query.set("decision", decision);
+    if (repo) query.set("repo", repo);
+    if (search) query.set("search", search);
+    const timer = setTimeout(() => {
+      void requestJson<{
+        decisions: ConflictDecisionRecord[];
+        repos: string[];
+      }>(`/api/app/conflicts?${query}`, undefined, controller.signal)
+        .then((data) => {
+          if (!controller.signal.aborted) setState(data);
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted)
+            setState({ error: errorMessage(error) });
+        });
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [refresh, decision, repo, search]);
+  const decisions = state.decisions;
+  const repos = state.repos ?? [];
   return (
-    <section className="stack dashboard" aria-label="Conflicts">
+    <section className="stack dashboard" aria-label="Decisions">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Keep the hive current</span>
-          <h1>Conflicts</h1>
+          <h1>Decisions</h1>
           <p className="muted">
-            Compare both sources before replacing a learning.
+            Hive compares the evidence and decides how each learning fits.
           </p>
         </div>
-        <Sprite name="cell-outdated" scale={3} />
+        <Sprite name="cell-sealed" scale={3} />
       </div>
-      <div className="row wrap">
-        <Button
-          variant={history ? "secondary" : "primary"}
-          onClick={() => setHistory(false)}
-        >
-          Awaiting a decision
-        </Button>
-        <Button
-          variant={history ? "primary" : "secondary"}
-          onClick={() => setHistory(true)}
-        >
-          All decisions
-        </Button>
+      <div className="decision-filters">
+        <Select
+          label="Decision"
+          value={decision}
+          onChange={(event) => setDecision(event.target.value)}
+          options={[
+            { value: "", label: "All decisions" },
+            ...Object.entries(decisionLabels).map(([value, label]) => ({
+              value,
+              label,
+            })),
+          ]}
+        />
+        <Select
+          label="Repo"
+          value={repo}
+          onChange={(event) => setRepo(event.target.value)}
+          options={[
+            { value: "", label: "All repos" },
+            ...repos.map((value) => ({ value, label: value })),
+          ]}
+        />
+        <Input
+          label="Search"
+          type="search"
+          value={search}
+          maxLength={200}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Find a cell or reason"
+        />
         <Button
           variant="ghost"
           onClick={() => setRefresh((value) => value + 1)}
@@ -44,12 +109,37 @@ export function ConflictsPanel() {
           Refresh
         </Button>
       </div>
-      <ConflictList
-        key={`${history}:${refresh}`}
-        history={history}
-        onOpen={setSelected}
-        onDecision={() => setRefresh((value) => value + 1)}
-      />
+      {state.error ? (
+        <ErrorPanel message={state.error} />
+      ) : !decisions ? (
+        <LoadingPanel>Loading decisions.</LoadingPanel>
+      ) : decisions.length ? (
+        <div className="stack">
+          {decisions.map((record) => (
+            <DecisionCard
+              key={record.id}
+              record={record}
+              onOpen={setSelected}
+              onDecision={(updated) =>
+                setState((current) => ({
+                  ...current,
+                  decisions: current.decisions?.map((row) =>
+                    row.id === record.id ? updated : row,
+                  ),
+                }))
+              }
+            />
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <p>
+            {state.decisions?.length
+              ? "No decisions match these filters."
+              : "Hive makes decisions automatically and records them here."}
+          </p>
+        </Card>
+      )}
       {selected ? (
         <LearningDialog
           key={selected}
@@ -60,170 +150,154 @@ export function ConflictsPanel() {
     </section>
   );
 }
-function ConflictList({
-  history,
+export function DecisionCard({
+  record,
   onOpen,
   onDecision,
 }: {
-  history: boolean;
+  record: ConflictDecisionRecord;
   onOpen: (id: string) => void;
-  onDecision: () => void;
-}) {
-  const [state, setState] = useState<{
-    conflicts?: LearningConflict[];
-    error?: string;
-  }>({});
-  useEffect(() => {
-    const controller = new AbortController();
-    void requestJson<{ conflicts: LearningConflict[] }>(
-      `/api/app/conflicts?history=${history}`,
-      undefined,
-      controller.signal,
-    )
-      .then((data) => {
-        if (!controller.signal.aborted) setState(data);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted)
-          setState({ error: errorMessage(error) });
-      });
-    return () => controller.abort();
-  }, [history]);
-  if (state.error) return <ErrorPanel message={state.error} />;
-  if (!state.conflicts)
-    return <LoadingPanel>Finding the cells that need a decision.</LoadingPanel>;
-  return state.conflicts.length ? (
-    <div className="stack">
-      {state.conflicts.map((conflict) => (
-        <ConflictCard
-          key={conflict.id}
-          conflict={conflict}
-          onOpen={onOpen}
-          onDecision={onDecision}
-        />
-      ))}
-    </div>
-  ) : (
-    <Card className="stack">
-      <Sprite name="cell-sealed" scale={3} />
-      <h2>{history ? "No decisions yet." : "No conflicts waiting."}</h2>
-      <p className="muted">
-        When a new source changes an existing learning, both cells appear here
-        for review.
-      </p>
-    </Card>
-  );
-}
-export function ConflictCard({
-  conflict,
-  onOpen,
-  onDecision,
-}: {
-  conflict: LearningConflict;
-  onOpen: (id: string) => void;
-  onDecision: () => void;
+  onDecision: (record: ConflictDecisionRecord) => void;
 }) {
   return (
-    <Card className="stack conflict-card">
+    <Card id={record.id} className="stack conflict-card">
       <div className="row wrap between">
-        <div className="row wrap">
-          <Badge
-            tone={conflict.status === "accepted" ? "confirmed" : "outdated"}
-          >
-            {conflict.status === "candidate"
-              ? "Needs a decision"
-              : conflict.status}
-          </Badge>
-          <Badge>{conflict.relation}</Badge>
-        </div>
-        <span className="small muted">
-          {new Date(conflict.createdAt).toLocaleDateString("en-GB", {
-            timeZone: "UTC",
-          })}
-        </span>
+        <Badge
+          tone={record.decision === "undecided" ? "outdated" : "confirmed"}
+        >
+          {decisionLabels[record.decision]}
+        </Badge>
+        <time className="small muted" dateTime={record.createdAt}>
+          {formatHumanDateTime(record.createdAt)}
+        </time>
       </div>
       <div className="conflict-pair">
         {[
-          { label: "Earlier cell", cell: conflict.older },
-          { label: "Proposed replacement", cell: conflict.newer },
+          { label: "Earlier cell", cell: record.older },
+          { label: "Newer cell", cell: record.newer },
         ].map(({ label, cell }) => (
-          <div className="stack conflict-source" key={label}>
+          <div className="stack conflict-source" key={cell.id}>
             <span className="eyebrow">{label}</span>
             <CellCitation id={cell.id} title={cell.title} onOpen={onOpen} />
-            <span className="small muted">
-              {cell.author} · version {cell.revision}
-            </span>
-            <div className="conflict-excerpt">
-              <Markdown text={cell.body} />
-            </div>
           </div>
         ))}
       </div>
+      <p>{record.reason}</p>
       <p className="small muted">
-        {conflict.reason}
-        {conflict.status === "candidate"
-          ? ` · ${Math.round(conflict.confidence * 100)}% comparison confidence`
-          : ""}
+        {Math.round(record.confidence * 100)}% confidence · {record.model} ·{" "}
+        {record.latencyMs} ms
       </p>
-      {conflict.status === "candidate" ? (
-        <ConflictDecision conflict={conflict} onDecision={onDecision} />
+      <p className="small muted">
+        {record.model === "admin" ? "Decision by" : "Newer cell pushed by"}{" "}
+        {record.author}
+        {record.repo ? ` · ${record.repo}` : ""}
+      </p>
+      {record.jev ? (
+        <details>
+          <summary>Jev probabilities</summary>
+          <div className="stack small">
+            {Object.entries(record.jev).map(([question, answer]) => (
+              <div key={question}>
+                <strong>
+                  {question.replace(/([A-Z])/g, " $1").toLowerCase()}
+                </strong>
+                {answer.type !== "noul" ? (
+                  <p>
+                    {Object.entries(answer.probabilities)
+                      .map(
+                        ([option, probability]) =>
+                          `${answer.type === "score" ? (answer.legend[option] ?? option) : option.replaceAll("_", " ")}: ${Math.round(probability * 100)}%`,
+                      )
+                      .join(" · ")}
+                  </p>
+                ) : (
+                  <p>{Math.round(answer.noul * 100)}%</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : (
+        <p className="small muted">
+          Jev probabilities are unavailable for this attempt.
+        </p>
+      )}
+      {record.canReverse || record.canEditReason ? (
+        <ReverseDecision record={record} onDecision={onDecision} />
+      ) : record.model === "legacy" ? (
+        <p className="small muted">
+          This decision has no reversible cell snapshots.
+        </p>
       ) : null}
     </Card>
   );
 }
-
-function decisionExplanation(conflict: LearningConflict) {
-  if (conflict.stale)
-    return "A source changed after this comparison. Review the current cells before making a new proposal.";
-  if (conflict.canAdmin)
-    return "As a team admin, your confirmation replaces the earlier cell.";
-  return `${conflict.votes} of 2 member confirmations. A team admin can also decide.`;
-}
-function ConflictDecision({
-  conflict,
+function ReverseDecision({
+  record,
   onDecision,
 }: {
-  conflict: LearningConflict;
-  onDecision: () => void;
+  record: ConflictDecisionRecord;
+  onDecision: (record: ConflictDecisionRecord) => void;
 }) {
+  const [reason, setReason] = useState<string>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  async function decide(action: "confirm" | "reject") {
+  async function act(action: "reverse" | "reason") {
+    if (pending) return;
     setPending(true);
     setError("");
     try {
-      await requestJson("/api/app/conflicts", { id: conflict.id, action });
-      onDecision();
+      const result = await requestJson<{ record: ConflictDecisionRecord }>(
+        "/api/app/conflicts",
+        {
+          id: record.id,
+          action,
+          ...(action === "reason" ? { reason: reason ?? record.reason } : {}),
+        },
+      );
+      onDecision(result.record);
     } catch (error) {
       setError(errorMessage(error));
     } finally {
       setPending(false);
     }
   }
-  const alreadyVoted = conflict.voted && !conflict.canAdmin;
   return (
-    <>
-      <p className="small">{decisionExplanation(conflict)}</p>
-      <div className="row wrap">
+    <div className="stack decision-reversal" aria-live="polite">
+      {record.canReverse ? (
         <Button
-          disabled={pending || conflict.stale || alreadyVoted}
-          onClick={() => void decide("confirm")}
+          variant="ghost"
+          disabled={pending}
+          onClick={() => void act("reverse")}
         >
-          {alreadyVoted
-            ? "Your confirmation is recorded"
-            : "Confirm replacement"}
+          {record.decision === "reversed" ? "Undo" : "Reverse this decision"}
         </Button>
-        {conflict.canAdmin ? (
+      ) : null}
+      {record.canEditReason ? (
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act("reason");
+          }}
+        >
+          <Input
+            label="Reason for reversal (optional)"
+            value={reason ?? record.reason}
+            maxLength={500}
+            onChange={(event) => setReason(event.target.value)}
+          />
           <Button
-            variant="secondary"
-            disabled={pending}
-            onClick={() => void decide("reject")}
+            variant="ghost"
+            disabled={
+              pending || reason === undefined || reason === record.reason
+            }
           >
-            Keep both cells
+            Save reason
           </Button>
-        ) : null}
-      </div>
+        </form>
+      ) : null}
       {error ? <ErrorPanel message={error} /> : null}
-    </>
+    </div>
   );
 }

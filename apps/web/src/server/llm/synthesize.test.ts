@@ -33,6 +33,11 @@ function hit(
     repo: "team/service",
     paths: [],
     confidence: 0.9,
+    captureFlagged: false,
+    captureRedacted: false,
+    captureRuleIds: [],
+    captureCategories: {},
+    canConfirmCapture: false,
     source: "codex",
     author: { id: "mem_test", name: 'Maya " <teammate>' },
     pushCount: 3,
@@ -74,7 +79,7 @@ describe("extractiveAnswer", () => {
       hit("lrn_four"),
     ]);
     expect(result.answer).toBe(
-      "This is an unsynthesized list of the top learnings.\n\n- Use pooled connections [lrn_one]: Use the pooled connection.\n- Use pooled connections [lrn_two]: Use the pooled connection.\n- Use pooled connections [lrn_three]: Use the pooled connection.",
+      "These are the closest matching learnings.\n\n- Use pooled connections [lrn_one]: Use the pooled connection.\n- Use pooled connections [lrn_two]: Use the pooled connection.\n- Use pooled connections [lrn_three]: Use the pooled connection.",
     );
     expect(result.citations.map((citation) => citation.id)).toEqual([
       "lrn_one",
@@ -86,7 +91,7 @@ describe("extractiveAnswer", () => {
 
   it("explains an empty hive", () => {
     expect(extractiveAnswer([])).toMatchObject({
-      answer: "The hive has nothing on this yet.",
+      answer: "The hive has no learning that answers this yet.",
       citations: [],
       synthesized: false,
     });

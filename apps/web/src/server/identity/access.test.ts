@@ -1,3 +1,5 @@
+import { originFor, withOrigin, type EventRow } from "../analytics/events";
+import { saveEarlyAccess } from "../early-access";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTeam, authenticateApiKey, joinTeam } from "../auth";
 import { getSql } from "../db/client";
@@ -68,6 +70,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
     afterAll(async () => {
       const sql = getSql();
       await sql`DELETE FROM email_verifications WHERE email IN ${sql(emails)}`;
+      await sql`DELETE FROM early_access WHERE email IN ${sql(emails)}`;
       for (const table of [
         "feedback",
         "learning_pushes",
@@ -115,7 +118,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(domains[0].domain).toBe(`${suffix}.example.test`);
       await expect(
         completeEmailCode(sent.verificationToken, sent.code, suffix, a),
-      ).rejects.toThrow("Code is not correct");
+      ).rejects.toThrow("This code is invalid");
     });
     it("joins by verified domain as a member and stores only hashed credentials", async () => {
       const sent = await request("member", "domain");
@@ -140,6 +143,29 @@ describe.skipIf(!process.env.DATABASE_URL)(
       });
       await expect(requireAdmin(member)).rejects.toThrow("team admin");
     });
+    it("links a verified signup to the existing waitlist row without logging email", async () => {
+      const email = `waitlisted@${suffix}.example.test`;
+      const early = await saveEarlyAccess({ email, source: "waitlist" });
+      const sent = await request("waitlisted", "domain");
+      const rows: EventRow[] = [];
+      await withOrigin(
+        originFor(),
+        () => completeEmailCode(sent.verificationToken, sent.code, suffix),
+        async (row) => {
+          rows.push(row);
+        },
+      );
+      const signup = rows.find(
+        (row) =>
+          row.event_name === "access.changed" && row.outcome === "signup",
+      );
+      expect(signup?.properties.earlyAccessId).toBe(early.id);
+      expect(signup?.team_id).toBe(a.teamId);
+      expect(signup?.member_id).toMatch(/^mem_/);
+      expect(JSON.stringify(rows)).not.toContain(email);
+      expect(JSON.stringify(rows)).not.toContain(sent.code);
+    });
+
     it("counts concurrent wrong attempts and rejects expired codes", async () => {
       const sent = await request("guesses", "domain");
       const wrong = sent.code === "000000" ? "111111" : "000000";
@@ -170,7 +196,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           undefined,
           async () => false,
         ),
-      ).rejects.toThrow("could not be sent");
+      ).rejects.toThrow("could not send the code");
       const rows =
         await getSql()`SELECT delivered FROM email_verifications WHERE email = ${email}`;
       expect(rows[0].delivered).toBe(false);
@@ -212,16 +238,16 @@ describe.skipIf(!process.env.DATABASE_URL)(
       ).toBeNull();
     });
     it("isolates moderation and revocation and removes all access", async () => {
-      const learning = await pushLearning(
+      const pushed = await pushLearning(
         a,
         hivePushInput.parse({
           title: "Access fixture",
           body: "Moderation fixture",
         }),
       );
-      await expect(moderateLearning(b, learning.id, "delete")).rejects.toThrow(
-        "not found",
-      );
+      if (pushed.dropped) throw new Error("Unexpected fixture drop.");
+      const learning = pushed;
+      await expect(moderateLearning(b, learning.id, "delete")).rejects.toThrow("not found");
       await expect(
         moderateLearning(member, learning.id, "delete"),
       ).rejects.toThrow("team admin");

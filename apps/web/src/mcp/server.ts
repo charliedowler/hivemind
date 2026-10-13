@@ -1,6 +1,13 @@
+import {
+  withOrigin,
+  originFor,
+  bindApiKey,
+  bindRole,
+} from "@/server/analytics/events";
 import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
+  hiveSlackSearchInput,
   hiveBrowseInput,
   hiveReadInput,
   hiveAskInput,
@@ -24,11 +31,18 @@ import {
 } from "@/server/knowledge-tree";
 import { HiveError } from "@/server/errors";
 
+import { reverseDecision } from "@/server/conflict-decisions";
+
+import { searchSlack } from "@/server/slack/search";
+
 const contextSchema = z.object({
   teamId: z.string(),
   teamName: z.string(),
   memberId: z.string(),
   memberName: z.string(),
+  apiKeyId: z.string().nullish(),
+  role: z.enum(["admin", "member"]).nullish(),
+  sessionKind: z.enum(["api_key", "oauth"]).optional(),
 });
 type ToolContext = {
   http?: { authInfo?: AuthInfo; req?: { headers: Headers } };
@@ -37,8 +51,11 @@ type ToolContext = {
 function getContext(ctx: ToolContext): HiveContext {
   const parsed = contextSchema.safeParse(ctx.http?.authInfo?.extra);
   if (!parsed.success)
-    throw new HiveError("A valid hive API key is required.", 401);
-  return parsed.data;
+    throw new HiveError("Connect your forager to the hive and sign in.", 401);
+  const actor = parsed.data;
+  if (actor.apiKeyId) bindApiKey(actor, actor.apiKeyId);
+  if (actor.role) bindRole(actor, actor.role);
+  return actor;
 }
 
 function age(date: string): string {
@@ -53,9 +70,23 @@ function age(date: string): string {
       : `${Math.floor(minutes / 1440)}d ago`;
 }
 
-async function reply(action: () => Promise<string>) {
+async function reply(action: () => Promise<string>, ctx: ToolContext) {
   try {
-    return { content: [{ type: "text" as const, text: await action() }] };
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: await withOrigin(
+            originFor(
+              getContext(ctx),
+              "mcp",
+              contextSchema.parse(ctx.http?.authInfo?.extra).sessionKind,
+            ),
+            action,
+          ),
+        },
+      ],
+    };
   } catch (error) {
     return {
       isError: true,
@@ -74,6 +105,27 @@ async function reply(action: () => Promise<string>) {
 
 export function registerHiveTools(server: McpServer) {
   server.registerTool(
+    "hive_slack_search",
+    {
+      title: "Search permitted Slack channels",
+      description:
+        "Search messages from Slack channels the hive admin selected. Never searches direct messages. Returns original permalinks.",
+      inputSchema: hiveSlackSearchInput,
+    },
+    async (input, ctx) =>
+      reply(async () => {
+        const hits = await searchSlack(getContext(ctx), input);
+        return (
+          hits
+            .map(
+              (h) =>
+                `${h.id}: ${h.title}\nsource: slack | #${h.slackChannel} | ${h.author.name} | score ${h.score.toFixed(2)}\n${h.permalink}\n${h.body.slice(0, 1000)}`,
+            )
+            .join("\n\n") || "No matching messages in permitted Slack channels."
+        );
+      }, ctx),
+  );
+  server.registerTool(
     "hive_browse",
     {
       title: "Browse the hive tree",
@@ -82,8 +134,10 @@ export function registerHiveTools(server: McpServer) {
       inputSchema: hiveBrowseInput,
     },
     async (input, ctx) =>
-      reply(async () =>
-        JSON.stringify(await browseKnowledge(getContext(ctx), input.path)),
+      reply(
+        async () =>
+          JSON.stringify(await browseKnowledge(getContext(ctx), input.path)),
+        ctx,
       ),
   );
   server.registerTool(
@@ -98,7 +152,7 @@ export function registerHiveTools(server: McpServer) {
       reply(async () => {
         const file = await readKnowledge(getContext(ctx), input.path);
         return `Revision ${file.revision}: ${file.path}\n\n${file.content}`;
-      }),
+      }, ctx),
   );
   server.registerTool(
     "hive_snapshot",
@@ -109,8 +163,9 @@ export function registerHiveTools(server: McpServer) {
       inputSchema: z.object({}),
     },
     async (_input, ctx) =>
-      reply(async () =>
-        JSON.stringify(await snapshotKnowledge(getContext(ctx))),
+      reply(
+        async () => JSON.stringify(await snapshotKnowledge(getContext(ctx))),
+        ctx,
       ),
   );
 
@@ -119,7 +174,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Share a learning",
       description:
-        "Call when you learn something non-obvious that would help a teammate. Share context, evidence, and the repository. Use supersedes to correct a current cell and verify_after for facts that expire. Include insights and friction: what slowed you down, measured minutes lost, whether progress was blocked, and a workaround. Never include secrets or customer names.",
+        "Save a learning that would help a teammate. Include its evidence and repo. Use supersedes to correct a current cell. Set verify_after for facts that need checking later. For friction, record what slowed you down and any workaround. Include measured minutes lost and whether it blocked progress. Keep secrets and customer names out.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>
@@ -137,9 +192,12 @@ export function registerHiveTools(server: McpServer) {
         const result = await pushLearning(getContext(ctx), {
           ...input,
           source,
+          agent: input.agent ?? (userAgent.includes("executor") ? "executor" : source),
         });
-        return `${result.merged ? `Merged into ${result.id} (seen ${result.pushCount} times)` : `Saved ${result.id}`}${result.redactions ? `\nRedacted ${result.redactions} secret${result.redactions === 1 ? "" : "s"}.` : ""}`;
-      }),
+        if (result.dropped) return JSON.stringify(result);
+        const decisions = result.decisions?.map(record => `Decision ${record.id}: ${record.decision}, ${Math.round(record.confidence * 100)}% confidence, ${record.model}. ${record.reason}`).join("\n");
+        return `${result.merged ? `Merged into ${result.id} (seen ${result.pushCount} times)` : `Saved ${result.id}`}${result.redactions ? `\nRedacted ${result.redactions} secret${result.redactions === 1 ? "" : "s"}.` : ""}${decisions ? `\n${decisions}\nSee the Decisions log at /app/conflicts.` : ""}`;
+      }, ctx),
   );
 
   server.registerTool(
@@ -158,10 +216,10 @@ export function registerHiveTools(server: McpServer) {
         return hits
           .map(
             (hit, index) =>
-              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
+              `${index + 1}. ${hit.id}: ${hit.title}\n${hit.lifecycle ?? "fresh"}${hit.supersededBy ? `, superseded by ${hit.supersededBy}` : ""}${hit.verifyBeforeUse ? ", verify before use" : ""} | ${hit.kind} | ${hit.repo ?? "no repo"} | tags: ${hit.tags.join(", ") || "none"} | ${hit.author.name} via ${hit.source} | ${age(hit.lastPushedAt)} | votes: +${hit.votes.up} / -${hit.votes.down} / outdated ${hit.votes.outdated} | score ${hit.score.toFixed(2)}\n${hit.permalink ? `Source: slack ${hit.permalink}\n` : ""}${hit.body.slice(0, 600)}${hit.body.length > 600 ? "…" : ""}`,
           )
           .join("\n\n");
-      }),
+      }, ctx),
   );
 
   server.registerTool(
@@ -169,14 +227,14 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Ask the hive",
       description:
-        "Call for a synthesized answer with citations to the team's shared learnings. Read the confidence and gaps before acting.",
+        "Ask a question using the team's saved learnings. The answer cites its cells. Check the confidence and gaps before acting.",
       inputSchema: hiveAskInput,
     },
     async (input, ctx) =>
       reply(async () => {
         const result = await askHive(getContext(ctx), input);
-        return `${result.answer}\n\nSources:\n${result.citations.map((citation) => `- ${citation.id}: ${citation.title}`).join("\n") || "None."}\n\nConfidence: ${result.confidence}\nGaps: ${result.gaps ?? "None reported."}`;
-      }),
+        return `${result.answer}\n\nSources:\n${result.citations.map((citation) => `- ${citation.id}: ${citation.title}${citation.permalink ? ` (source: slack) ${citation.permalink}` : ""}`).join("\n") || "None."}\n\nConfidence: ${result.confidence}\nGaps: ${result.gaps ?? "None reported."}`;
+      }, ctx),
   );
 
   server.registerTool(
@@ -184,7 +242,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Catch up on learnings",
       description:
-        "Call to catch up on what the team has learned since a time or during a recent window. Optionally filter to one repository.",
+        "List what the team learned since a date or during a time window. Use repo to limit results to one repository.",
       inputSchema: hiveRecentInput,
     },
     async (input, ctx) =>
@@ -199,7 +257,21 @@ export function registerHiveTools(server: McpServer) {
             .join("\n") ||
           "No learnings in this time window. Use hive_push once you learn something useful."
         );
-      }),
+      }, ctx),
+  );
+
+  server.registerTool(
+    "hive_reverse_decision",
+    {
+      title: "Reverse a decision",
+      description: "Reverse a conflict decision immediately by its decision ID. Requires a team admin and unchanged cells. Returns the new decision ID; reverse that ID to undo. Legacy decisions without snapshots cannot be reversed.",
+      inputSchema: z.object({ decision_id: z.string().min(1).max(100) }),
+    },
+    async (input, ctx) => reply(async () => {
+      const actor = getContext(ctx);
+      const result = await reverseDecision(actor, input.decision_id, undefined, undefined, "through MCP");
+      return `${result.id}: ${result.decision === "reversed" ? "Decision reversed." : "Decision reapplied."}`;
+    }, ctx),
   );
 
   server.registerTool(
@@ -214,6 +286,6 @@ export function registerHiveTools(server: McpServer) {
       reply(async () => {
         const result = await recordFeedback(getContext(ctx), input);
         return `${result.id}: +${result.votes.up} / -${result.votes.down} / outdated ${result.votes.outdated}`;
-      }),
+      }, ctx),
   );
 }

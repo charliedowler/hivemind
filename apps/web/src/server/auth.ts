@@ -1,11 +1,17 @@
 import {
+  accessEvent,
+  bindApiKey,
+  bindRole,
+  withActor,
+} from "./analytics/events";
+import {
   createTeamInput,
   joinTeamInput,
   type CreateTeamInput,
   type HiveContext,
   type JoinTeamInput,
 } from "@hivemind/core";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getSql } from "./db/client";
 import { hashToken, newId, newToken, randomBase32 } from "./db/ids";
 import { HiveInputError, HiveNotFoundError } from "./errors";
@@ -35,10 +41,17 @@ export async function createTeam(
   };
   const inviteCode = `hive-${randomBase32(10)}`;
   const apiKey = `hm_${newToken()}`;
+  const keyId = newId("key");
   await getSql().begin(async (tx) => {
     await tx`INSERT INTO teams (id, name, invite_code) VALUES (${ctx.teamId}, ${ctx.teamName}, ${hashToken(inviteCode)})`;
     await tx`INSERT INTO members (id, team_id, name, role) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName}, 'admin')`;
-    await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${newId("key")}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
+    await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${keyId}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
+  });
+  bindApiKey(bindRole(ctx, "admin"), keyId);
+  await withActor(ctx, async () => {
+    await accessEvent(ctx, "signup");
+    await accessEvent(ctx, "invite_created");
+    await accessEvent(ctx, "key_created", { keyId }, keyId);
   });
   return { ctx, apiKey, inviteCode };
 }
@@ -62,9 +75,16 @@ export async function joinTeam(
     memberName: parsed.data.memberName,
   };
   const apiKey = `hm_${newToken()}`;
+  const keyId = newId("key");
   await sql.begin(async (tx) => {
     await tx`INSERT INTO members (id, team_id, name, role) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName}, 'member')`;
-    await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${newId("key")}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
+    await tx`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${keyId}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(apiKey)}, ${apiKey.slice(0, 10)})`;
+  });
+  bindApiKey(bindRole(ctx, "member"), keyId);
+  await withActor(ctx, async () => {
+    await accessEvent(ctx, "signup");
+    await accessEvent(ctx, "invite_accepted");
+    await accessEvent(ctx, "key_created", { keyId }, keyId);
   });
   return { ctx, apiKey };
 }
@@ -75,9 +95,9 @@ export async function authenticateApiKey(
   if (!/^hm_[A-Za-z0-9_-]{43}$/.test(rawKey)) return null;
   const sql = getSql();
   const rows =
-    await sql`SELECT k.id, k.team_id, t.name AS team_name, k.member_id, m.name AS member_name FROM api_keys k JOIN teams t ON t.id = k.team_id JOIN members m ON m.id = k.member_id AND m.team_id = k.team_id WHERE k.key_hash = ${hashToken(rawKey)} AND k.revoked_at IS NULL AND m.removed_at IS NULL`;
+    await sql`SELECT k.id, k.team_id, t.name AS team_name, k.member_id, m.name AS member_name, m.role FROM api_keys k JOIN teams t ON t.id = k.team_id JOIN members m ON m.id = k.member_id AND m.team_id = k.team_id WHERE k.key_hash = ${hashToken(rawKey)} AND k.revoked_at IS NULL AND m.removed_at IS NULL`;
   if (!rows[0]) return null;
-  const ctx = context(rows[0]);
+  const ctx = bindApiKey(bindRole(context(rows[0]), rows[0].role), rows[0].id);
   await sql`WITH touched AS (UPDATE api_keys SET last_used_at = now() WHERE id = ${rows[0].id} AND team_id = ${ctx.teamId} AND revoked_at IS NULL AND (last_used_at IS NULL OR last_used_at <= now() - interval '1 minute') RETURNING member_id) UPDATE members SET last_seen_at = now() WHERE id IN (SELECT member_id FROM touched) AND team_id = ${ctx.teamId}`;
   return ctx;
 }
@@ -92,6 +112,7 @@ export async function issueApiKey(
     await getSql()`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix, label) SELECT ${newId("key")}, ${ctx.teamId}, id, ${hashToken(apiKey)}, ${prefix}, ${label?.trim().slice(0, 120) || "Agent key"} FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL RETURNING id`;
   if (!rows.length)
     throw new HiveNotFoundError("Member not found in your team.");
+  await accessEvent(ctx, "key_created", { keyId: rows[0].id }, rows[0].id);
   return { apiKey, prefix };
 }
 
@@ -109,14 +130,21 @@ export async function startWebSession(ctx: HiveContext): Promise<void> {
     expires,
     path: "/",
   });
+  await accessEvent(ctx, "login");
 }
 
 export async function getWebContext(): Promise<HiveContext | null> {
-  const token = (await cookies()).get("hm_session")?.value;
+  const jar = await cookies();
+  if (jar.get("better-auth.session_token") || jar.get("__Secure-better-auth.session_token")) {
+    const [{ getAuth }, { memberContext }] = await Promise.all([import("./better-auth"), import("./identity/enrollment")]);
+    const session = await (await getAuth()).api.getSession({ headers: await headers() });
+    return session?.user.emailVerified ? memberContext(session.user.id) : null;
+  }
+  const token = jar.get("hm_session")?.value;
   if (!token) return null;
   const rows =
-    await getSql()`SELECT s.team_id, t.name AS team_name, s.member_id, m.name AS member_name FROM web_sessions s JOIN teams t ON t.id = s.team_id JOIN members m ON m.id = s.member_id AND m.team_id = s.team_id WHERE s.token_hash = ${hashToken(token)} AND s.expires_at > now() AND m.removed_at IS NULL`;
-  return rows[0] ? context(rows[0]) : null;
+    await getSql()`SELECT s.team_id, t.name AS team_name, s.member_id, m.name AS member_name, m.role FROM web_sessions s JOIN teams t ON t.id = s.team_id JOIN members m ON m.id = s.member_id AND m.team_id = s.team_id WHERE s.token_hash = ${hashToken(token)} AND s.expires_at > now() AND m.removed_at IS NULL`;
+  return rows[0] ? bindRole(context(rows[0]), rows[0].role) : null;
 }
 
 export async function endWebSession(): Promise<void> {
@@ -124,8 +152,10 @@ export async function endWebSession(): Promise<void> {
   const token = jar.get("hm_session")?.value;
   if (token) {
     const ctx = await getWebContext();
-    if (ctx)
+    if (ctx) {
       await getSql()`DELETE FROM web_sessions WHERE token_hash = ${hashToken(token)} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId}`;
+      await accessEvent(ctx, "logout");
+    }
   }
   jar.delete("hm_session");
 }

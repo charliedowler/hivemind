@@ -1,14 +1,22 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SearchHit } from "@hivemind/core";
-import { AnswerCard, CombGrid } from "@hivemind/design-system";
-import { InstallSnippets, KeyBox } from "./install";
+import { CombGrid } from "@hivemind/design-system";
+import { InstallPage, InstallSnippets, KeyBox } from "./install";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
 import { FrictionContent } from "./friction-panel";
-import { ConflictCard } from "./conflicts-panel";
+import { DecisionCard } from "./conflicts-panel";
 import { Markdown } from "./markdown";
 import { learningStatus } from "@/lib/learning-presentation";
+import { Login } from "./login";
+import { enabledSignInProviders } from "@/lib/auth-providers";
+
+vi.mock("@/lib/measurement-consent", () => ({ useMeasurementConsent: () => false }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push() {}, refresh() {} }),
+}));
 
 const hit: SearchHit = {
   id: "lrn_abcdefghijkl",
@@ -22,6 +30,9 @@ const hit: SearchHit = {
   source: "claude-code",
   author: { id: "mem_abcdefghijkl", name: "Maya" },
   pushCount: 3,
+  captureFlagged: false,
+  captureRedacted: false,
+  captureRuleIds: [],
   votes: { up: 2, down: 0, outdated: 1 },
   createdAt: "2026-10-12T10:00:00.000Z",
   updatedAt: "2026-10-12T10:00:00.000Z",
@@ -31,6 +42,34 @@ const hit: SearchHit = {
 };
 
 describe("dashboard components", () => {
+  it("hides unconfigured providers and removes API keys from web sign-in", () => {
+    const providers = enabledSignInProviders({
+      GOOGLE_CLIENT_ID: "fixture",
+      SLACK_CLIENT_SECRET: "fixture",
+    });
+    expect(providers).toEqual([]);
+    const html = renderToStaticMarkup(
+      <Login invite="" providers={providers} />,
+    );
+    expect(html).toContain('name="email"');
+    expect(html).toContain('name="password"');
+    expect(html).not.toContain('name="apiKey"');
+    expect(html).not.toContain("Sign in with Google");
+    expect(html).not.toContain("Sign in with Slack");
+    const configured = renderToStaticMarkup(
+      <Login
+        invite=""
+        providers={enabledSignInProviders({
+          GOOGLE_CLIENT_ID: "fixture",
+          GOOGLE_CLIENT_SECRET: "fixture",
+          SLACK_CLIENT_ID: "fixture",
+          SLACK_CLIENT_SECRET: "fixture",
+        })}
+      />,
+    );
+    expect(configured).toContain("Sign in with Google");
+    expect(configured).toContain("Sign in with Slack");
+  });
   it("renders a keyboard reachable cell with attribution, status and repeat pushes", () => {
     const html = renderToStaticMarkup(
       <CombGrid columns={4}>
@@ -104,28 +143,26 @@ describe("dashboard components", () => {
     expect(html).toContain("lrn_abcdefghijkl");
   });
 
-  it("renders clickable cited cells with attribution", () => {
-    const html = renderToStaticMarkup(
-      <AnswerCard
-        question="How do worktrees share a stash?"
-        citations={[
-          {
-            id: hit.id,
-            title: hit.title,
-            learnedBy: "Maya's Claude",
-            repo: hit.repo!,
-            onClick: () => {},
-          },
-        ]}
-      >
-        <Markdown text="Use an exact stash ref." />
-      </AnswerCard>,
+  it("shows kept status only for a current cell with capture-rule evidence", () => {
+    const kept = renderToStaticMarkup(
+      <LearningDetail learning={{ ...hit, captureRuleIds: ["crule_test"] }} />,
     );
-    expect(html).toContain('class="hm-cite"');
-    expect(html).toContain("Cited cells");
-    expect(html).toContain("Maya&#x27;s Claude");
+    expect(kept).toContain("kept after owner confirmation");
+    expect(
+      renderToStaticMarkup(<LearningDetail learning={hit} />),
+    ).not.toContain("kept after owner confirmation");
+    expect(
+      renderToStaticMarkup(
+        <LearningDetail
+          learning={{
+            ...hit,
+            lifecycle: "retracted",
+            captureRuleIds: ["crule_test"],
+          }}
+        />,
+      ),
+    ).not.toContain("kept after owner confirmation");
   });
-
   it("turns inline learning ids into citation buttons and leaves other links alone", () => {
     const html = renderToStaticMarkup(
       <Markdown
@@ -135,18 +172,6 @@ describe("dashboard components", () => {
     );
     expect(html).toContain('href="/app/cells/lrn_abcdefghijkl"');
     expect(html).toContain('href="https://example.com"');
-  });
-
-  it("shows titles in inline citations when answer sources are available", () => {
-    const html = renderToStaticMarkup(
-      <Markdown
-        text="Check the gate [lrn_abcdefghijkl]."
-        onCitation={() => {}}
-        citations={[{ id: hit.id, title: hit.title }]}
-      />,
-    );
-    expect(html).toContain(`>${hit.title}</a>`);
-    expect(html).not.toContain(">lrn_abcdefghijkl</button>");
   });
 
   it("links unresolved cell citations without exposing ids as chip text", () => {
@@ -196,45 +221,47 @@ describe("dashboard components", () => {
     expect(html).toContain("Show version history");
   });
 
-  it("disables acceptance of a conflict after a source changes", () => {
+  it("shows automatic decisions without member actions", () => {
     const html = renderToStaticMarkup(
-      <ConflictCard
-        conflict={{
-          id: "edge",
-          older: {
-            id: hit.id,
-            title: hit.title,
-            body: hit.body,
-            author: "Maya",
-            revision: 1,
-          },
-          newer: {
-            id: "lrn_replacement",
-            title: "Use an explicit stash ref",
-            body: "Check the stash list first.",
-            author: "Sam",
-            revision: 1,
-          },
-          relation: "update",
-          confidence: 0.9,
-          status: "candidate",
-          reason: "Changed guidance",
-          votes: 0,
-          voted: false,
-          canAdmin: true,
-          stale: true,
+      <DecisionCard
+        record={{
+          id: "dec_test",
+          older: { id: hit.id, title: hit.title },
+          newer: { id: "lrn_replacement", title: "Use an explicit stash ref" },
+          decision: "undecided",
+          confidence: 0.4,
+          reason: "Hive retries with more evidence.",
+          model: "jev-1.13.0",
+          jev: null,
+          latencyMs: 100,
+          author: "Sam",
+          repo: "team/repo",
+          canReverse: false,
           createdAt: hit.createdAt,
         }}
         onOpen={() => {}}
         onDecision={() => {}}
       />,
     );
-    expect(html).toContain("A source changed");
-    expect(html).toMatch(/disabled=""[^>]*>Confirm replacement/);
-    expect(html).toContain("Keep both cells");
+    expect(html).toContain("Retry automatically");
+    expect(html).toContain("40% confidence");
+    expect(html).toContain("Newer cell pushed by Sam");
+    expect(html).not.toContain("Confirm replacement");
+    expect(html).not.toContain("Reverse this decision");
   });
 
-  it("fills the unchanged install snippets with the base URL and key", () => {
+  it("leads with the npm installer and keeps manual setup available", () => {
+    const html = renderToStaticMarkup(<InstallPage baseUrl="https://hive.example" />);
+    expect(html.indexOf("npx gohive install")).toBeLessThan(html.indexOf("claude mcp add"));
+    expect(html).toContain("npx gohive install");
+    expect(html).not.toContain("Install from Git while the npm package is awaiting publication");
+    expect(html).not.toContain("github:charliedowler/hivemind gohive install");
+    expect(html).toContain("skills/hive/SKILL.md");
+    expect(html).toContain("Manual setup for Claude Code, Codex or Executor");
+    expect(html).toContain("npx gohive doctor");
+  });
+
+  it("keeps OAuth commands and the headless key fallback last", () => {
     const html = renderToStaticMarkup(
       <InstallSnippets baseUrl="https://hive.example" apiKey="hm_test" />,
     );
@@ -245,7 +272,8 @@ describe("dashboard components", () => {
     expect(html).toContain(
       "codex mcp add hive --url https://hive.example/api/mcp --bearer-token-env-var HIVE_KEY",
     );
-    expect(html).toContain("Your agent joins the hive.");
+    expect(html).toContain("Executor");
+    expect(html).toContain('role="tab"');
     expect(html).not.toContain("One line.");
     expect(html).toContain("Agent instructions");
     expect(html).toContain("claude mcp list");

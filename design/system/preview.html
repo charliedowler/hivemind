@@ -614,100 +614,6 @@ button.hm-cell {
   }
 }
 
-.hm-ask {
-  display: grid;
-  gap: 10px;
-  padding: 20px;
-  background: var(--surface-card);
-  border: var(--outline-ink);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-hard);
-}
-
-.hm-ask-label {
-  color: var(--text-brand);
-}
-
-.hm-ask-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 6px 6px 6px 14px;
-  background: var(--wax);
-  border: var(--outline-ink);
-  border-radius: var(--radius-pill);
-  transition: box-shadow var(--dur-fast);
-}
-
-.hm-ask-field:focus-within {
-  box-shadow: var(--shadow-focus);
-}
-
-.hm-ask-input {
-  all: unset;
-  flex: 1;
-  min-width: 0;
-  font-family: var(--font-body);
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text-body);
-}
-
-.hm-ask-input::placeholder {
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.hm-ask-lane {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 8px;
-  background:
-    linear-gradient(var(--surface-sunken), var(--surface-sunken)) padding-box,
-    var(--dither-ink);
-  border: 2px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  --flight: 140px;
-}
-
-.hm-ask-bee,
-.hm-ask-jar,
-.hm-ask-flower {
-  flex: none;
-}
-
-.hm-ask-status {
-  margin-left: auto;
-}
-
-.hm-ask-status {
-  font-family: var(--font-pixel);
-  font-size: 11px;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-  -webkit-font-smoothing: none;
-  color: var(--text-subtle);
-}
-
-.hm-ask[data-state="idle"] .hm-ask-jar,
-.hm-ask[data-state="flying"] .hm-ask-jar {
-  display: none;
-}
-
-.hm-ask[data-state="flying"] .hm-ask-bee {
-  animation: hm-fly-out var(--dur-flight) var(--ease-step-fine) infinite alternate;
-}
-
-.hm-ask[data-state="returned"] .hm-ask-bee,
-.hm-ask[data-state="returned"] .hm-ask-jar {
-  animation: hm-arrive var(--dur-slow) var(--ease-step) both;
-}
-
 .hm-answer {
   display: grid;
   background: var(--surface-card);
@@ -1261,8 +1167,6 @@ a.hm-cite:hover {
   .hm-fly-out,
   .hm-fly-back,
   .hm-drip,
-  .hm-ask .hm-ask-bee,
-  .hm-ask .hm-ask-jar,
   .hm-feed-item .hm-feed-glyph {
     animation: none;
   }
@@ -1321,7 +1225,7 @@ a.hm-cite:hover {
 <section class="pv-top" id="hero">
   <nav class="pv-nav">
     <span class="pv-brand"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite" width="48" height="48" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M4 0h2v1h-2zM3 1h1v1h-1zM6 1h1v1h-1zM8 1h2v1h-2zM2 2h1v1h-1zM7 2h1v1h-1zM10 2h1v1h-1zM13 2h1v1h-1zM2 3h1v1h-1zM7 3h1v1h-1zM10 3h1v1h-1zM12 3h1v1h-1zM15 3h1v1h-1zM3 4h1v1h-1zM7 4h1v1h-1zM10 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM2 5h13v1h-13zM1 6h1v1h-1zM4 6h2v1h-2zM8 6h2v1h-2zM15 6h1v1h-1zM0 7h2v1h-2zM4 7h2v1h-2zM8 7h2v1h-2zM13 7h1v1h-1zM15 7h1v1h-1zM0 8h2v1h-2zM4 8h2v1h-2zM8 8h2v1h-2zM12 8h2v1h-2zM15 8h1v1h-1zM1 9h1v1h-1zM4 9h2v1h-2zM8 9h2v1h-2zM15 9h1v1h-1zM2 10h13v1h-13zM4 11h1v1h-1zM7 11h1v1h-1zM10 11h1v1h-1zM3 12h1v1h-1zM6 12h1v1h-1zM9 12h1v1h-1z"/><path fill="#E6F6F8" d="M4 1h2v1h-2zM3 2h4v1h-4zM8 2h2v1h-2zM3 3h3v1h-3zM8 3h2v1h-2zM4 4h1v1h-1zM8 4h1v1h-1z"/><path fill="#A9D9E3" d="M6 3h1v1h-1zM5 4h2v1h-2zM9 4h1v1h-1z"/><path fill="#FFBE3D" d="M2 6h2v1h-2zM6 6h2v1h-2zM10 6h5v1h-5zM2 7h2v1h-2zM6 7h2v1h-2zM10 7h2v1h-2zM14 7h1v1h-1zM2 8h2v1h-2zM6 8h2v1h-2zM10 8h2v1h-2zM14 8h1v1h-1zM11 9h4v1h-4z"/><path fill="#FFFFFF" d="M12 7h1v1h-1z"/><path fill="#D98A12" d="M2 9h2v1h-2zM6 9h2v1h-2zM10 9h1v1h-1z"/></svg>Hive</span>
-    <span class="pv-nav-links"><a href="#comb-grid">The comb</a><a href="#ask-answer">Ask</a><a href="#install">Install</a></span>
+    <span class="pv-nav-links"><a href="#comb-grid">The comb</a><a href="#sample-answer">Sample answer</a><a href="#install">Install</a></span>
     <a class="hm-btn hm-btn-secondary hm-btn-sm" href="#install">Join a hive</a>
   </nav>
   <div class="hm-hero">
@@ -1331,7 +1235,7 @@ a.hm-cite:hover {
       <p class="hm-hero-lead">Your team's agents bring back every gotcha, fix and decision as they work. The next agent asks the hive before it gets stung by the same thing twice.</p>
       <div class="hm-hero-actions">
         <a class="hm-btn hm-btn-accent hm-btn-lg" href="#install">Add your agent<svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite" width="24" height="24" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M6 1h2v1h-2zM6 2h3v1h-3zM7 3h3v1h-3zM1 4h10v1h-10zM1 5h11v1h-11zM1 6h10v1h-10zM7 7h3v1h-3zM6 8h3v1h-3zM6 9h2v1h-2z"/></svg></a>
-        <a class="hm-btn hm-btn-secondary hm-btn-lg" href="#ask-answer"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite" width="24" height="24" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M2 0h5v1h-5zM1 1h2v1h-2zM6 1h2v1h-2zM0 2h2v1h-2zM7 2h2v1h-2zM0 3h1v1h-1zM8 3h1v1h-1zM0 4h1v1h-1zM8 4h1v1h-1zM0 5h1v1h-1zM8 5h1v1h-1zM0 6h2v1h-2zM7 6h2v1h-2zM1 7h2v1h-2zM6 7h3v1h-3zM2 8h8v1h-8zM8 9h3v1h-3zM9 10h3v1h-3zM10 11h2v1h-2z"/></svg>Ask the hive</a>
+        <a class="hm-btn hm-btn-secondary hm-btn-lg" href="#sample-answer"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite" width="24" height="24" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M2 0h5v1h-5zM1 1h2v1h-2zM6 1h2v1h-2zM0 2h2v1h-2zM7 2h2v1h-2zM0 3h1v1h-1zM8 3h1v1h-1zM0 4h1v1h-1zM8 4h1v1h-1zM0 5h1v1h-1zM8 5h1v1h-1zM0 6h2v1h-2zM7 6h2v1h-2zM1 7h2v1h-2zM6 7h3v1h-3zM2 8h8v1h-8zM8 9h3v1h-3zM9 10h3v1h-3zM10 11h2v1h-2z"/></svg>See a sample answer</a>
       </div>
     </div>
     <div class="hm-hero-scene">
@@ -1630,27 +1534,7 @@ a.hm-cite:hover {
     </div>
   </div>
 
-  <div class="pv-grid-2" id="ask-answer">
-    <div class="pv-block">
-      <div class="eyebrow">AskBox · idle, flying, returned</div>
-      <div class="pv-stack">
-        <form class="hm-ask" data-state="idle">
-          <label class="eyebrow hm-ask-label">Ask the hive</label>
-          <div class="hm-ask-field"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite" width="28" height="28" viewBox="0 0 14 14" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M3 0h5v1h-5zM1 1h2v1h-2zM8 1h2v1h-2zM1 2h1v1h-1zM9 2h1v1h-1zM0 3h1v1h-1zM10 3h1v1h-1zM0 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM10 5h1v1h-1zM0 6h1v1h-1zM10 6h1v1h-1zM0 7h1v1h-1zM10 7h1v1h-1zM1 8h1v1h-1zM9 8h2v1h-2zM1 9h2v1h-2zM8 9h1v1h-1zM11 9h1v1h-1zM3 10h6v1h-6zM12 10h1v1h-1zM9 11h1v1h-1zM13 11h1v1h-1zM10 12h1v1h-1zM13 12h1v1h-1zM11 13h2v1h-2z"/><path fill="#F2A51E" d="M3 1h5v1h-5zM2 2h1v1h-1zM8 2h1v1h-1zM1 3h1v1h-1zM9 3h1v1h-1zM1 4h1v1h-1zM9 4h1v1h-1zM1 5h1v1h-1zM9 5h1v1h-1zM1 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM9 7h1v1h-1zM2 8h1v1h-1zM8 8h1v1h-1zM3 9h5v1h-5zM9 9h2v1h-2zM9 10h3v1h-3zM10 11h3v1h-3zM11 12h2v1h-2z"/><path fill="#E6F6F8" d="M3 2h5v1h-5zM2 3h1v1h-1zM5 3h4v1h-4zM2 4h1v1h-1zM4 4h5v1h-5zM2 5h7v1h-7zM2 6h6v1h-6zM2 7h5v1h-5zM3 8h5v1h-5z"/><path fill="#FFFFFF" d="M3 3h2v1h-2zM3 4h1v1h-1z"/><path fill="#A9D9E3" d="M8 6h1v1h-1zM7 7h2v1h-2z"/></svg><input class="hm-ask-input" placeholder="What does the team already know?"><button type="button" class="hm-btn hm-btn-primary hm-btn-sm">Ask</button></div>
-          <div class="hm-ask-lane"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite hm-ask-bee" width="32" height="32" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><style>.bee-hover-f{visibility:hidden;animation:280ms steps(1,end) infinite;animation-play-state:var(--sprite-play,running)}.bee-hover-f0{animation-name:bee-hover-k0}.bee-hover-f1{animation-name:bee-hover-k1}@keyframes bee-hover-k0{0%{visibility:visible}50%{visibility:hidden}100%{visibility:visible}}@keyframes bee-hover-k1{0%{visibility:hidden}50%{visibility:visible}100%{visibility:hidden}}@media (prefers-reduced-motion:reduce){.bee-hover-f{animation:none}.bee-hover-f0{visibility:visible}}</style><g class="bee-hover-f bee-hover-f0"><path fill="#1F1408" d="M4 0h2v1h-2zM3 1h1v1h-1zM6 1h1v1h-1zM8 1h2v1h-2zM2 2h1v1h-1zM7 2h1v1h-1zM10 2h1v1h-1zM13 2h1v1h-1zM2 3h1v1h-1zM7 3h1v1h-1zM10 3h1v1h-1zM12 3h1v1h-1zM15 3h1v1h-1zM3 4h1v1h-1zM7 4h1v1h-1zM10 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM2 5h13v1h-13zM1 6h1v1h-1zM4 6h2v1h-2zM8 6h2v1h-2zM15 6h1v1h-1zM0 7h2v1h-2zM4 7h2v1h-2zM8 7h2v1h-2zM13 7h1v1h-1zM15 7h1v1h-1zM0 8h2v1h-2zM4 8h2v1h-2zM8 8h2v1h-2zM12 8h2v1h-2zM15 8h1v1h-1zM1 9h1v1h-1zM4 9h2v1h-2zM8 9h2v1h-2zM15 9h1v1h-1zM2 10h13v1h-13zM4 11h1v1h-1zM7 11h1v1h-1zM10 11h1v1h-1zM3 12h1v1h-1zM6 12h1v1h-1zM9 12h1v1h-1z"/><path fill="#E6F6F8" d="M4 1h2v1h-2zM3 2h4v1h-4zM8 2h2v1h-2zM3 3h3v1h-3zM8 3h2v1h-2zM4 4h1v1h-1zM8 4h1v1h-1z"/><path fill="#A9D9E3" d="M6 3h1v1h-1zM5 4h2v1h-2zM9 4h1v1h-1z"/><path fill="#FFBE3D" d="M2 6h2v1h-2zM6 6h2v1h-2zM10 6h5v1h-5zM2 7h2v1h-2zM6 7h2v1h-2zM10 7h2v1h-2zM14 7h1v1h-1zM2 8h2v1h-2zM6 8h2v1h-2zM10 8h2v1h-2zM14 8h1v1h-1zM11 9h4v1h-4z"/><path fill="#FFFFFF" d="M12 7h1v1h-1z"/><path fill="#D98A12" d="M2 9h2v1h-2zM6 9h2v1h-2zM10 9h1v1h-1z"/></g><g class="bee-hover-f bee-hover-f1"><path fill="#1F1408" d="M13 2h1v1h-1zM1 3h8v1h-8zM12 3h1v1h-1zM15 3h1v1h-1zM0 4h1v1h-1zM9 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM2 5h13v1h-13zM1 6h1v1h-1zM4 6h2v1h-2zM8 6h2v1h-2zM15 6h1v1h-1zM0 7h2v1h-2zM4 7h2v1h-2zM8 7h2v1h-2zM13 7h1v1h-1zM15 7h1v1h-1zM0 8h2v1h-2zM4 8h2v1h-2zM8 8h2v1h-2zM12 8h2v1h-2zM15 8h1v1h-1zM1 9h1v1h-1zM4 9h2v1h-2zM8 9h2v1h-2zM15 9h1v1h-1zM2 10h13v1h-13zM3 11h1v1h-1zM6 11h1v1h-1zM9 11h1v1h-1zM4 12h1v1h-1zM7 12h1v1h-1zM10 12h1v1h-1z"/><path fill="#E6F6F8" d="M1 4h6v1h-6z"/><path fill="#A9D9E3" d="M7 4h2v1h-2z"/><path fill="#FFBE3D" d="M2 6h2v1h-2zM6 6h2v1h-2zM10 6h5v1h-5zM2 7h2v1h-2zM6 7h2v1h-2zM10 7h2v1h-2zM14 7h1v1h-1zM2 8h2v1h-2zM6 8h2v1h-2zM10 8h2v1h-2zM14 8h1v1h-1zM11 9h4v1h-4z"/><path fill="#FFFFFF" d="M12 7h1v1h-1z"/><path fill="#D98A12" d="M2 9h2v1h-2zM6 9h2v1h-2zM10 9h1v1h-1z"/></g></svg><span class="hm-ask-status">A forager is waiting</span><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite hm-ask-flower" width="32" height="36" viewBox="0 0 16 18" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M6 0h4v1h-4zM5 1h1v1h-1zM10 1h1v1h-1zM2 2h4v1h-4zM10 2h4v1h-4zM1 3h1v1h-1zM5 3h1v1h-1zM10 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM6 4h4v1h-4zM14 4h1v1h-1zM1 5h1v1h-1zM5 5h1v1h-1zM10 5h1v1h-1zM14 5h1v1h-1zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h1v1h-1zM5 7h1v1h-1zM10 7h1v1h-1zM14 7h1v1h-1zM1 8h1v1h-1zM6 8h4v1h-4zM14 8h1v1h-1zM1 9h1v1h-1zM5 9h1v1h-1zM10 9h1v1h-1zM14 9h1v1h-1zM2 10h4v1h-4zM10 10h4v1h-4zM5 11h1v1h-1zM10 11h1v1h-1zM6 12h4v1h-4zM6 13h1v1h-1zM9 13h1v1h-1zM2 14h3v1h-3zM6 14h1v1h-1zM9 14h1v1h-1zM1 15h1v1h-1zM5 15h2v1h-2zM9 15h1v1h-1zM2 16h2v1h-2zM9 16h1v1h-1zM4 17h6v1h-6z"/><path fill="#EE86C8" d="M6 1h4v1h-4zM6 2h4v1h-4zM2 3h3v1h-3zM6 3h4v1h-4zM11 3h3v1h-3zM2 4h4v1h-4zM10 4h4v1h-4zM2 5h3v1h-3zM11 5h3v1h-3zM2 7h3v1h-3zM11 7h3v1h-3zM2 8h4v1h-4zM10 8h4v1h-4zM3 9h2v1h-2zM6 9h4v1h-4zM11 9h2v1h-2zM6 10h4v1h-4z"/><path fill="#FFE03A" d="M6 5h4v1h-4zM6 6h2v1h-2zM9 6h1v1h-1zM6 7h4v1h-4z"/><path fill="#FFF5B0" d="M8 6h1v1h-1z"/><path fill="#C2459B" d="M2 9h1v1h-1zM13 9h1v1h-1zM6 11h4v1h-4z"/><path fill="#63B84C" d="M7 13h1v1h-1zM7 14h1v1h-1zM2 15h3v1h-3zM7 15h1v1h-1zM4 16h4v1h-4z"/><path fill="#3F8F2F" d="M8 13h1v1h-1zM8 14h1v1h-1zM8 15h1v1h-1zM8 16h1v1h-1z"/></svg></div>
-        </form>
-        <form class="hm-ask" data-state="flying">
-          <label class="eyebrow hm-ask-label">Ask the hive</label>
-          <div class="hm-ask-field"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite" width="28" height="28" viewBox="0 0 14 14" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M3 0h5v1h-5zM1 1h2v1h-2zM8 1h2v1h-2zM1 2h1v1h-1zM9 2h1v1h-1zM0 3h1v1h-1zM10 3h1v1h-1zM0 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM10 5h1v1h-1zM0 6h1v1h-1zM10 6h1v1h-1zM0 7h1v1h-1zM10 7h1v1h-1zM1 8h1v1h-1zM9 8h2v1h-2zM1 9h2v1h-2zM8 9h1v1h-1zM11 9h1v1h-1zM3 10h6v1h-6zM12 10h1v1h-1zM9 11h1v1h-1zM13 11h1v1h-1zM10 12h1v1h-1zM13 12h1v1h-1zM11 13h2v1h-2z"/><path fill="#F2A51E" d="M3 1h5v1h-5zM2 2h1v1h-1zM8 2h1v1h-1zM1 3h1v1h-1zM9 3h1v1h-1zM1 4h1v1h-1zM9 4h1v1h-1zM1 5h1v1h-1zM9 5h1v1h-1zM1 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM9 7h1v1h-1zM2 8h1v1h-1zM8 8h1v1h-1zM3 9h5v1h-5zM9 9h2v1h-2zM9 10h3v1h-3zM10 11h3v1h-3zM11 12h2v1h-2z"/><path fill="#E6F6F8" d="M3 2h5v1h-5zM2 3h1v1h-1zM5 3h4v1h-4zM2 4h1v1h-1zM4 4h5v1h-5zM2 5h7v1h-7zM2 6h6v1h-6zM2 7h5v1h-5zM3 8h5v1h-5z"/><path fill="#FFFFFF" d="M3 3h2v1h-2zM3 4h1v1h-1z"/><path fill="#A9D9E3" d="M8 6h1v1h-1zM7 7h2v1h-2z"/></svg><input class="hm-ask-input" value="How do we run migrations on a preview branch?"><button type="button" class="hm-btn hm-btn-primary hm-btn-sm" disabled>Asking</button></div>
-          <div class="hm-ask-lane"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite hm-ask-bee" width="32" height="32" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><style>.bee-fly-f{visibility:hidden;animation:140ms steps(1,end) infinite;animation-play-state:var(--sprite-play,running)}.bee-fly-f0{animation-name:bee-fly-k0}.bee-fly-f1{animation-name:bee-fly-k1}@keyframes bee-fly-k0{0%{visibility:visible}50%{visibility:hidden}100%{visibility:visible}}@keyframes bee-fly-k1{0%{visibility:hidden}50%{visibility:visible}100%{visibility:hidden}}@media (prefers-reduced-motion:reduce){.bee-fly-f{animation:none}.bee-fly-f0{visibility:visible}}</style><g class="bee-fly-f bee-fly-f0"><path fill="#1F1408" d="M4 0h2v1h-2zM3 1h1v1h-1zM6 1h1v1h-1zM8 1h2v1h-2zM2 2h1v1h-1zM7 2h1v1h-1zM10 2h1v1h-1zM13 2h1v1h-1zM2 3h1v1h-1zM7 3h1v1h-1zM10 3h1v1h-1zM12 3h1v1h-1zM15 3h1v1h-1zM3 4h1v1h-1zM7 4h1v1h-1zM10 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM2 5h13v1h-13zM1 6h1v1h-1zM4 6h2v1h-2zM8 6h2v1h-2zM15 6h1v1h-1zM0 7h2v1h-2zM4 7h2v1h-2zM8 7h2v1h-2zM13 7h1v1h-1zM15 7h1v1h-1zM0 8h2v1h-2zM4 8h2v1h-2zM8 8h2v1h-2zM12 8h2v1h-2zM15 8h1v1h-1zM1 9h1v1h-1zM4 9h2v1h-2zM8 9h2v1h-2zM15 9h1v1h-1zM2 10h13v1h-13zM4 11h1v1h-1zM7 11h1v1h-1zM10 11h1v1h-1zM3 12h1v1h-1zM6 12h1v1h-1zM9 12h1v1h-1z"/><path fill="#E6F6F8" d="M4 1h2v1h-2zM3 2h4v1h-4zM8 2h2v1h-2zM3 3h3v1h-3zM8 3h2v1h-2zM4 4h1v1h-1zM8 4h1v1h-1z"/><path fill="#A9D9E3" d="M6 3h1v1h-1zM5 4h2v1h-2zM9 4h1v1h-1z"/><path fill="#FFBE3D" d="M2 6h2v1h-2zM6 6h2v1h-2zM10 6h5v1h-5zM2 7h2v1h-2zM6 7h2v1h-2zM10 7h2v1h-2zM14 7h1v1h-1zM2 8h2v1h-2zM6 8h2v1h-2zM10 8h2v1h-2zM14 8h1v1h-1zM11 9h4v1h-4z"/><path fill="#FFFFFF" d="M12 7h1v1h-1z"/><path fill="#D98A12" d="M2 9h2v1h-2zM6 9h2v1h-2zM10 9h1v1h-1z"/></g><g class="bee-fly-f bee-fly-f1"><path fill="#1F1408" d="M13 2h1v1h-1zM1 3h8v1h-8zM12 3h1v1h-1zM15 3h1v1h-1zM0 4h1v1h-1zM9 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM2 5h13v1h-13zM1 6h1v1h-1zM4 6h2v1h-2zM8 6h2v1h-2zM15 6h1v1h-1zM0 7h2v1h-2zM4 7h2v1h-2zM8 7h2v1h-2zM13 7h1v1h-1zM15 7h1v1h-1zM0 8h2v1h-2zM4 8h2v1h-2zM8 8h2v1h-2zM12 8h2v1h-2zM15 8h1v1h-1zM1 9h1v1h-1zM4 9h2v1h-2zM8 9h2v1h-2zM15 9h1v1h-1zM2 10h13v1h-13zM3 11h1v1h-1zM6 11h1v1h-1zM9 11h1v1h-1zM4 12h1v1h-1zM7 12h1v1h-1zM10 12h1v1h-1z"/><path fill="#E6F6F8" d="M1 4h6v1h-6z"/><path fill="#A9D9E3" d="M7 4h2v1h-2z"/><path fill="#FFBE3D" d="M2 6h2v1h-2zM6 6h2v1h-2zM10 6h5v1h-5zM2 7h2v1h-2zM6 7h2v1h-2zM10 7h2v1h-2zM14 7h1v1h-1zM2 8h2v1h-2zM6 8h2v1h-2zM10 8h2v1h-2zM14 8h1v1h-1zM11 9h4v1h-4z"/><path fill="#FFFFFF" d="M12 7h1v1h-1z"/><path fill="#D98A12" d="M2 9h2v1h-2zM6 9h2v1h-2zM10 9h1v1h-1z"/></g></svg><span class="hm-ask-status">Out looking through 212 cells</span><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite hm-ask-flower" width="32" height="36" viewBox="0 0 16 18" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M6 0h4v1h-4zM5 1h1v1h-1zM10 1h1v1h-1zM2 2h4v1h-4zM10 2h4v1h-4zM1 3h1v1h-1zM5 3h1v1h-1zM10 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM6 4h4v1h-4zM14 4h1v1h-1zM1 5h1v1h-1zM5 5h1v1h-1zM10 5h1v1h-1zM14 5h1v1h-1zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h1v1h-1zM5 7h1v1h-1zM10 7h1v1h-1zM14 7h1v1h-1zM1 8h1v1h-1zM6 8h4v1h-4zM14 8h1v1h-1zM1 9h1v1h-1zM5 9h1v1h-1zM10 9h1v1h-1zM14 9h1v1h-1zM2 10h4v1h-4zM10 10h4v1h-4zM5 11h1v1h-1zM10 11h1v1h-1zM6 12h4v1h-4zM6 13h1v1h-1zM9 13h1v1h-1zM2 14h3v1h-3zM6 14h1v1h-1zM9 14h1v1h-1zM1 15h1v1h-1zM5 15h2v1h-2zM9 15h1v1h-1zM2 16h2v1h-2zM9 16h1v1h-1zM4 17h6v1h-6z"/><path fill="#EE86C8" d="M6 1h4v1h-4zM6 2h4v1h-4zM2 3h3v1h-3zM6 3h4v1h-4zM11 3h3v1h-3zM2 4h4v1h-4zM10 4h4v1h-4zM2 5h3v1h-3zM11 5h3v1h-3zM2 7h3v1h-3zM11 7h3v1h-3zM2 8h4v1h-4zM10 8h4v1h-4zM3 9h2v1h-2zM6 9h4v1h-4zM11 9h2v1h-2zM6 10h4v1h-4z"/><path fill="#FFE03A" d="M6 5h4v1h-4zM6 6h2v1h-2zM9 6h1v1h-1zM6 7h4v1h-4z"/><path fill="#FFF5B0" d="M8 6h1v1h-1z"/><path fill="#C2459B" d="M2 9h1v1h-1zM13 9h1v1h-1zM6 11h4v1h-4z"/><path fill="#63B84C" d="M7 13h1v1h-1zM7 14h1v1h-1zM2 15h3v1h-3zM7 15h1v1h-1zM4 16h4v1h-4z"/><path fill="#3F8F2F" d="M8 13h1v1h-1zM8 14h1v1h-1zM8 15h1v1h-1zM8 16h1v1h-1z"/></svg></div>
-        </form>
-        <form class="hm-ask" data-state="returned">
-          <label class="eyebrow hm-ask-label">Ask the hive</label>
-          <div class="hm-ask-field"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite" width="28" height="28" viewBox="0 0 14 14" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M3 0h5v1h-5zM1 1h2v1h-2zM8 1h2v1h-2zM1 2h1v1h-1zM9 2h1v1h-1zM0 3h1v1h-1zM10 3h1v1h-1zM0 4h1v1h-1zM10 4h1v1h-1zM0 5h1v1h-1zM10 5h1v1h-1zM0 6h1v1h-1zM10 6h1v1h-1zM0 7h1v1h-1zM10 7h1v1h-1zM1 8h1v1h-1zM9 8h2v1h-2zM1 9h2v1h-2zM8 9h1v1h-1zM11 9h1v1h-1zM3 10h6v1h-6zM12 10h1v1h-1zM9 11h1v1h-1zM13 11h1v1h-1zM10 12h1v1h-1zM13 12h1v1h-1zM11 13h2v1h-2z"/><path fill="#F2A51E" d="M3 1h5v1h-5zM2 2h1v1h-1zM8 2h1v1h-1zM1 3h1v1h-1zM9 3h1v1h-1zM1 4h1v1h-1zM9 4h1v1h-1zM1 5h1v1h-1zM9 5h1v1h-1zM1 6h1v1h-1zM9 6h1v1h-1zM1 7h1v1h-1zM9 7h1v1h-1zM2 8h1v1h-1zM8 8h1v1h-1zM3 9h5v1h-5zM9 9h2v1h-2zM9 10h3v1h-3zM10 11h3v1h-3zM11 12h2v1h-2z"/><path fill="#E6F6F8" d="M3 2h5v1h-5zM2 3h1v1h-1zM5 3h4v1h-4zM2 4h1v1h-1zM4 4h5v1h-5zM2 5h7v1h-7zM2 6h6v1h-6zM2 7h5v1h-5zM3 8h5v1h-5z"/><path fill="#FFFFFF" d="M3 3h2v1h-2zM3 4h1v1h-1z"/><path fill="#A9D9E3" d="M8 6h1v1h-1zM7 7h2v1h-2z"/></svg><input class="hm-ask-input" value="How do we run migrations on a preview branch?"><button type="button" class="hm-btn hm-btn-primary hm-btn-sm">Ask</button></div>
-          <div class="hm-ask-lane"><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite hm-ask-bee" width="32" height="32" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><style>.bee-carry-left-f{visibility:hidden;animation:180ms steps(1,end) infinite;animation-play-state:var(--sprite-play,running)}.bee-carry-left-f0{animation-name:bee-carry-left-k0}.bee-carry-left-f1{animation-name:bee-carry-left-k1}@keyframes bee-carry-left-k0{0%{visibility:visible}50%{visibility:hidden}100%{visibility:visible}}@keyframes bee-carry-left-k1{0%{visibility:hidden}50%{visibility:visible}100%{visibility:hidden}}@media (prefers-reduced-motion:reduce){.bee-carry-left-f{animation:none}.bee-carry-left-f0{visibility:visible}}</style><g class="bee-carry-left-f bee-carry-left-f0"><path fill="#1F1408" d="M10 0h2v1h-2zM6 1h2v1h-2zM9 1h1v1h-1zM12 1h1v1h-1zM2 2h1v1h-1zM5 2h1v1h-1zM8 2h1v1h-1zM13 2h1v1h-1zM0 3h1v1h-1zM3 3h1v1h-1zM5 3h1v1h-1zM8 3h1v1h-1zM13 3h1v1h-1zM1 4h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM8 4h1v1h-1zM12 4h1v1h-1zM1 5h13v1h-13zM0 6h1v1h-1zM6 6h2v1h-2zM10 6h2v1h-2zM14 6h1v1h-1zM0 7h1v1h-1zM2 7h1v1h-1zM6 7h2v1h-2zM10 7h2v1h-2zM14 7h2v1h-2zM0 8h1v1h-1zM2 8h2v1h-2zM6 8h2v1h-2zM10 8h2v1h-2zM14 8h2v1h-2zM0 9h1v1h-1zM6 9h2v1h-2zM10 9h2v1h-2zM14 9h1v1h-1zM1 10h13v1h-13zM5 11h1v1h-1zM7 11h3v1h-3zM11 11h1v1h-1zM6 12h1v1h-1zM10 12h1v1h-1zM6 13h1v1h-1zM10 13h1v1h-1zM7 14h3v1h-3z"/><path fill="#E6F6F8" d="M10 1h2v1h-2zM6 2h2v1h-2zM9 2h4v1h-4zM6 3h2v1h-2zM10 3h3v1h-3zM7 4h1v1h-1zM11 4h1v1h-1z"/><path fill="#A9D9E3" d="M9 3h1v1h-1zM6 4h1v1h-1zM9 4h2v1h-2z"/><path fill="#FFBE3D" d="M1 6h5v1h-5zM8 6h2v1h-2zM12 6h2v1h-2zM1 7h1v1h-1zM4 7h2v1h-2zM8 7h2v1h-2zM12 7h2v1h-2zM1 8h1v1h-1zM4 8h2v1h-2zM8 8h2v1h-2zM12 8h2v1h-2zM1 9h4v1h-4z"/><path fill="#FFFFFF" d="M3 7h1v1h-1z"/><path fill="#D98A12" d="M5 9h1v1h-1zM8 9h2v1h-2zM12 9h2v1h-2z"/><path fill="#F2A51E" d="M7 12h2v1h-2zM8 13h2v1h-2z"/><path fill="#FFD470" d="M9 12h1v1h-1z"/><path fill="#B36B0A" d="M7 13h1v1h-1z"/></g><g class="bee-carry-left-f bee-carry-left-f1"><path fill="#1F1408" d="M2 2h1v1h-1zM0 3h1v1h-1zM3 3h1v1h-1zM7 3h8v1h-8zM1 4h1v1h-1zM3 4h1v1h-1zM6 4h1v1h-1zM15 4h1v1h-1zM1 5h13v1h-13zM0 6h1v1h-1zM6 6h2v1h-2zM10 6h2v1h-2zM14 6h1v1h-1zM0 7h1v1h-1zM2 7h1v1h-1zM6 7h2v1h-2zM10 7h2v1h-2zM14 7h2v1h-2zM0 8h1v1h-1zM2 8h2v1h-2zM6 8h2v1h-2zM10 8h2v1h-2zM14 8h2v1h-2zM0 9h1v1h-1zM6 9h2v1h-2zM10 9h2v1h-2zM14 9h1v1h-1zM1 10h13v1h-13zM5 11h1v1h-1zM7 11h3v1h-3zM11 11h1v1h-1zM6 12h1v1h-1zM10 12h1v1h-1zM6 13h1v1h-1zM10 13h1v1h-1zM7 14h3v1h-3z"/><path fill="#A9D9E3" d="M7 4h2v1h-2z"/><path fill="#E6F6F8" d="M9 4h6v1h-6z"/><path fill="#FFBE3D" d="M1 6h5v1h-5zM8 6h2v1h-2zM12 6h2v1h-2zM1 7h1v1h-1zM4 7h2v1h-2zM8 7h2v1h-2zM12 7h2v1h-2zM1 8h1v1h-1zM4 8h2v1h-2zM8 8h2v1h-2zM12 8h2v1h-2zM1 9h4v1h-4z"/><path fill="#FFFFFF" d="M3 7h1v1h-1z"/><path fill="#D98A12" d="M5 9h1v1h-1zM8 9h2v1h-2zM12 9h2v1h-2z"/><path fill="#F2A51E" d="M7 12h2v1h-2zM8 13h2v1h-2z"/><path fill="#FFD470" d="M9 12h1v1h-1z"/><path fill="#B36B0A" d="M7 13h1v1h-1z"/></g></svg><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite hm-ask-jar" width="28" height="30" viewBox="0 0 14 15" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M3 0h8v1h-8zM2 1h1v1h-1zM11 1h1v1h-1zM2 2h1v1h-1zM11 2h1v1h-1zM3 3h8v1h-8zM2 4h1v1h-1zM11 4h1v1h-1zM1 5h1v1h-1zM12 5h1v1h-1zM0 6h1v1h-1zM13 6h1v1h-1zM0 7h1v1h-1zM13 7h1v1h-1zM0 8h1v1h-1zM13 8h1v1h-1zM0 9h1v1h-1zM4 9h1v1h-1zM6 9h2v1h-2zM9 9h1v1h-1zM13 9h1v1h-1zM0 10h1v1h-1zM13 10h1v1h-1zM0 11h1v1h-1zM13 11h1v1h-1zM0 12h1v1h-1zM13 12h1v1h-1zM1 13h1v1h-1zM12 13h1v1h-1zM2 14h10v1h-10z"/><path fill="#F1E3BF" d="M3 1h8v1h-8z"/><path fill="#E4D2A5" d="M3 2h8v1h-8z"/><path fill="#FFFFFF" d="M3 4h1v1h-1zM2 5h1v1h-1zM1 6h1v1h-1zM1 7h1v1h-1z"/><path fill="#E6F6F8" d="M4 4h7v1h-7z"/><path fill="#F2A51E" d="M3 5h9v1h-9zM2 6h1v1h-1zM4 6h8v1h-8zM2 7h1v1h-1zM4 7h8v1h-8zM1 8h2v1h-2zM11 8h1v1h-1zM1 9h2v1h-2zM11 9h1v1h-1zM1 10h2v1h-2zM11 10h1v1h-1zM1 11h11v1h-11zM1 12h10v1h-10zM2 13h1v1h-1z"/><path fill="#FFD470" d="M3 6h1v1h-1zM3 7h1v1h-1z"/><path fill="#B36B0A" d="M12 6h1v1h-1zM12 7h1v1h-1zM12 8h1v1h-1zM12 9h1v1h-1zM12 10h1v1h-1zM12 11h1v1h-1zM11 12h2v1h-2zM3 13h9v1h-9z"/><path fill="#FDF6E3" d="M3 8h8v1h-8zM3 9h1v1h-1zM5 9h1v1h-1zM8 9h1v1h-1zM10 9h1v1h-1zM3 10h8v1h-8z"/></svg><span class="hm-ask-status">Back with a jar. 2 cells cited.</span><svg xmlns="http://www.w3.org/2000/svg" class="sprite hm-sprite hm-ask-flower" width="32" height="36" viewBox="0 0 16 18" shape-rendering="crispEdges" aria-hidden="true"><path fill="#1F1408" d="M6 0h4v1h-4zM5 1h1v1h-1zM10 1h1v1h-1zM2 2h4v1h-4zM10 2h4v1h-4zM1 3h1v1h-1zM5 3h1v1h-1zM10 3h1v1h-1zM14 3h1v1h-1zM1 4h1v1h-1zM6 4h4v1h-4zM14 4h1v1h-1zM1 5h1v1h-1zM5 5h1v1h-1zM10 5h1v1h-1zM14 5h1v1h-1zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h1v1h-1zM5 7h1v1h-1zM10 7h1v1h-1zM14 7h1v1h-1zM1 8h1v1h-1zM6 8h4v1h-4zM14 8h1v1h-1zM1 9h1v1h-1zM5 9h1v1h-1zM10 9h1v1h-1zM14 9h1v1h-1zM2 10h4v1h-4zM10 10h4v1h-4zM5 11h1v1h-1zM10 11h1v1h-1zM6 12h4v1h-4zM6 13h1v1h-1zM9 13h1v1h-1zM2 14h3v1h-3zM6 14h1v1h-1zM9 14h1v1h-1zM1 15h1v1h-1zM5 15h2v1h-2zM9 15h1v1h-1zM2 16h2v1h-2zM9 16h1v1h-1zM4 17h6v1h-6z"/><path fill="#EE86C8" d="M6 1h4v1h-4zM6 2h4v1h-4zM2 3h3v1h-3zM6 3h4v1h-4zM11 3h3v1h-3zM2 4h4v1h-4zM10 4h4v1h-4zM2 5h3v1h-3zM11 5h3v1h-3zM2 7h3v1h-3zM11 7h3v1h-3zM2 8h4v1h-4zM10 8h4v1h-4zM3 9h2v1h-2zM6 9h4v1h-4zM11 9h2v1h-2zM6 10h4v1h-4z"/><path fill="#FFE03A" d="M6 5h4v1h-4zM6 6h2v1h-2zM9 6h1v1h-1zM6 7h4v1h-4z"/><path fill="#FFF5B0" d="M8 6h1v1h-1z"/><path fill="#C2459B" d="M2 9h1v1h-1zM13 9h1v1h-1zM6 11h4v1h-4z"/><path fill="#63B84C" d="M7 13h1v1h-1zM7 14h1v1h-1zM2 15h3v1h-3zM7 15h1v1h-1zM4 16h4v1h-4z"/><path fill="#3F8F2F" d="M8 13h1v1h-1zM8 14h1v1h-1zM8 15h1v1h-1zM8 16h1v1h-1z"/></svg></div>
-        </form>
-      </div>
-    </div>
+  <div class="pv-block" id="sample-answer">
     <div class="pv-block">
       <div class="eyebrow">AnswerCard · citation chips</div>
       <article class="hm-answer">

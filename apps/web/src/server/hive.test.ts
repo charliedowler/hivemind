@@ -11,7 +11,7 @@ import {
 } from "./auth";
 import { getSql, hasEmbeddingColumn } from "./db/client";
 import {
-  pushLearning,
+  pushLearning as pushLearningRaw,
   searchLearnings,
   recentLearnings,
   getLearning,
@@ -22,6 +22,12 @@ import {
   submitEarlyAccess,
 } from "./hive";
 import * as classifier from "./classify";
+import {
+  bindApiKey,
+  originFor,
+  withOrigin,
+  type EventRow,
+} from "./analytics/events";
 import { frictionSummary } from "./friction";
 import { HiveNotFoundError } from "./errors";
 
@@ -35,6 +41,12 @@ vi.mock("next/headers", () => ({
     delete: (name: string) => jar.delete(name),
   }),
 }));
+
+async function pushLearning(...args: Parameters<typeof pushLearningRaw>) {
+  const result = await pushLearningRaw(...args);
+  if (result.dropped) throw new Error("Unexpected capture drop in accepted push fixture.");
+  return result;
+}
 
 const enabled = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!enabled)("hive database integration", () => {
@@ -358,7 +370,7 @@ describe.skipIf(!enabled)("hive database integration", () => {
     });
     expect(answer.answer).toContain("7 measured minutes");
     expect(answer.citations.map((item) => item.id)).toContain(first.id);
-    expect(answer.gaps).toContain("Unmeasured");
+    expect(answer.gaps).toContain("excludes reports without a measured cost");
   });
 
   it("refuses sensitive pushes before writing a learning or embedding", async () => {
@@ -433,6 +445,115 @@ describe.skipIf(!enabled)("hive database integration", () => {
     } finally {
       askSpy.mockRestore();
     }
+  });
+
+  it("records trusted MCP mutations, refusals and retrieval without private content", async () => {
+    const rows: EventRow[] = [];
+    const actor = bindApiKey(a, "key_aaaaaaaaaaaa");
+    await withOrigin(
+      originFor(actor, "mcp"),
+      async () => {
+        const input = hivePushInput.parse({
+          title: "Boundary fixture mandarin",
+          body: "Private fixture prose about a deployment rule.",
+          kind: "gotcha",
+          source: "codex",
+        });
+        const first = await pushLearning(actor, input);
+        const merged = await pushLearning(actor, input);
+        expect(merged.merged).toBe(true);
+        await recordFeedback(actor, {
+          id: first.id,
+          vote: "up",
+          note: "Private vote text",
+        });
+        await pushLearning(
+          actor,
+          hivePushInput.parse({
+            ...input,
+            title: "Boundary fixture correction",
+            body: "Corrected deployment rule.",
+            supersedes: first.id,
+          }),
+        );
+        await searchLearnings(actor, {
+          query: "Private mandarin query",
+          limit: 8,
+        });
+        await askHive(actor, { question: "Private mandarin question" });
+        await recentLearnings(actor, { since: "24h", limit: 20 });
+        const spy = vi.spyOn(classifier, "classifyPush").mockResolvedValueOnce({
+          classification: null,
+          decision: {
+            action: "refuse",
+            kind: "learning",
+            tags: [],
+            worthSharing: true,
+            severity: null,
+          },
+        });
+        try {
+          await expect(pushLearning(actor, input)).rejects.toThrow(
+            "personal data",
+          );
+        } finally {
+          spy.mockRestore();
+        }
+      },
+      async (row) => {
+        rows.push(row);
+      },
+    );
+    expect(
+      rows.every(
+        (row) =>
+          row.team_id === a.teamId &&
+          row.member_id === a.memberId &&
+          row.api_key_id === "key_aaaaaaaaaaaa" &&
+          row.entrypoint === "mcp",
+      ),
+    ).toBe(true);
+    expect(new Set(rows.map((row) => row.request_id)).size).toBe(1);
+    expect(
+      rows.filter(
+        (row) =>
+          row.event_name === "learning.pushed" && row.outcome === "completed",
+      ),
+    ).toHaveLength(3);
+    expect(
+      rows.find(
+        (row) => row.event_name === "learning.pushed" && row.properties.merged,
+      ),
+    ).toBeDefined();
+    expect(
+      rows.find((row) => row.event_name === "learning.superseded"),
+    ).toBeDefined();
+    expect(
+      rows.find(
+        (row) =>
+          row.event_name === "learning.lifecycle_changed" &&
+          row.properties.state === "superseded",
+      ),
+    ).toBeDefined();
+    expect(
+      rows.find(
+        (row) =>
+          row.event_name === "learning.pushed" &&
+          row.reason_code === "sensitive_refused",
+      ),
+    ).toBeDefined();
+    expect(
+      rows.find((row) => row.event_name === "learning.feedback")?.properties
+        .vote,
+    ).toBe("up");
+    expect(rows.some((row) => row.event_name === "search.performed")).toBe(
+      true,
+    );
+    expect(rows.some((row) => row.event_name === "ask.performed")).toBe(true);
+    expect(rows.some((row) => row.event_name === "recent.performed")).toBe(
+      true,
+    );
+    expect(JSON.stringify(rows)).not.toMatch(/Private|mandarin|correction/);
   });
 
   it("handles every recent since form and an early access submission", async () => {

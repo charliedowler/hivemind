@@ -34,8 +34,7 @@ export function EmailCode({
     <form className="stack" action={submit}>
       <h2>Check your email</h2>
       <p className="muted">
-        Enter the six-digit code. It expires in 15 minutes. Your key appears
-        after you verify.
+        Enter the six-digit code. It expires in 15 minutes.
       </p>
       <Input
         label="Email code"

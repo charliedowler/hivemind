@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDateTime } from "@hivemind/core";
 import { useEffect, useState } from "react";
 import type { KnowledgeFile, KnowledgeListing } from "@hivemind/core";
 import { Button, Card, Sprite } from "@hivemind/design-system";
@@ -31,11 +32,10 @@ export function KnowledgeBrowser() {
     <section className="stack dashboard" aria-label="Knowledge tree">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Explore what the hive knows</span>
           <h1>Knowledge tree</h1>
           <p className="muted">
-            Browse by repo, topic, person or friction. Bring corrections back
-            through your agent.
+            Browse cells by repo, topic, person or friction. Ask your agent to
+            save corrections.
           </p>
         </div>
         <Sprite name="cell-full" scale={3} />
@@ -46,7 +46,7 @@ export function KnowledgeBrowser() {
           disabled={snapshot.pending}
           onClick={() => void download()}
         >
-          {snapshot.pending ? "Packing the hive" : "Prepare a snapshot"}
+          {snapshot.pending ? "Preparing a snapshot" : "Prepare a snapshot"}
         </Button>
         {snapshot.url ? (
           <a
@@ -60,11 +60,7 @@ export function KnowledgeBrowser() {
         ) : null}
         {snapshot.expiresAt ? (
           <span className="small muted">
-            Link expires at{" "}
-            {new Date(snapshot.expiresAt).toLocaleTimeString("en-GB", {
-              timeZone: "UTC",
-            })}{" "}
-            UTC
+            Link expires at {formatHumanDateTime(snapshot.expiresAt)}
           </span>
         ) : null}
       </div>
@@ -167,10 +163,7 @@ function TreeContent({
         </pre>
       </>
     );
-  if (!state.listing)
-    return (
-      <LoadingPanel>A forager is gathering this part of the hive.</LoadingPanel>
-    );
+  if (!state.listing) return <LoadingPanel>Loading this folder.</LoadingPanel>;
   return (
     <>
       <p className="small muted">

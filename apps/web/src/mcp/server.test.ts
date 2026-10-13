@@ -5,12 +5,18 @@ import {
   type ToolCallback,
 } from "@modelcontextprotocol/server";
 import {
+  hivePushInput,
   hiveRecentInput,
   hiveSearchInput,
   type LearningView,
 } from "@hivemind/core";
-import { recentLearnings, searchLearnings } from "@/server/hive";
+import { pushLearning, recentLearnings, searchLearnings } from "@/server/hive";
+import { reverseDecision } from "@/server/conflict-decisions";
+import { HiveError } from "@/server/errors";
+import { z } from "zod";
 import { registerHiveTools } from "./server";
+
+vi.mock("@/server/conflict-decisions", () => ({ reverseDecision: vi.fn() }));
 
 vi.mock("@/server/hive", () => ({
   askHive: vi.fn(),
@@ -48,6 +54,16 @@ afterEach(() => {
 });
 
 describe("MCP learning text", () => {
+  it("returns a structured, silently accepted capture drop", async () => {
+    vi.mocked(pushLearning).mockResolvedValue({dropped: true, rule: "repo_owner"});
+    const server = new McpServer({name: "test", version: "1.0.0"});
+    const registerTool = vi.spyOn(server, "registerTool");
+    registerHiveTools(server);
+    const push = registerTool.mock.calls.find(([name]) => name === "hive_push")![2] as ToolCallback<typeof hivePushInput>;
+    const result = await push(hivePushInput.parse({title: "Excluded fixture", body: "Private fixture"}), toolContext);
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toEqual([{type: "text", text: JSON.stringify({dropped: true, rule: "repo_owner"})}]);
+  });
   it.each(["codex", "claude-code", "manual"] as const)(
     "shows the author and %s source in recent and search results",
     async (source) => {
@@ -61,6 +77,11 @@ describe("MCP learning text", () => {
         repo: source === "manual" ? null : "team/service",
         paths: [],
         confidence: 1,
+        captureFlagged: false,
+        captureRedacted: false,
+        captureRuleIds: [],
+        captureCategories: {},
+        canConfirmCapture: false,
         source,
         author: { id: context.memberId, name: context.memberName },
         pushCount: 1,
@@ -115,4 +136,19 @@ describe("MCP learning text", () => {
       expect(searchLearnings).toHaveBeenCalledWith(context, searchInput);
     },
   );
+});
+
+
+it("exposes decision reversal by ID and returns the guarded inverse receipt", async () => {
+  const schema = z.object({ decision_id: z.string() });
+  const server = new McpServer({ name: "test", version: "1.0.0" });
+  const register = vi.spyOn(server, "registerTool");
+  registerHiveTools(server);
+  const call = register.mock.calls.find(([name]) => name === "hive_reverse_decision")?.[2] as ToolCallback<typeof schema>;
+  expect(call).toBeDefined();
+  vi.mocked(reverseDecision).mockResolvedValue({ id: "dec_inverse", decision: "reversed", reason: "Audit" });
+  expect(await call({ decision_id: "dec_target" }, toolContext)).toMatchObject({ content: [{ text: "dec_inverse: Decision reversed." }] });
+  expect(reverseDecision).toHaveBeenCalledWith(context, "dec_target", undefined, undefined, "through MCP");
+  vi.mocked(reverseDecision).mockRejectedValue(new HiveError("A cell changes after this decision.", 409));
+  expect(await call({ decision_id: "dec_inverse" }, toolContext)).toMatchObject({ isError: true, content: [{ text: expect.stringContaining("changes") }] });
 });

@@ -64,6 +64,29 @@ pre:focus-visible {
   gap: 20px;
   min-width: 0;
 }
+.install-fallback > summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+.install-fallback > div {
+  margin-top: 20px;
+}
+.executor-steps {
+  padding: 20px;
+  border-top: 1px solid var(--border-default);
+}
+.executor-steps .muted,
+.executor-steps a {
+  color: var(--teal-300);
+}
+.executor-steps ol {
+  margin: 0;
+  padding-left: 24px;
+  line-height: 1.6;
+}
+.executor-steps li + li {
+  margin-top: 12px;
+}
 .row {
   display: flex;
   align-items: center;
@@ -357,53 +380,6 @@ pre:focus-visible {
   gap: 8px;
   color: var(--text-subtle);
 }
-.ask-section {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-.ask-section > .stack {
-  gap: 12px;
-}
-.ask-section > .stack > div:first-child {
-  display: grid;
-  gap: 8px;
-}
-.answer-waiting {
-  min-height: 252px;
-  background: var(--wax-50);
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 16px;
-}
-.answer-confidence {
-  margin-bottom: 16px;
-}
-.gaps {
-  padding: 16px;
-  border: var(--outline-ink);
-  background: var(--wax-50);
-  margin-top: 20px;
-}
-.gaps h3 {
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-.history {
-  display: grid;
-  gap: 8px;
-}
-.history .hm-btn {
-  white-space: normal;
-  text-align: left;
-  justify-content: flex-start;
-  height: auto;
-  min-height: 36px;
-  line-height: 1.3;
-  padding-block: 8px;
-}
 .search-form {
   display: flex;
   align-items: end;
@@ -673,7 +649,6 @@ pre:focus-visible {
   .how-steps,
   .sample-ask,
   .early-access,
-  .ask-section,
   .invite-card,
   .search-results,
   .login-layout {
@@ -800,9 +775,6 @@ pre:focus-visible {
   }
 }
 
-#ask {
-  scroll-margin-top: 24px;
-}
 @media (max-width: 600px) {
   .hm-hero {
     padding: 28px 16px 32px;
@@ -989,4 +961,32 @@ pre:focus-visible {
   color: var(--teal-700);
   text-decoration: underline;
   cursor: pointer;
+}
+
+.auth-divider { text-align: center; }
+.consent-scopes { display: grid; gap: 12px; padding-left: 20px; }
+.consent-panel h1 { font-size: clamp(28px, 5vw, 40px); }
+@media (max-width: 640px) {
+  .login-panel .hm-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .login-panel .hm-tab { padding-inline: 4px; font-size: 12px; }
+  .login-panel .hm-tab:last-child { grid-column: auto; }
+}
+
+.slack-settings { max-width: 960px; margin: 0 auto; }
+.slack-channel,.slack-decision { border-top: 1px solid var(--border-default); padding-top: 20px; }
+.slack-channel h3,.slack-decision p { margin: 0; }
+.slack-purge { background: var(--danger-soft); padding: 16px; border: 2px solid var(--ink); }
+.slack-signals { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 12px; }
+.slack-signals dd { margin: 0; font-family: var(--font-mono); }
+.slack-decision a { overflow-wrap: anywhere; }
+@media(max-width:600px) { .slack-settings .hm-card { padding: 16px; } .slack-channel .row { align-items: flex-start; } }
+.decision-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+.decision-reversal > button { align-self: start; }
+@media (max-width: 640px) {
+  .decision-filters { grid-template-columns: minmax(0, 1fr); }
 }

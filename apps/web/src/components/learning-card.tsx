@@ -53,6 +53,7 @@ export function LearningCard({
               {learning.kind}
             </span>
           ) : null}
+          {learning.source === "slack" ? <span>From Slack</span> : null}
           <Sprite name="thumb" scale={1} />
           {learning.votes.up}
           {learning.pushCount > 1 ? (
@@ -97,6 +98,11 @@ export function SearchHitCard({
           {hit.pushCount > 1 ? ` · seen ${hit.pushCount} times` : ""}
         </span>
       </div>
+      {hit.permalink ? (
+        <a href={hit.permalink} target="_blank" rel="noreferrer">
+          From Slack{hit.slackChannel ? ` in #${hit.slackChannel}` : ""}
+        </a>
+      ) : null}
       <div className="tags">
         {hit.tags.map((tag) => (
           <Tag key={tag}>{tag}</Tag>

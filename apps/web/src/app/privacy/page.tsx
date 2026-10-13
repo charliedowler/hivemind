@@ -39,9 +39,9 @@ export default function PrivacyPage() {
           your email address, name and avatar.
         </p>
         <p>
-          We collect learnings and friction notes pushed by team members’
-          agents, including repository names and file paths. We also collect
-          questions you ask the hive and votes on its content.
+          We collect learnings and friction reports that your team's agents
+          save, including repository names and file paths. We also collect your
+          questions and votes on cells.
         </p>
         <p>
           If you join our waitlist or early-access list, we collect your email
@@ -52,23 +52,22 @@ export default function PrivacyPage() {
       <section>
         <h2>Why we use it</h2>
         <p>
-          We use this information to run Hive, manage access, respond to
-          requests and provide the features you use. We use waitlist details to
-          contact you about access.
+          We use account information to manage access to Hive and respond to
+          your requests. We use your learnings and questions to provide answers.
+          We use waitlist details to contact you about access.
         </p>
       </section>
       <section>
         <h2>Who processes it</h2>
         <p>
-          Depending on the features you use, our service providers process
-          information for us: Vercel for hosting, Neon for the database,
-          Anthropic and OpenAI for model calls, TypeSafe for classification,
-          Resend for email, and Inth for consent records.
+          Our service providers process information for the features you use.
+          Vercel hosts Hive. Neon stores the data. Anthropic and OpenAI provide
+          model calls. TypeSafe classifies learnings. Resend sends email. Inth stores consent records.
         </p>
         <p>
           Google and Slack process sign-in information when you use their
-          sign-in options. Content needed for an AI feature is sent to the model
-          or classification service that provides it.
+          sign-in options. We send the content a feature needs to the model or
+          classification service that provides it.
         </p>
       </section>
       <section>
@@ -82,8 +81,7 @@ export default function PrivacyPage() {
       <section>
         <h2>Your choices and rights</h2>
         <p>
-          You can request access to your data, correction, deletion or an
-          export. Email{" "}
+          You can ask to see, correct, delete or export your data. Email{" "}
           <a href="mailto:charlie@lightdash.com">charlie@lightdash.com</a> and
           tell us what you need.
         </p>
@@ -101,8 +99,8 @@ export default function PrivacyPage() {
       <section>
         <h2>Early access</h2>
         <p>
-          Hive is in early access and may change. We will update this policy
-          when our data practices change and show the latest update date above.
+          Hive is in early access and may change. When we change how we handle
+          data, we update this policy and its date.
         </p>
       </section>
     </LegalPage>

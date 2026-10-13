@@ -1,3 +1,4 @@
+import { withOrigin, originFor } from "@/server/analytics/events";
 import { ZodError } from "zod";
 import type { HiveContext } from "@hivemind/core";
 import { getWebContext } from "@/server/auth";
@@ -5,7 +6,7 @@ import { getWebContext } from "@/server/auth";
 export function httpError(error: unknown): Response {
   if (error instanceof ZodError) {
     return Response.json(
-      { error: error.issues[0]?.message ?? "Invalid input." },
+      { error: error.issues[0]?.message ?? "Check the fields and try again." },
       { status: 400 },
     );
   }
@@ -16,12 +17,12 @@ export function httpError(error: unknown): Response {
     typeof error.status === "number"
   ) {
     return Response.json(
-      { error: "message" in error ? String(error.message) : "Request failed." },
+      { error: "message" in error ? String(error.message) : "The request failed. Please try again." },
       { status: error.status },
     );
   }
   console.error(error);
-  return Response.json({ error: "Something went wrong." }, { status: 500 });
+  return Response.json({ error: "The request failed. Please try again." }, { status: 500 });
 }
 
 export async function readJson(request: Request): Promise<unknown> {
@@ -39,7 +40,7 @@ export async function authenticated(
     const ctx = await getWebContext();
     if (!ctx)
       return Response.json({ error: "Sign in first." }, { status: 401 });
-    return await action(ctx);
+    return await withOrigin(originFor(ctx), () => action(ctx));
   } catch (error) {
     return httpError(error);
   }

@@ -20,7 +20,7 @@ Hive uses hosted c15t 3.0.0. The install adds one consent root, a banner, a pref
 
 The backend URL comes verbatim from `inth project get`. It contains no management credential. CLI credentials stay outside the repository and browser bundle. No billing or plan settings change.
 
-Trusted origins are `gohive.dev`, `www.gohive.dev`, `hivemind-hq.vercel.app`, `*.vercel.app`, `localhost:3000`, `localhost:3102` and `localhost:3199`. Inth rejects the partial wildcard `*-charlie-s-team4.vercel.app` with HTTP 400. The supported `*.vercel.app` wildcard covers previews but also covers other Vercel tenants. Port 3199 serves this worktree's local production verification because existing processes own ports 3000 and 3007. Port 3102 is retained from the parallel setup.
+The intended trusted origins are `gohive.dev`, `www.gohive.dev`, `hivemind-hq.vercel.app` and `localhost:3000`. Charlie requests no preview wildcards. The saved setup previously included `*.vercel.app` and additional local ports. Current verification and removal of the wildcard require renewed Inth access. The hosted policy stays at its default.
 
 `withConsentManifest` fetches the public policy during the build. `resolveConsent` resolves each request from that snapshot and streams it to `ConsentRoot`. Each route under the root is dynamic. The browser sends choices to the hosted `/subjects` endpoint. `reportSessions: false` disables detached server consent-session reports. Rebuild after a hosted policy change. A missing manifest fails the production build by default.
 
@@ -30,8 +30,8 @@ The target is `apps/web`, a TypeScript Next.js 16.4 App Router app with server a
 
 | Tool or call | Files and IDs | Purpose | Previous gate | Handling |
 | --- | --- | --- | --- | --- |
-| First-party page beacon, pending on `feature/analytics` | `src/components/analytics-beacon.tsx`; `/api/analytics/page`; `{ page: 'landing' \| 'waitlist' \| 'install' }`; server event `page.viewed`; no vendor ID | Measurement | None | This branch supplies the same component signature and payload, guarded by `useMeasurementConsent`. No mount or event history is queued while denied. |
-| First-party cell beacon, pending on `feature/analytics` | Same component; `/api/app/analytics/view`; `{ learningId }`; no vendor ID | Measurement | None | Same explicit measurement gate and one send per current key. |
+| First-party page beacon | `src/components/analytics-beacon.tsx`; `/api/analytics/page`; `{ page: 'landing' \| 'waitlist' \| 'install' }`; server event `page.viewed`; no vendor ID | Measurement | None | This branch supplies the same component signature and payload, guarded by `useMeasurementConsent`. No mount or event history is queued while denied. |
+| First-party cell beacon | Same component; `/api/app/analytics/view`; `{ learningId }`; no vendor ID | Measurement | None | Same explicit measurement gate and one send per current key. |
 | Trackers, pixels, tag managers and embeds | No optional vendor loader, ID, global or iframe found in the current app | None present | None | No helper, vendor script or duplicate loader is added. |
 | Authentication | `src/server/auth.ts`, `src/server/identity/access.ts`; `hm_session` | Necessary | Session checks | Unchanged. |
 | Product API calls and server email/model services | `src/lib/client.ts`, server services | Run the requested product feature | Product access rules | Unchanged. They are not optional browser tracking. |
@@ -41,11 +41,11 @@ Every optional measurement call must send zero requests before opt-in. `useMeasu
 
 The beacon sends a new event for the current view after a grant. It stores no historical views or payloads. It does not retry or replay an event captured before consent. A repeated render of the same current key sends nothing further.
 
-## Analytics merge
+## Analytics integration
 
-The owner of `feature/analytics` must retain this branch's guarded `AnalyticsBeacon` when resolving the add/add conflict. Keep the `useMeasurementConsent` import and the `allowed` guard before `navigator.sendBeacon`. Keep the existing endpoint paths, payloads and server event names. The planned landing, waitlist, install and cell mounts can use this guarded component without a second provider.
+Main now includes the page and cell beacon mounts and ingestion routes. The merge retains the existing paths, payloads and event names and gates the shared beacon with `useMeasurementConsent`. The new `/api/analytics/error` beacon records `error.page_shown` and uses the same measurement gate. It sends no error measurement before an explicit grant or after withdrawal. No denied event history is queued.
 
-The analytics routes and their database writes are not present on this branch. The browser verification mounts the real component in a temporary local test page. Its requests reach the expected paths and receive 404 because ingestion is not merged. This proves client gating and send counts, not database ingestion. The analytics owner must verify event recording after the merge. Do not introduce a second beacon loader or collect denied views for later delivery.
+Normal routes, nested error pages and the 404 inherit the root consent footer. The global error page replaces the root layout, so it mounts its own consent root, banner, dialog and footer. Without server state this fallback resolves through the hosted backend.
 
 ## Hosted default policy limitation
 

@@ -1,0 +1,87 @@
+{
+  "display_information": {
+    "name": "Hive",
+    "description": "Shared memory for your team's coding agents",
+    "background_color": "#2C2D30"
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://gohive.dev/api/auth/callback/slack",
+      "https://hivemind-hq.vercel.app/api/auth/callback/slack",
+      "http://localhost:3000/api/auth/callback/slack",
+      "https://gohive.dev/api/slack/oauth/callback"
+    ],
+    "scopes": {
+      "user": [
+        "openid",
+        "email",
+        "profile"
+      ],
+      "bot": [
+        "app_mentions:read",
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "channels:read",
+        "groups:read",
+        "chat:write",
+        "reactions:read",
+        "reactions:write",
+        "users:read",
+        "users:read.email",
+        "commands",
+        "pins:read"
+      ]
+    },
+    "pkce_enabled": false
+  },
+  "settings": {
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://gohive.dev/api/slack/interactivity"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false,
+    "app_level_token_rotation_enabled": false,
+    "is_mcp_enabled": false,
+    "event_subscriptions": {
+      "request_url": "https://gohive.dev/api/slack/events",
+      "bot_events": [
+        "app_mention",
+        "message.channels",
+        "message.groups",
+        "message.im",
+        "reaction_added"
+      ]
+    }
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Hive",
+      "always_online": false
+    },
+    "app_home": {
+      "home_tab_enabled": false,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "slash_commands": [
+      {
+        "command": "/hive",
+        "description": "Ask, browse or save shared memory",
+        "usage_hint": "ask <question> | recent | save <message permalink>",
+        "url": "https://gohive.dev/api/slack/commands",
+        "should_escape": false
+      }
+    ],
+    "shortcuts": [
+      {
+        "name": "Save to hive",
+        "type": "message",
+        "callback_id": "hive_save_message",
+        "description": "Save this channel thread as a learning"
+      }
+    ]
+  }
+}

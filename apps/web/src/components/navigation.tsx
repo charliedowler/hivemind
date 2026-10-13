@@ -9,9 +9,11 @@ import { requestJson, errorMessage } from "@/lib/client";
 export function Navigation({
   teamName,
   memberName,
+  isAdmin = false,
 }: {
   teamName: string;
   memberName: string;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -41,11 +43,14 @@ export function Navigation({
         <nav aria-label="Dashboard">
           {[
             ["/app", "The comb"],
-            ["/app/conflicts", "Conflicts"],
+            ["/app/conflicts", "Decisions"],
             ["/app/tree", "Tree"],
             ["/app/members", "Members"],
             ["/app/install", "Install"],
             ["/app/account", "Account"],
+            ["/app/settings/capture", "What Hive keeps"],
+            ["/app/settings/slack", "Slack"],
+            ...(isAdmin ? [["/app/admin/analytics", "Analytics"]] : []),
           ].map(([href, label]) => (
             <Link
               key={href}

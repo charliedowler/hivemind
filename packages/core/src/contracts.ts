@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CaptureRuleInput } from "./capture-rules";
 import type {
   LearningKind,
   LearningSource,
@@ -55,6 +56,13 @@ export type LearningView = {
   verifyBeforeUse?: boolean;
   supersededBy?: string | null;
   sessionRef?: string | null;
+  captureFlagged?: boolean;
+  captureRedacted?: boolean;
+  captureRuleIds?: string[];
+  captureCategories?: Record<string, boolean>;
+  canConfirmCapture?: boolean;
+  permalink?: string | null;
+  slackChannel?: string;
   classification?: JevClassification | null;
   adminOutdated?: boolean;
   area?: FrictionArea | null;
@@ -82,18 +90,30 @@ export type SearchHit = LearningView & {
   signals: SearchSignals;
 };
 
-export type PushResult = {
+export type PushResult = { dropped: true; rule: CaptureRuleInput["kind"] } | {
+  dropped?: false;
   id: string;
   merged: boolean;
   pushCount: number;
   redactions: number;
   learning: LearningView;
+  decisions?: Pick<
+    ConflictDecisionRecord,
+    "id" | "decision" | "reason" | "confidence" | "model"
+  >[];
 };
 
 export const askConfidenceLevels = ["high", "medium", "low"] as const;
 export type AskConfidence = (typeof askConfidenceLevels)[number];
 
-export type AskCitation = { id: string; title: string; why: string };
+export type AskCitation = {
+  id: string;
+  title: string;
+  why: string;
+  source?: "slack";
+  permalink?: string;
+  date?: string;
+};
 
 export type AskResult = {
   answer: string;
@@ -129,28 +149,58 @@ export type TeamOverview = {
 export const teamSizes = ["1-5", "6-20", "21-50", "51-200", "200+"] as const;
 
 export const earlyAccessInput = z.object({
-  name: z.string().trim().min(1).max(120),
-  email: z.email().max(200),
-  company: z.string().trim().max(160).default(""),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Enter your name.")
+    .max(120, "Keep your name to 120 characters or fewer."),
+  email: z
+    .email("Enter a valid email address.")
+    .max(200, "Keep your email to 200 characters or fewer."),
+  company: z
+    .string()
+    .trim()
+    .max(160, "Keep the company name to 160 characters or fewer.")
+    .default(""),
   teamSize: z.enum(teamSizes),
   source: z.string().trim().max(200).optional(),
 });
 export type EarlyAccessInput = z.infer<typeof earlyAccessInput>;
 
 export const createTeamInput = z.object({
-  teamName: z.string().trim().min(1).max(80),
-  memberName: z.string().trim().min(1).max(80),
+  teamName: z
+    .string()
+    .trim()
+    .min(1, "Enter a team name.")
+    .max(80, "Keep the team name to 80 characters or fewer."),
+  memberName: z
+    .string()
+    .trim()
+    .min(1, "Enter your name.")
+    .max(80, "Keep your name to 80 characters or fewer."),
 });
 export type CreateTeamInput = z.infer<typeof createTeamInput>;
 
 export const joinTeamInput = z.object({
-  inviteCode: z.string().trim().min(4).max(64),
-  memberName: z.string().trim().min(1).max(80),
+  inviteCode: z
+    .string()
+    .trim()
+    .min(4, "Enter the invite code from your team.")
+    .max(64, "Check your invite code. It must be 64 characters or fewer."),
+  memberName: z
+    .string()
+    .trim()
+    .min(1, "Enter your name.")
+    .max(80, "Keep your name to 80 characters or fewer."),
 });
 export type JoinTeamInput = z.infer<typeof joinTeamInput>;
 
 export const signInInput = z.object({
-  apiKey: z.string().trim().min(8).max(200),
+  apiKey: z
+    .string()
+    .trim()
+    .min(8, "Enter your saved API key.")
+    .max(200, "Check your API key. It must be 200 characters or fewer."),
 });
 export type SignInInput = z.infer<typeof signInInput>;
 
@@ -209,3 +259,27 @@ export type KnowledgeListing = {
   entries: KnowledgeEntry[];
 };
 export type KnowledgeFile = { path: string; revision: number; content: string };
+
+export type ConflictDecisionRecord = {
+  id: string;
+  older: { id: string; title: string };
+  newer: { id: string; title: string };
+  decision:
+    | "supersede"
+    | "keep_both"
+    | "keep_old"
+    | "mark_outdated"
+    | "retract_new"
+    | "undecided"
+    | "reversed";
+  reason: string;
+  confidence: number;
+  model: string;
+  jev: Record<string, JevAnswer> | null;
+  latencyMs: number;
+  author: string;
+  repo: string | null;
+  canReverse: boolean;
+  canEditReason?: boolean;
+  createdAt: string;
+};

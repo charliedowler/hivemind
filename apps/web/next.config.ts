@@ -3,6 +3,7 @@ import { withConsentManifest } from "c15t/next/build";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  outputFileTracingIncludes: { "/app/admin/analytics": ["./analytics/*.sql"] },
   async redirects() {
     return [
       {
@@ -13,6 +14,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  experimental: { authInterrupts: true },
   transpilePackages: ["@hivemind/core", "@hivemind/design-system"],
 };
 
