@@ -38,6 +38,7 @@ export const eventNames = [
   "snapshot.exported",
   "slack.event_received",
   "slack.reply_decided",
+  "slack.reaction_added",
   "page.viewed",
   "operation.started",
   "operation.finished",

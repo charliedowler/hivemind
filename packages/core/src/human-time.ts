@@ -92,21 +92,45 @@ export function formatRecency(
     month: "2-digit",
     day: "2-digit",
   });
-  const yesterday = new Date(now.getTime() - 86400000);
-  return calendar.format(date) === calendar.format(yesterday)
+  const parts = calendar.formatToParts(now);
+  const number = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value);
+  const yesterday = new Date(
+    Date.UTC(number("year"), number("month") - 1, number("day") - 1, 12),
+  );
+  const previousDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(yesterday);
+  return calendar.format(date) === previousDay
     ? "yesterday"
     : formatHumanDate(value, options);
 }
 export function humanizeTimeText(text: string, options: HumanTimeOptions = {}) {
-  const convert = (value: string) =>
-    value
+  const convert = (value: string) => {
+    const explicitZone =
+      /\b(?:Africa|America|Antarctica|Asia|Atlantic|Australia|Europe|Indian|Pacific)\/[A-Za-z_+-]+(?:\/[A-Za-z_+-]+)?\b/.exec(
+        value,
+      )?.[0];
+    const local = { ...options, timeZone: explicitZone ?? options.timeZone };
+    return value
       .replace(
         /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\b/g,
-        (date) => formatHumanDateTime(date, options),
+        (date) => formatHumanDateTime(date, local),
       )
-      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, (date) =>
-        formatHumanDate(date, options),
+      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, (date) => formatHumanDate(date, local))
+      .replace(
+        /\b(?:[01]\d|2[0-3]):[0-5]\d\b/g,
+        (clock) =>
+          `${formatHumanClock(clock)}${explicitZone ? "" : ` (${timeZoneLabel(local.timeZone)})`}`,
+      )
+      .replace(
+        /\b(?:Africa|America|Antarctica|Asia|Atlantic|Australia|Europe|Indian|Pacific)\/[A-Za-z_+-]+(?:\/[A-Za-z_+-]+)?\b/g,
+        (name) => timeZoneLabel(name),
       );
+  };
   return text
     .split(/(<[^>]+>|`[^`]+`|https?:\/\/\S+)/g)
     .map((part) => {

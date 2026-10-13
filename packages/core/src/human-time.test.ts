@@ -39,4 +39,13 @@ describe("Human time formatting", () => {
   });
   it("handles invalid input without showing raw dates", () =>
     expect(formatHumanDate("invalid")).toBe("Unknown date"));
+  it("uses the previous calendar day across daylight-saving changes", () => {
+    const spring = {
+      timeZone: "Europe/London",
+      now: new Date("2026-03-29T23:30:00Z"),
+    };
+    expect(formatRecency("2026-03-28T23:00:00Z", spring)).toBe(
+      "Saturday 28 March",
+    );
+  });
 });

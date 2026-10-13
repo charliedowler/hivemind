@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleMessage, handleCommand } from "./events";
-const { query, post, root, respond, ask, page, judge } = vi.hoisted(() => ({
-  query: vi.fn(),
-  post: vi.fn(),
-  root: vi.fn(),
-  respond: vi.fn(),
-  ask: vi.fn(),
-  page: vi.fn(),
-  judge: vi.fn(),
-}));
+const { query, post, root, respond, ask, page, judge, react } = vi.hoisted(
+  () => ({
+    query: vi.fn(),
+    post: vi.fn(),
+    root: vi.fn(),
+    respond: vi.fn(),
+    ask: vi.fn(),
+    page: vi.fn(),
+    judge: vi.fn(),
+    react: vi.fn(),
+  }),
+);
 vi.mock("../db/client", () => ({
   getSql: () =>
     Object.assign(query, {
@@ -17,6 +20,7 @@ vi.mock("../db/client", () => ({
       json: (value: unknown) => value,
     }),
 }));
+vi.mock("@/slack/tools/react", () => ({ reactToSlack: react }));
 vi.mock("./install", () => ({
   installation: async () => ({ token: "synthetic", bot_user_id: "UHIVE" }),
   resolveActor: async () => ({
@@ -138,6 +142,34 @@ describe("Slack reply placement", () => {
       expect(root).not.toHaveBeenCalled();
     },
   );
+  it("executes a sibling react outcome without posting text", async () => {
+    respond.mockResolvedValue({ react: "white_check_mark" });
+    await handleMessage("team_fixture", {
+      type: "app_mention",
+      channel: "C123",
+      user: "UCHARLIE",
+      ts: "1800000000.1",
+      text: "<@UHIVE> Save this.",
+    });
+    expect(react).toHaveBeenCalledWith(
+      { teamId: "team_fixture", channelId: "C123", messageTs: "1800000000.1" },
+      "white_check_mark",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+  it("answers explicit mentions even when the selected tool is silent", async () => {
+    respond.mockResolvedValue({ text: "", silent: true });
+    await handleMessage("team_fixture", {
+      type: "app_mention",
+      channel: "C123",
+      user: "UCHARLIE",
+      ts: "1800000000.1",
+      text: "<@UHIVE> Maybe we should set up a digest.",
+    });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][2]).toBe("No change made.");
+    expect(post.mock.calls[0][3]).toBe("1800000000.1");
+  });
   it("reads human thread answers for the gate without indexing the context", async () => {
     page.mockResolvedValue({
       messages: [
