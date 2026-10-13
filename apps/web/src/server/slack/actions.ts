@@ -85,7 +85,7 @@ export async function hasThreadAction(
     ).length > 0
   );
 }
-export async function undoLastAction(ctx: SlackToolContext) {
+export async function undoLastAction(ctx: SlackToolContext, expectedActionId?: string) {
   let decisionActor: HiveContext | undefined;
   let decisionReply: string | undefined;
   const result = await getSql().begin(async (tx) => {
@@ -94,6 +94,8 @@ export async function undoLastAction(ctx: SlackToolContext) {
     const rows =
       await tx`SELECT * FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND thread_ts=${ctx.threadTs} ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`;
     const action = rows[0];
+    if (expectedActionId && action?.id !== expectedActionId)
+      throw new HiveError("This thread changed after the undo request. Try again.", 409);
     if (!action)
       return { text: "There is no reversible action in this thread." };
     if (action.member_id !== ctx.memberId)
@@ -172,7 +174,7 @@ export async function undoLastAction(ctx: SlackToolContext) {
     }
     await tx`UPDATE slack_tool_actions SET undone_at=now() WHERE team_id=${ctx.teamId} AND id=${action.id}`;
     return {
-      react: "+1",
+      react: "white_check_mark",
       text:
         inverse.kind === "decision_reversed"
           ? decisionReply!

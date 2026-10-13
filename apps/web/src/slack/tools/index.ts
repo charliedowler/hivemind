@@ -2,12 +2,11 @@ import { decisionTools } from "./decisions";
 export { reactToSlack } from "./react";
 export type { SlackReactResult } from "./react";
 export { slackToolReply } from "./reply";
-import { decideDecisiveness } from "@/server/slack/decisiveness";
-import { undoLastAction } from "@/server/slack/actions";
+import { undoThreadAction } from "./undo";
 export { decideDecisiveness } from "@/server/slack/decisiveness";
 export { runReversibleAction } from "@/server/slack/actions";
 import { digestTools } from "./digests";
-import { captureRuleTools, isCaptureUndoInstruction, dispatchCaptureUndo } from "./capture-rules";
+import { captureRuleTools } from "./capture-rules";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { HiveError } from "@/server/errors";
@@ -64,55 +63,7 @@ export const slackTools: SlackTool[] = [
     input_schema: z.toJSONSchema(empty) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       empty.parse(args);
-      if (isCaptureUndoInstruction(ctx.instructionText ?? "")) {
-        try {
-          const capture = await dispatchCaptureUndo(ctx);
-          if (capture) return capture;
-        } catch (error) {
-          if (error instanceof HiveError) return { text: error.message };
-          throw error;
-        }
-      }
-      if (
-        await (
-          await import("@/server/digests/instructions")
-        ).isDigestFollowup(
-          ctx.teamId,
-          ctx.memberId,
-          ctx.channelId,
-          ctx.threadTs,
-        )
-      ) {
-        try {
-          return await (
-            await import("@/server/digests/instructions")
-          ).digestInstruction(
-            ctx,
-            ctx.instructionText ?? "undo",
-            await (
-              await import("@/server/digests/connection")
-            ).slackMemberTimezone(ctx.teamId, ctx.memberId),
-          );
-        } catch (error) {
-          if (error instanceof HiveError) return { text: error.message };
-          throw error;
-        }
-      }
-      const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
-        ...ctx,
-        actionType: "undo",
-      });
-      if (!judgment.act)
-        return {
-          text: judgment.reason,
-          ...(judgment.react ? { react: judgment.react } : {}),
-        };
-      try {
-        return await undoLastAction(ctx);
-      } catch (error) {
-        if (error instanceof HiveError) return { text: error.message };
-        throw error;
-      }
+      return undoThreadAction(ctx);
     },
   },
   {
