@@ -296,7 +296,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(result.text).toBe("Decision reversed.");
       expect((await getLearning(a, old.id))?.lifecycle).toBe("fresh");
       expect(await runReversibleAction(context, "hive_reverse_decision", async () => { throw new Error("A replay must not mutate"); })).toEqual(result);
-      expect(await undoLastAction(context)).toEqual({ react: "+1", text: "Decision reapplied." });
+      expect(await undoLastAction(context)).toEqual({ react: "white_check_mark", text: "Decision reapplied." });
       expect((await getLearning(a, old.id))?.lifecycle).toBe("superseded");
       expect((await undoLastAction(context)).text).toContain("already undone");
     });
