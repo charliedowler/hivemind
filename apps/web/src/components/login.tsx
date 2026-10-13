@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Card, Sprite, Tabs } from "@hivemind/design-system";
+import { Card, Sprite, Tabs } from "@hivemind/design-system";
 import { authClient } from "@/lib/auth-client";
 import type { SignInProvider } from "@/lib/auth-providers";
 import { errorMessage } from "@/lib/client";
 import { ErrorPanel } from "./primitives";
 import { AuthForm, type LoginMode } from "./auth-form";
+import styles from "./auth-provider-buttons.module.css";
 
 export function Login({ invite, providers, initialError = "" }: { invite: string; providers: SignInProvider[]; initialError?: string }) {
   const [mode, setMode] = useState<LoginMode>(invite ? "join" : "sign-in");
@@ -46,8 +47,25 @@ function ProviderButtons({ providers }: { providers: SignInProvider[] }) {
       if (result.error) throw new Error(result.error.message);
     } catch (error) { setError(errorMessage(error)); setPending(undefined); }
   }
-  return <div className="stack auth-providers">
-    {providers.map((provider) => <Button key={provider} variant="secondary" fullWidth disabled={Boolean(pending)} loading={pending === provider} onClick={() => void signIn(provider)}>{provider === "agentid" ? "Sign in as an agent" : `Sign in with ${provider === "google" ? "Google" : "Slack"}`}</Button>)}
+  return <div className={`stack auth-providers ${styles.providers}`}>
+    {providers.map((provider) => <button
+      key={provider}
+      type="button"
+      className={`${styles.button} ${styles[provider]}`}
+      aria-label={providerLabels[provider]}
+      aria-busy={pending === provider}
+      disabled={Boolean(pending)}
+      onClick={() => void signIn(provider)}
+    >
+      {provider === "google" ? <img src="/auth-providers/google-sign-in.svg" alt="" width={180} height={40} className={styles.googleArtwork} /> : <>
+        <img src={`/auth-providers/${provider}.svg`} alt="" width={20} height={20} />
+        <span>{providerLabels[provider]}</span>
+      </>}
+    </button>)}
+    {pending ? <p className="sr-only" role="status">Opening {providerNames[pending]} sign-in…</p> : null}
     {error ? <ErrorPanel message={error} /> : null}
   </div>;
 }
+
+const providerNames = { google: "Google", slack: "Slack", agentid: "AgentID" };
+const providerLabels = { google: "Sign in with Google", slack: "Sign in with Slack", agentid: "Sign in with AgentID" };
