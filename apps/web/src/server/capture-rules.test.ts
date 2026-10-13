@@ -257,4 +257,19 @@ describe.skipIf(!enabled)("capture rule storage and ingress", {timeout: 60000}, 
     expect(models.create.mock.calls[0][0].tools).toHaveLength(1);
     vi.unstubAllEnvs();
   });
+
+  it("proposes an unambiguous work allow list when the model excludes personal repo owners", async () => {
+    await accepted(member, {title: "Work repo context", body: "A work fixture.", repo: "team/widget"});
+    await accepted(member, {title: "Personal repo context", body: "A personal fixture.", repo: "personal/scratch"});
+    await accepted(member, {title: "Bare repo name", body: "An ownerless fixture.", repo: "scratch"});
+    vi.stubEnv("ANTHROPIC_API_KEY", "fixture");
+    models.create.mockResolvedValue({model: "claude-sonnet-5-5", usage: {}, content: [{type: "tool_use", name: "propose_rule", id: "fixture", input: {rule: ruleInput({kind: "repo_owner", owners: ["personal"], mode: "deny"}), restatement: "Drop personal repositories.", question: null}}]});
+    const proposed = await proposeRuleFromText(member.teamId, member.memberId, "don't include anything from my personal repos on gh");
+    expect(proposed.rule).toMatchObject({kind: "repo_owner", owners: ["team"], mode: "only_allow", scope: "member"});
+    expect(proposed.question).toBeNull();
+    expect(proposed.restatement).toContain("team");
+    expect(models.create).toHaveBeenCalledTimes(1);
+    expect(await listCaptureRules(member)).toHaveLength(0);
+    vi.unstubAllEnvs();
+  });
 });

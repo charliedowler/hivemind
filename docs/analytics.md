@@ -149,6 +149,10 @@ For a local demo, `HIVE_ANALYTICS_TEST_DATABASE_URL=... pnpm --filter web exec t
 `capture.rule_dropped` records an excluded capture before storage. Its properties contain the rule ID and kind only. No title, body, path, remote, keyword, rule description or classifier input is recorded.
 
 `capture.rule_applied` records a matched rule's kind, action, ingress and agent. It covers drop, redact and flag. These events answer which rule kinds exclude captures, which entrypoints encounter rules and which actions members use. They measure observed captures; locally filtered hooks may never reach the server. Counts do not measure all agent sessions or the amount of private content on a machine.
+
+`capture.rule_instruction_decided` records the direct-save decision. `capture.rule_instruction_undone` records its reversal. Fixed properties describe instruction clarity, specificity, allowed scope, source and decision. These events answer whether incomplete instructions need a question, which entrypoints create rules and whether members undo them. The durable instruction audit records the decision and bounded retroactive counts even if analytics delivery fails. Neither event contains the request, rule patterns, repo owners or memory content.
+
+Reaction-only capture acknowledgements use the shared `slack.reaction_added` event. Its idempotent key joins the team, channel, message timestamp and emoji name. It carries fixed channel and gate-decision metadata, never the request text.
 ## Digest events
 
 The append-only ledger accepts `digest_scheduled`, `digest_posted`, `digest_skipped_empty` and `digest_failed`. They answer whether admins set up updates, which schedules deliver or skip, and whether failures leave a gap. Schedule and post IDs join to operational delivery history. Properties include cadence, manual/scheduled trigger and per-section counts; posted events also carry measured friction minutes. Event text contains no channel name, learning body, schedule request, token or error payload.

@@ -9,6 +9,8 @@ const nullable = <T extends z.ZodType>(schema: T) =>
 const count = z.number().int().nonnegative();
 const probability = z.number().finite().min(0).max(1);
 export const eventNames = [
+  "capture.rule_instruction_decided",
+  "capture.rule_instruction_undone",
   "capture.rule_dropped",
   "capture.rule_applied",
   "access.changed",
@@ -135,6 +137,17 @@ const conflictProbabilities = z.object({
   decision: z.record(conflictChoices, probability),
 });
 export const propertiesSchema = z.object({
+  captureInstructionId: nullable(z.string().regex(/^cinstr_[a-z2-7]{12}$/)),
+  instructionClear: nullable(z.boolean()),
+  instructionSpecific: nullable(z.boolean()),
+  instructionScopeAllowed: nullable(z.boolean()),
+  instructionSource: nullable(z.enum(["web", "slack", "mcp"])),
+  instructionDecision: nullable(z.enum(["save", "question", "undo"])),
+  scannedCount: nullable(count),
+  appliedCount: nullable(count),
+  restoredCount: nullable(count),
+  retainedCount: nullable(count),
+  pending: nullable(z.boolean()),
   ruleId: nullable(z.string().regex(/^crule_[a-z2-7]{12}$/)),
   ruleKind: nullable(
     z.enum([

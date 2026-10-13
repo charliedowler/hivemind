@@ -5,6 +5,7 @@ import {
   CaptureRules,
   RuleForm,
   DescribeRule,
+  InstructionResult,
   ApplyRule,
   ApplicationHistory,
   ReverseApplication,
@@ -147,31 +148,91 @@ describe("capture settings", () => {
           initial={input}
           onSaved={async () => {}}
           onCancel={() => {}}
-          confirm
         />,
       ),
     ).toContain('value="team, another-team"');
   });
-  it("requires proposal and a later confirmation to save a described rule", () => {
+  it("saves described rules directly and keeps the same field available for undo", () => {
     const html = renderToStaticMarkup(
-      <DescribeRule
-        isAdmin={false}
-        onSaved={async () => {}}
-        onCancel={() => {}}
+      <DescribeRule onSaved={async () => {}} onCancel={() => {}} />,
+    );
+    expect(html).toContain("Save rule");
+    expect(html).toContain("type undo");
+    expect(html).not.toContain("Propose rule");
+    expect(html).not.toContain("Confirm");
+  });
+  it("shows the restatement, undo hint, and automatic apply counts", () => {
+    const html = renderToStaticMarkup(
+      <InstructionResult
+        result={{
+          status: "saved",
+          restatement: "Exclude personal repos.",
+          counts: {
+            scanned: 20,
+            matched: 5,
+            applied: 4,
+            skipped: 1,
+            restored: 0,
+            retained: 0,
+            pending: true,
+            stopped: false,
+          },
+        }}
       />,
     );
-    expect(html).toContain("Propose rule");
-    expect(html).not.toContain("Save rule");
-    expect(
-      renderToStaticMarkup(
-        <RuleForm
-          initial={input}
-          onSaved={async () => {}}
-          onCancel={() => {}}
-          confirm
-        />,
-      ),
-    ).toContain("Confirm and save rule");
+    expect(html).toContain("Exclude personal repos.");
+    expect(html).toContain("Reply undo to remove it.");
+    expect(html).toContain(
+      "4 existing cells changed automatically from 5 matches in 20 cells checked; 1 skipped",
+    );
+    expect(html).toContain("More existing cells still need to be checked.");
+    expect(html).not.toContain("complete");
+  });
+  it("shows a missing-detail question without save or undo claims", () => {
+    const html = renderToStaticMarkup(
+      <InstructionResult
+        result={{
+          status: "question",
+          restatement: "Exclude repos outside work.",
+          question: "Which repository owner?",
+        }}
+      />,
+    );
+    expect(html).toContain("Which repository owner?");
+    expect(html).not.toContain("Reply undo");
+    expect(html).not.toContain("changed automatically");
+  });
+  it("identifies a stopped automatic scan without calling it complete", () => {
+    const html = renderToStaticMarkup(
+      <InstructionResult result={{
+        status: "saved", restatement: "Exclude personal repos.",
+        counts: { scanned: 20, matched: 5, applied: 4, skipped: 1, restored: 0, retained: 0, pending: false, stopped: true },
+      }} />,
+    );
+    expect(html).toContain("The scan stopped because the rule or permissions changed.");
+    expect(html).not.toContain("complete");
+  });
+  it("shows restored and retained counts after undo", () => {
+    const html = renderToStaticMarkup(
+      <InstructionResult
+        result={{
+          status: "undone",
+          restatement: "Removed your latest rule.",
+          counts: {
+            scanned: 5,
+            matched: 5,
+            applied: 0,
+            skipped: 0,
+            restored: 3,
+            retained: 2,
+            pending: false,
+            stopped: false,
+          },
+        }}
+      />,
+    );
+    expect(html).toContain("3 cells restored; 2 kept as they are");
+    expect(html).not.toContain("Reply undo");
   });
   it("describes the selected retrospective action accurately", () => {
     const redaction = renderToStaticMarkup(

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as effective } from "./effective/route";
 import { GET as list, POST as create } from "./route";
 import { PATCH as update, DELETE as remove } from "./[id]/route";
-import { POST as propose } from "./propose/route";
+import { POST as instruct } from "./propose/route";
+import { POST as undo } from "./undo/route";
 import { POST as preview } from "./[id]/preview/route";
 import { POST as apply } from "./[id]/apply/route";
 import { GET as history } from "./history/route";
@@ -30,10 +31,35 @@ const fixture = vi.hoisted(() => {
     createCaptureRule: vi.fn(async () => ({ id: "crule_test" })),
     updateCaptureRule: vi.fn(async () => ({ id: "crule_test" })),
     deleteCaptureRule: vi.fn(async () => ({ id: "crule_test" })),
-    proposeRuleFromText: vi.fn(async () => ({
-      rule: null,
-      restatement: "Choose an owner.",
-      question: "Which owner?",
+    setCaptureRuleFromText: vi.fn(
+      async (_ctx: unknown, _text: string, _context: unknown) => ({
+        status: "saved" as "saved" | "question" | "undone",
+        restatement: "Exclude personal repos.",
+        question: undefined as string | undefined,
+        counts: {
+          scanned: 10,
+          matched: 3,
+          applied: 2,
+          skipped: 1,
+          restored: 0,
+          retained: 0,
+          pending: true,
+        },
+        undoUntil: "2026-10-13T11:00:00Z",
+      }),
+    ),
+    undoCaptureRuleInstruction: vi.fn(async () => ({
+      status: "undone",
+      restatement: "Removed your latest rule.",
+      counts: {
+        scanned: 3,
+        matched: 3,
+        applied: 0,
+        skipped: 0,
+        restored: 2,
+        retained: 1,
+        pending: false,
+      },
     })),
     previewCaptureRule: vi.fn(async () => ({
       token: "preview_test",
@@ -78,11 +104,14 @@ vi.mock("@/server/capture-rules", () => ({
   createCaptureRule: fixture.createCaptureRule,
   updateCaptureRule: fixture.updateCaptureRule,
   deleteCaptureRule: fixture.deleteCaptureRule,
-  proposeRuleFromText: fixture.proposeRuleFromText,
   previewCaptureRule: fixture.previewCaptureRule,
   applyCaptureRule: fixture.applyCaptureRule,
   listCaptureRuleApplications: fixture.listCaptureRuleApplications,
   confirmFlaggedCapture: fixture.confirmFlaggedCapture,
+}));
+vi.mock("@/server/capture-rule-instructions", () => ({
+  setCaptureRuleFromText: fixture.setCaptureRuleFromText,
+  undoCaptureRuleInstruction: fixture.undoCaptureRuleInstruction,
 }));
 vi.mock("@better-auth/mcp", () => ({ requireMcpAuth: fixture.requireMcpAuth }));
 
@@ -185,7 +214,7 @@ describe("effective capture rule bearer boundary", () => {
 });
 
 describe("capture rule cookie routes", () => {
-  it("saves web provenance and the original confirmed description", async () => {
+  it("saves web provenance and the original description", async () => {
     await create(
       request({
         ...input,
@@ -239,7 +268,8 @@ describe("capture rule cookie routes", () => {
       () => create(request(input, { Authorization: `Bearer ${key}` })),
       () => update(request(input), params),
       () => remove(request(), params),
-      () => propose(request({ text: "Avoid private repos" })),
+      () => instruct(request({ text: "Avoid private repos" })),
+      () => undo(),
       () => preview(request({}), params),
       () => apply(request({ token: "preview_test", confirmed: true }), params),
       () => history(),
@@ -267,16 +297,121 @@ describe("capture rule cookie routes", () => {
     expect((await create(request({ ...input, owners: [] }))).status).toBe(400);
     expect(fixture.createCaptureRule).not.toHaveBeenCalled();
   });
-  it("returns a proposal without saving and passes the authenticated team and member", async () => {
-    const response = await propose(request({ text: "Avoid private repos" }));
-    expect(response.status).toBe(200);
-    expect(fixture.proposeRuleFromText).toHaveBeenCalledWith(
-      "team_test",
-      "member_test",
-      "Avoid private repos",
+  it("saves text directly with the caller context and passes automatic apply counts", async () => {
+    const response = await instruct(
+      request({
+        text: "  Avoid private repos  ",
+        source: "slack",
+        memberId: "someone_else",
+      }),
     );
+    expect(response.status).toBe(200);
+    expect(fixture.setCaptureRuleFromText).toHaveBeenCalledWith(
+      fixture.ctx,
+      "Avoid private repos",
+      { source: "web" },
+    );
+    expect(await response.json()).toMatchObject({
+      status: "saved",
+      restatement: "Exclude personal repos.",
+      counts: {
+        scanned: 10,
+        matched: 3,
+        applied: 2,
+        skipped: 1,
+        pending: true,
+      },
+    });
     expect(fixture.createCaptureRule).not.toHaveBeenCalled();
-    expect((await propose(request({ text: " " }))).status).toBe(400);
+  });
+  it("returns a missing-detail question and supports a subsequent reply", async () => {
+    fixture.setCaptureRuleFromText.mockResolvedValueOnce({
+      status: "question",
+      restatement: "Exclude repos outside work.",
+      question: "Which repository owner?",
+      counts: {
+        scanned: 0,
+        matched: 0,
+        applied: 0,
+        skipped: 0,
+        restored: 0,
+        retained: 0,
+        pending: false,
+      },
+      undoUntil: "",
+    });
+    const response = await instruct(
+      request({ text: "Exclude repos outside work" }),
+    );
+    expect(await response.json()).toMatchObject({
+      status: "question",
+      question: "Which repository owner?",
+    });
+    await instruct(request({ text: "team" }));
+    expect(fixture.setCaptureRuleFromText).toHaveBeenLastCalledWith(
+      fixture.ctx,
+      "team",
+      { source: "web" },
+    );
+  });
+  it.each([" ", "a".repeat(4001)])(
+    "rejects invalid instruction text without saving",
+    async (text) => {
+      expect((await instruct(request({ text }))).status).toBe(400);
+      expect(fixture.setCaptureRuleFromText).not.toHaveBeenCalled();
+    },
+  );
+  it("passes typed undo through the same field and returns restoration counts", async () => {
+    fixture.setCaptureRuleFromText.mockResolvedValueOnce({
+      status: "undone",
+      restatement: "Removed your latest rule.",
+      question: undefined,
+      counts: {
+        scanned: 3,
+        matched: 3,
+        applied: 0,
+        skipped: 0,
+        restored: 2,
+        retained: 1,
+        pending: false,
+      },
+      undoUntil: "",
+    });
+    const response = await instruct(request({ text: "undo" }));
+    expect(fixture.setCaptureRuleFromText).toHaveBeenCalledWith(
+      fixture.ctx,
+      "undo",
+      { source: "web" },
+    );
+    expect(await response.json()).toMatchObject({
+      status: "undone",
+      counts: { restored: 2, retained: 1 },
+    });
+  });
+  it("undoes the caller's latest web instruction without a confirmation or client-selected id", async () => {
+    const response = await undo();
+    expect(response.status).toBe(200);
+    expect(fixture.undoCaptureRuleInstruction).toHaveBeenCalledWith(
+      fixture.ctx,
+      { source: "web" },
+    );
+    expect(await response.json()).toMatchObject({
+      status: "undone",
+      counts: { restored: 2, retained: 1 },
+    });
+  });
+  it("preserves undo expiry and direct-save permission failures", async () => {
+    fixture.undoCaptureRuleInstruction.mockRejectedValueOnce(
+      Object.assign(new Error("The undo window has expired."), { status: 409 }),
+    );
+    expect((await undo()).status).toBe(409);
+    fixture.setCaptureRuleFromText.mockRejectedValueOnce(
+      Object.assign(new Error("A team admin is needed."), { status: 403 }),
+    );
+    expect(
+      (await instruct(request({ text: "Exclude all team private repos" })))
+        .status,
+    ).toBe(403);
   });
   it("passes a bounded batch cursor and rejects malformed cursors", async () => {
     const cursor = "lrn_abcdefghijkl";

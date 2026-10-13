@@ -1,8 +1,9 @@
 "use client";
 import { formatHumanDateTime } from "@hivemind/core";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import type { CaptureRule, CaptureRuleInput } from "@hivemind/core";
+import type { CaptureRuleInstructionResult } from "@/server/capture-rule-instructions";
 import { parseCaptureRuleForm } from "@/lib/capture-rule-form";
 import {
   Badge,
@@ -32,11 +33,6 @@ type Data = {
   rules: CaptureRule[];
   applications: Application[];
   isAdmin: boolean;
-};
-type Proposal = {
-  rule: CaptureRuleInput | null;
-  restatement: string;
-  question: string | null;
 };
 type Preview = {
   token: string;
@@ -145,8 +141,10 @@ export function CaptureRules({ initial }: { initial: Data }) {
         </div>
       </div>
       <p>
-        Rules apply to future captures. Preview a saved rule to check existing
-        cells before changing them.
+        Describe a rule to save it directly. Drop and redact rules also apply to
+        your existing captures automatically; team rules apply across the team.
+        Rules made with the structured form apply to future
+        captures; preview them to change existing cells.
       </p>
       {error ? <ErrorPanel message={error} /> : null}
       {summary ? (
@@ -212,11 +210,7 @@ export function CaptureRules({ initial }: { initial: Data }) {
       ) : null}
       {describe ? (
         <Dialog title="Describe a rule" onClose={() => setDescribe(false)}>
-          <DescribeRule
-            isAdmin={data.isAdmin}
-            onSaved={saved}
-            onCancel={() => setDescribe(false)}
-          />
+          <DescribeRule onSaved={refresh} onCancel={() => setDescribe(false)} />
         </Dialog>
       ) : null}
       {apply ? (
@@ -417,14 +411,12 @@ export function RuleForm({
   ruleId,
   onSaved,
   onCancel,
-  confirm = false,
   naturalText,
 }: {
   initial: CaptureRuleInput;
   ruleId?: string;
   onSaved: () => Promise<void>;
   onCancel: () => void;
-  confirm?: boolean;
   naturalText?: string;
 }) {
   const [kind, setKind] = useState(initial.kind);
@@ -497,7 +489,7 @@ export function RuleForm({
       {error ? <ErrorPanel message={error} /> : null}
       <div className="row wrap">
         <Button type="submit" loading={pending}>
-          {confirm ? "Confirm and save rule" : "Save rule"}
+          Save rule
         </Button>
         <Button variant="ghost" disabled={pending} onClick={onCancel}>
           Cancel
@@ -644,105 +636,119 @@ function KeywordFields({
 }
 
 export function DescribeRule({
-  isAdmin,
   onSaved,
   onCancel,
 }: {
-  isAdmin: boolean;
   onSaved: () => Promise<void>;
   onCancel: () => void;
 }) {
   const [text, setText] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [proposal, setProposal] = useState<Proposal>();
+  const [result, setResult] = useState<CaptureRuleInstructionResult>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  async function propose(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const questionText = useRef("");
+  async function send(undo = false) {
+    if (pending || (!undo && !text.trim())) return;
+    const reply = text.trim();
+    const instruction =
+      questionText.current && reply.toLowerCase() !== "undo"
+        ? `${questionText.current}\nRequired detail: ${reply}`
+        : reply;
     setError("");
     setPending(true);
     try {
-      const result = await requestJson<Proposal>(`${endpoint}/propose`, {
-        text: answer.trim() ? `${text}\nClarification: ${answer.trim()}` : text,
-      });
-      if (answer.trim()) setText(`${text}\nClarification: ${answer.trim()}`);
-      setProposal(result);
-      setAnswer("");
+      const next = await requestJson<CaptureRuleInstructionResult>(
+        `${endpoint}/${undo ? "undo" : "propose"}`,
+        undo ? {} : { text: instruction },
+      );
+      setResult(next);
+      setText("");
+      questionText.current = next.status === "question" ? instruction : "";
+      if (next.status !== "question") await onSaved();
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
       setPending(false);
     }
   }
-  const allowed =
-    proposal?.rule && (proposal.rule.scope === "member" || isAdmin);
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void send();
+  }
   return (
     <div className="stack">
-      <form className="stack" onSubmit={propose}>
+      {result ? <InstructionResult result={result} /> : null}
+      <form className="stack" onSubmit={submit}>
         <label className="hm-field-label" htmlFor="capture-description">
-          What should your agents avoid saving?
+          {result?.status === "question"
+            ? "Your reply"
+            : "What should your agents avoid saving?"}
         </label>
         <textarea
           id="capture-description"
           className="capture-textarea"
           value={text}
           required
+          disabled={pending}
           maxLength={4000}
-          onChange={(event) => {
-            setText(event.target.value);
-            setProposal(undefined);
-          }}
+          onChange={(event) => setText(event.target.value)}
         />
         <p className="small">
           For example: exclude captures from repos outside my work organisation.
+          You can also type undo to remove your latest rule within one hour.
         </p>
-        {proposal?.question ? (
-          <Input
-            label="Your answer (optional)"
-            value={answer}
-            onChange={(event) => setAnswer(event.target.value)}
-            maxLength={1000}
-          />
-        ) : null}
         <Button type="submit" loading={pending} disabled={!text.trim()}>
-          {proposal ? "Update proposal" : "Propose rule"}
+          {text.trim().toLowerCase() === "undo"
+            ? "Undo rule"
+            : result?.status === "question"
+              ? "Reply"
+              : "Save rule"}
         </Button>
       </form>
       {error ? <ErrorPanel message={error} /> : null}
-      {proposal ? (
-        <section className="stack capture-proposal" aria-label="Rule proposal">
-          <h3>Review the proposal</h3>
-          <p>{proposal.restatement}</p>
-          <p>
-            {proposal.question ??
-              "Does this match what you want to exclude or keep private?"}
-          </p>
-          <p className="small">
-            Check the fields below. The rule is saved only when you confirm.
-          </p>
-          {allowed && proposal.rule ? (
-            <RuleForm
-              key={JSON.stringify(proposal.rule)}
-              initial={proposal.rule}
-              naturalText={text}
-              onSaved={onSaved}
-              onCancel={onCancel}
-              confirm
-            />
-          ) : (
-            <p>
-              {proposal.rule
-                ? "Only a team admin can save a team rule. Ask for a rule for your own captures."
-                : "Answer the question and update the proposal before saving."}
-            </p>
-          )}
-        </section>
-      ) : (
+      <div className="row wrap">
+        {result?.status === "saved" && result.undoUntil ? (
+          <Button
+            variant="secondary"
+            disabled={pending}
+            onClick={() => void send(true)}
+          >
+            Undo latest rule
+          </Button>
+        ) : null}
         <Button variant="ghost" disabled={pending} onClick={onCancel}>
-          Cancel
+          Close
         </Button>
-      )}
+      </div>
     </div>
+  );
+}
+
+export function InstructionResult({
+  result,
+}: {
+  result: CaptureRuleInstructionResult;
+}) {
+  const counts = result.counts;
+  return (
+    <section className="stack capture-summary" role="status" aria-live="polite">
+      <p>{result.restatement}</p>
+      {result.status === "question" ? <p>{result.question}</p> : null}
+      {result.status === "saved" ? <p>Reply undo to remove it.</p> : null}
+      {counts && result.status !== "question" ? (
+        <p className="small">
+          {result.status === "undone"
+            ? `${counts.restored} cells restored; ${counts.retained} kept as they are because of later changes or other rules.`
+            : `${counts.applied} existing cells changed automatically from ${counts.matched} matches in ${counts.scanned} cells checked; ${counts.skipped} skipped because they changed.`}
+          {counts.pending
+            ? " More existing cells still need to be checked."
+            : ""}
+          {counts.stopped
+            ? " The scan stopped because the rule or permissions changed. Review the rule to continue."
+            : ""}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

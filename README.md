@@ -150,7 +150,7 @@ Snapshots are limited to 10,000 cells and 50 MB of source Markdown. The download
 
 ## Capture rules
 
-Open [What Hive keeps](https://gohive.dev/settings/capture) to exclude repos, paths, agents, keywords or content categories from your captures. Describe a rule and confirm the proposal, or use the structured form. Admins can set team rules. Rules can drop, redact or hold cells for their owner's review. Applying a rule to existing cells shows a count before confirmation. The [capture rules guide](docs/capture-rules.md) explains enforcement and hook filtering.
+Open [What Hive keeps](https://gohive.dev/settings/capture) to exclude repos, paths, agents, keywords or content categories from your captures. Describe a rule to save a clear instruction directly, or use the structured form. Admins can set team rules. Rules can drop, redact or hold cells for their owner's review. Description-based drop and redact rules also apply to existing memories automatically. Reply undo within an hour to remove the rule and reverse its recorded changes. The [capture rules guide](docs/capture-rules.md) explains enforcement and hook filtering.
 
 ## Security notes
 
