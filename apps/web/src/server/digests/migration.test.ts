@@ -76,6 +76,7 @@ it.skipIf(!url)(
           );
           await tx.unsafe(body);
           await tx.unsafe(body);
+          await tx`CREATE TABLE slack_tool_actions (LIKE public.slack_tool_actions INCLUDING ALL)`;
           const undoMigration = await readFile(
             new URL(
               "../../../drizzle/0021_slack_digest_undo_reactions.sql",

@@ -1,15 +1,22 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { undoThreadAction, isExplicitUndoIntent } from "./undo";
-const { sql, shared, digest, capture } = vi.hoisted(() => ({
+const { sql, shared, digest, capture, digestPointer } = vi.hoisted(() => ({
   sql: vi.fn(),
   shared: vi.fn(),
   digest: vi.fn(),
   capture: vi.fn(),
+  digestPointer: vi.fn(),
 }));
 vi.mock("@/server/db/client", () => ({ getSql: () => sql }));
 vi.mock("@/server/slack/actions", () => ({ undoLastAction: shared }));
 vi.mock("@/server/digests/instructions", () => ({
   applyDigestInstruction: digest,
+}));
+vi.mock("./digests", () => ({
+  digestUndoHandlers: {
+    hive_schedule_digest: digestPointer,
+    hive_list_digest_schedules: digestPointer,
+  },
 }));
 vi.mock("./capture-rules", () => ({
   isCaptureUndoInstruction: (text: string) => text === "undo",
@@ -39,6 +46,7 @@ beforeEach(() => {
   shared.mockResolvedValue({ react: "white_check_mark" });
   digest.mockResolvedValue({ react: "+1" });
   capture.mockResolvedValue({ react: "white_check_mark" });
+  digestPointer.mockResolvedValue({ react: "white_check_mark" });
 });
 it("undoes the globally latest shared action by its exact receipt", async () => {
   expect(await undoThreadAction(ctx)).toEqual({ react: "white_check_mark" });
@@ -104,5 +112,24 @@ it.each(["Maybe undo that", "What does revert do?", "Do not undo"])(
   "does not turn a question or musing into undo: %s",
   (text) => {
     expect(isExplicitUndoIntent(text)).toBe(false);
+  },
+);
+
+it.each(["hive_schedule_digest", "hive_list_digest_schedules"])(
+  "dispatches %s through its digest instruction pointer",
+  async (toolName) => {
+    const inverse = {
+      kind: "digest_instruction",
+      reversible: true,
+      payload: { instructionId: "dgi_fixture" },
+    };
+    sql.mockResolvedValue([{ ...pointer, tool_name: toolName, inverse }]);
+    expect(await undoThreadAction(ctx)).toEqual({ react: "white_check_mark" });
+    expect(digestPointer).toHaveBeenCalledWith(ctx, {
+      member_id: ctx.memberId,
+      inverse,
+    });
+    expect(shared).not.toHaveBeenCalled();
+    expect(digest).not.toHaveBeenCalled();
   },
 );

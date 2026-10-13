@@ -1,5 +1,5 @@
 import { respondToSlack } from "@/slack/respond";
-import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
 import {
@@ -79,6 +79,7 @@ describe.skipIf(!enabled)(
       }
       await getSql()`INSERT INTO members(id,team_id,name,role)VALUES(${member.memberId},${a.teamId},'Member','member')`;
     });
+    afterEach(() => vi.useRealTimers());
     afterAll(async () => {
       const ids = [a.teamId, b.teamId];
       await getSql()`DELETE FROM slack_tool_actions WHERE team_id=ANY(${ids}::text[])`;
@@ -229,6 +230,8 @@ describe.skipIf(!enabled)(
       expect((await getSchedule(a.teamId, s.id)).lastCursor).toBe(s.lastCursor);
     });
     it("reads one schema model result, acts once and undoes only in the owning thread", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-13T01:00:00Z"));
       vi.stubEnv("TYPESAFE_API_KEY", "");
       model.mockClear();
       const set = {
@@ -272,7 +275,7 @@ describe.skipIf(!enabled)(
         digestInstruction(ctx, ctx.requestText, input.timezone),
       ]);
       expect(first.text).toBe(second.text);
-      expect(first).toEqual({ text: "", react: "+1" });
+      expect(first).toEqual({ text: "Set. Every Monday at 9am in #digest-fixture (London time). First update Monday 19 October." });
       expect(first).not.toHaveProperty("blocks");
       const audit = (
         await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${a.teamId} AND message_ts=${ctx.messageTs}`
@@ -357,7 +360,7 @@ describe.skipIf(!enabled)(
       });
       expect(
         await respondToSlack(ctx, "undo", "1800000000.8", [
-          { question: ctx.requestText, answer: first.text },
+          { question: ctx.requestText, answer: first.text ?? "" },
         ]),
       ).toEqual({ text: "", react: "white_check_mark" });
       expect((await getSchedule(a.teamId, saved.id)).enabled).toBe(false);

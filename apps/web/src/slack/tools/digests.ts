@@ -3,7 +3,10 @@ import { digestTime, digestZone } from "@hivemind/core";
 import { z } from "zod";
 import type { SlackTool, SlackToolContext, SlackToolResult } from "./index";
 import { HiveError } from "@/server/errors";
-import { applyDigestInstruction, digestInstruction } from "@/server/digests/instructions";
+import {
+  applyDigestInstruction,
+  digestInstruction,
+} from "@/server/digests/instructions";
 import { listSchedules } from "@/server/digests/store";
 import { slackMemberTimezone } from "@/server/digests/connection";
 import { restateSchedule } from "@/server/digests/proposal";
