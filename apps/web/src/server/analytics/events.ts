@@ -9,6 +9,7 @@ const nullable = <T extends z.ZodType>(schema: T) =>
 const count = z.number().int().nonnegative();
 const probability = z.number().finite().min(0).max(1);
 export const eventNames = [
+  "error.page_shown",
   "capture.rule_dropped",
   "capture.rule_applied",
   "access.changed",
@@ -286,7 +287,7 @@ export const propertiesSchema = z.object({
     z.enum(["mention", "message", "reaction", "action", "command", "other"]),
   ),
 });
-export type Properties = z.input<typeof propertiesSchema>;
+export type Properties = z.input<typeof propertiesSchema> & { route?: string; digest?: string | null };
 export type EntryPoint =
   | "mcp"
   | "web"
@@ -452,7 +453,7 @@ export function eventRow(input: EventInput) {
         : z.enum(reasonCodes).parse(input.reasonCode),
     latency_ms:
       input.latencyMs == null ? null : count.parse(Math.round(input.latencyMs)),
-    properties: propertiesSchema.parse(input.properties ?? {}),
+    properties: (input.name === "error.page_shown" ? z.strictObject({ route: z.string(), digest: z.string().nullable() }).parse(input.properties) : propertiesSchema.parse(input.properties ?? {})) as Partial<z.output<typeof propertiesSchema>> & { route?: string; digest?: string | null },
   };
 }
 let database: ReturnType<typeof postgres> | undefined;

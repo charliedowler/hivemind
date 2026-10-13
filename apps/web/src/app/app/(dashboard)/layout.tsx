@@ -1,34 +1,26 @@
+import { AuthErrorPage } from "@/components/auth-error-page";
+import { cookies, headers } from "next/headers";
+import { getAuth } from "@/server/better-auth";
 import type { ReactNode } from "react";
-import Link from "next/link";
-import { redirect } from "next/navigation";
+import { forbidden, redirect } from "next/navigation";
 import { getWebContext } from "@/server/auth";
 import { requireAdmin } from "@/server/identity/access";
 import { Navigation } from "@/components/navigation";
-import { ErrorPanel } from "@/components/primitives";
-import { errorMessage } from "@/lib/client";
 export const dynamic = "force-dynamic";
 export default async function DashboardLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  let ctx;
-  try {
-    ctx = await getWebContext();
-  } catch (error) {
-    return (
-      <main className="page narrow stack">
-        <Link className="brand" href="/">
-          Hive
-        </Link>
-        <ErrorPanel message={errorMessage(error)} />
-        <Link href="/app/login" className="text-button">
-          Go to sign in
-        </Link>
-      </main>
-    );
+  const ctx = await getWebContext();
+  if (!ctx) {
+    const jar = await cookies();
+    if (!jar.get("better-auth.session_token") && !jar.get("__Secure-better-auth.session_token")) redirect("/app/login");
+    const session = await (await getAuth()).api.getSession({ headers: await headers() });
+    if (!session) redirect("/app/login");
+    if (!session.user.emailVerified) return <AuthErrorPage reason="email_not_verified" />;
+    forbidden();
   }
-  if (!ctx) redirect("/app/login");
   const isAdmin = await requireAdmin(ctx)
     .then(() => true)
     .catch(() => false);

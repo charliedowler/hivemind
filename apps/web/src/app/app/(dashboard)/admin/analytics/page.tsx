@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { forbidden, redirect } from "next/navigation";
 import { Card, Sprite } from "@hivemind/design-system";
 import { getWebContext } from "@/server/auth";
 import { analyticsReports } from "@/server/analytics/reports";
@@ -20,13 +20,7 @@ export default async function Page() {
       "status" in error &&
       error.status === 403
     )
-      return (
-        <Card>
-          <h1>Analytics needs a team admin</h1>
-          <p>Ask your team admin to open this page.</p>
-          <Link href="/app">Back to the comb</Link>
-        </Card>
-      );
+      forbidden();
     return (
       <Card>
         <h1>Analytics is unavailable</h1>
