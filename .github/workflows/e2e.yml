@@ -38,7 +38,7 @@ jobs:
       HIVE_E2E_EVIDENCE: /tmp/hive-e2e
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
