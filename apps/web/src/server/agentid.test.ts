@@ -213,7 +213,7 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     expect(result.location).toContain("unable_to_create_user");
     expect((await getSql()`SELECT email, email_verified FROM members WHERE id = ${ownerId}`)[0]).toMatchObject({ email: `owner-${suffix}@company.test`, email_verified: true });
   });
-  it("uses the agent session through MCP consent, PKCE and a hive_search tool call", async () => {
+  it("binds the agent’s scoped grant to its newly joined organisation through consent, PKCE and hive_search", async () => {
     const registration = await request("/api/auth/oauth2/register", { client_name: "Agent forager", application_type: "native", redirect_uris: [`${baseUrl}/callback`], token_endpoint_auth_method: "none", grant_types: ["authorization_code"], response_types: ["code"], scope: "hive" });
     expect(registration.status, await registration.clone().text()).toBe(201);
     oauthClient = (await registration.json()).client_id;
@@ -233,7 +233,8 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
     const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
     const ctx = (await contextFromClaims(payload))!;
     expect(ctx.memberId).toBe(agentId);
-    expect(ctx.teamId).toBe((await getSql()`SELECT id FROM teams WHERE personal_owner_member_id = ${ownerId}`)[0].id);
+    expect(ctx.teamId).toBe(ownerTeam);
+    expect(payload).toMatchObject({hive_access:"team",scope:"hive"});
     const response = await mcpRoute(new Request(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "hive_search", arguments: { query: "identity", repo: "fixture/repo" } } }) }));
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await response.text()).not.toContain('"isError":true');
@@ -255,8 +256,31 @@ describe.skipIf(!process.env.DATABASE_URL)("AgentID callback and enrollment", ()
       expect(exchange.status, await exchange.clone().text()).toBe(200);
       const token = (await exchange.json()).access_token;
       const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
-      expect(payload).toMatchObject({ hive_member_id: agentId, hive_team_id: (await getSql()`SELECT id FROM teams WHERE personal_owner_member_id = ${ownerId}`)[0].id });
+      expect(payload).toMatchObject({ hive_member_id: agentId, hive_team_id: ownerTeam, hive_access:"team", scope:"hive" });
     }
     expect(new Set(harnessClients).size).toBe(12);
   });
+  it("keeps an explicitly person-wide agent grant in the owner’s personal hive despite its organisation selection", async () => {
+    const scope="hive hive:person";
+    const registration=await request("/api/auth/oauth2/register",{client_name:"Person-wide agent",application_type:"native",redirect_uris:[`${baseUrl}/callback`],token_endpoint_auth_method:"none",grant_types:["authorization_code"],response_types:["code"],scope});
+    expect(registration.status).toBe(201);
+    const clientId=(await registration.json()).client_id;
+    harnessClients.push(clientId);
+    const verifier=randomBytes(32).toString("base64url");
+    const params=new URLSearchParams({client_id:clientId,redirect_uri:`${baseUrl}/callback`,response_type:"code",scope,code_challenge:createHash("sha256").update(verifier).digest("base64url"),code_challenge_method:"S256",state:"person-agent",resource:`${baseUrl}/api/mcp`});
+    const authorize=await request(`/api/auth/oauth2/authorize?${params}`,undefined,agentCookie);
+    const consentUrl=new URL(authorize.headers.get("location")!,baseUrl);
+    expect(consentUrl.pathname).toBe("/app/consent");
+    const consent=await request("/api/auth/oauth2/consent",{accept:true,scope,oauth_query:consentUrl.search.slice(1)},agentCookie);
+    expect(consent.status).toBe(200);
+    const callback=new URL((await consent.json()).url);
+    const exchange=await auth.handler(new Request(`${baseUrl}/api/auth/oauth2/token`,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"authorization_code",client_id:clientId,code:callback.searchParams.get("code")!,code_verifier:verifier,redirect_uri:`${baseUrl}/callback`,resource:`${baseUrl}/api/mcp`})}));
+    expect(exchange.status).toBe(200);
+    const payload=JSON.parse(Buffer.from((await exchange.json()).access_token.split(".")[1],"base64url").toString());
+    const personal=(await getSql()`SELECT id FROM teams WHERE personal_owner_member_id=${ownerId}`)[0].id;
+    expect(payload).toMatchObject({hive_member_id:agentId,hive_team_id:personal,hive_access:"person",scope});
+    expect((await contextFromClaims(payload))?.teamId).toBe(personal);
+    expect(await contextFromClaims({...payload,scope:"hive"})).toBeNull();
+  });
+
 });
