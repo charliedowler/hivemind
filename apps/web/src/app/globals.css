@@ -389,8 +389,12 @@ pre:focus-visible {
 .search-form > .hm-field:first-child {
   flex: 1 1 380px;
 }
-.search-form > .hm-field:nth-child(2) {
-  flex: 0 1 240px;
+.repo-filter {
+  width: fit-content;
+  max-width: 100%;
+}
+.repo-filter .hm-select {
+  max-width: 100%;
 }
 .search-form .hm-input:not(:focus-within) {
   box-shadow: var(--shadow-hard-sm);
@@ -458,7 +462,8 @@ pre:focus-visible {
   font-family: var(--font-mono);
   font-size: 13px;
 }
-.comb-field {
+.comb-field,
+.cell-field {
   border: var(--outline-ink);
   border-radius: var(--radius-md);
   background:
@@ -744,10 +749,8 @@ pre:focus-visible {
   .search-form > .hm-field:first-child {
     flex-basis: 100%;
   }
-  .search-form > .hm-field:nth-child(2) {
-    flex: 1 1 160px;
-  }
-  .comb-field {
+  .comb-field,
+  .cell-field {
     padding: 20px 12px;
   }
   .member-grid {
@@ -763,7 +766,8 @@ pre:focus-visible {
 @supports not (corner-shape: bevel) {
   .early-access,
   .app-header nav a,
-  .comb-field {
+  .comb-field,
+  .cell-field {
     border-radius: 0;
   }
 }
@@ -797,33 +801,6 @@ pre:focus-visible {
   }
 }
 
-.kind-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 4px;
-  border: 2px solid var(--ink);
-  font-family: var(--font-pixel);
-  font-size: 10px;
-}
-.kind-mark-friction {
-  background: var(--clay-300);
-}
-.kind-mark-insight {
-  background: var(--honey-300);
-}
-.friction-areas {
-  display: grid;
-  gap: 20px;
-}
-.friction-area {
-  gap: 8px;
-}
-.friction-bar {
-  height: 8px;
-  background: var(--clay-700);
-  border: 2px solid var(--ink);
-}
 .key-row {
   border-top: 2px solid var(--border-default);
   padding-top: 12px;

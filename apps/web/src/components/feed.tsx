@@ -2,38 +2,28 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { type LearningView, type SearchHit } from "@hivemind/core";
 import {
-  learningKinds,
-  type LearningKind,
-  type LearningView,
-  type SearchHit,
-} from "@hivemind/core";
-import {
-  ActivityFeed,
   Badge,
   Button,
   Card,
-  CombGrid,
+  CombGrid as CellGrid,
   Input,
   Select,
   Sprite,
 } from "@hivemind/design-system";
-import { errorMessage, relativeTime, requestJson } from "@/lib/client";
-import { agentKind, learnedBy } from "@/lib/learning-presentation";
+import { errorMessage, requestJson } from "@/lib/client";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDialog } from "./learning-dialog";
-import { FrictionPanel } from "./friction-panel";
 import { ErrorPanel, LoadingPanel } from "./primitives";
 
 function SearchResults({
   query,
   repo,
-  kind,
   onOpen,
 }: {
   query: string;
   repo: string;
-  kind: LearningKind | undefined;
   onOpen: (id: string) => void;
 }) {
   const [result, setResult] = useState<{ hits?: SearchHit[]; error?: string }>(
@@ -44,7 +34,7 @@ function SearchResults({
     const timer = setTimeout(() => {
       requestJson<{ hits: SearchHit[] }>(
         "/api/app/search",
-        { query, repo: repo || undefined, kind, limit: 25 },
+        { query, repo: repo || undefined, limit: 25 },
         controller.signal,
       )
         .then(setResult)
@@ -57,28 +47,26 @@ function SearchResults({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, repo, kind]);
+  }, [query, repo]);
   if (result.error) return <ErrorPanel message={result.error} />;
   if (!result.hits)
     return <LoadingPanel>Searching for matching cells.</LoadingPanel>;
+  const hits = result.hits.filter((hit) => hit.lifecycle !== "retracted");
   return (
     <div className="stack">
       <p className="small muted" role="status">
-        {result.hits.length} {result.hits.length === 1 ? "cell" : "cells"}{" "}
-        found.
+        {hits.length} {hits.length === 1 ? "cell" : "cells"} found.
       </p>
-      {result.hits.length ? (
+      {hits.length ? (
         <div className="search-results">
-          {result.hits.map((hit) => (
+          {hits.map((hit) => (
             <SearchHitCard key={hit.id} hit={hit} onOpen={onOpen} />
           ))}
         </div>
       ) : (
         <Card>
-          <h2>The hive has no cell for that yet.</h2>
-          <p className="muted">
-            Try a shorter search or save a learning with your agent.
-          </p>
+          <p className="muted">No cells match your search.</p>
+          <Link href="/app/connect">Connect your agent</Link>
         </Card>
       )}
     </div>
@@ -166,17 +154,15 @@ export function Feed() {
   const { state, setState, list } = useHiveFeed();
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
-  const [kind, setKind] = useState<LearningKind>();
   const [searchRevision, setSearchRevision] = useState(0);
   const [selected, setSelected] = useState<string>();
+  const cells = state.learnings
+    .filter((item) => item.lifecycle !== "retracted")
+    .sort((a, b) => Date.parse(b.lastPushedAt) - Date.parse(a.lastPushedAt));
   const repos = [
-    ...new Set(
-      state.learnings.flatMap((item) => (item.repo ? [item.repo] : [])),
-    ),
+    ...new Set(cells.flatMap((item) => (item.repo ? [item.repo] : []))),
   ].sort();
-  const visible = state.learnings.filter(
-    (item) => (!repo || item.repo === repo) && (!kind || item.kind === kind),
-  );
+  const visible = cells.filter((item) => !repo || item.repo === repo);
   function search(event: FormEvent) {
     event.preventDefault();
     setSearchRevision((value) => value + 1);
@@ -194,14 +180,14 @@ export function Feed() {
     <div className="stack dashboard">
       <div className="page-heading">
         <div>
-          <h1>Your hive</h1>
+          <h1>Hive</h1>
           <p className="muted">
             Open a cell to read the learning and see who saved it.
           </p>
         </div>
         <div className="row wrap">
           <Badge tone="fresh" icon="icon-cell">
-            {state.learnings.length} cells
+            {cells.length} {cells.length === 1 ? "cell" : "cells"}
           </Badge>
           <span className="small live-label">
             <Sprite name="bee-hover" scale={1} />
@@ -209,12 +195,7 @@ export function Feed() {
           </span>
         </div>
       </div>
-      <section className="stack" aria-label="The comb">
-        <div className="section-heading">
-          <div>
-            <h2>The comb</h2>
-          </div>
-        </div>
+      <section className="stack" aria-label="Cells">
         <form className="search-form" onSubmit={search}>
           <Input
             id="search"
@@ -226,34 +207,6 @@ export function Feed() {
             maxLength={500}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <Select
-            label={query.trim() ? "Prioritise a repo" : "Choose a repo"}
-            aria-label="Choose a repo"
-            value={repo}
-            onChange={(event) => setRepo(event.target.value)}
-            options={[
-              { value: "", label: "All repos" },
-              ...repos.map((name) => ({ value: name, label: name })),
-            ]}
-          />
-          <Select
-            label="Cell kind"
-            value={kind ?? ""}
-            onChange={(event) =>
-              setKind(
-                event.target.value
-                  ? (event.target.value as LearningKind)
-                  : undefined,
-              )
-            }
-            options={[
-              { value: "", label: "All kinds" },
-              ...learningKinds.map((value) => ({
-                value,
-                label: value[0].toUpperCase() + value.slice(1),
-              })),
-            ]}
-          />
           <Button type="submit" variant="secondary" iconLeft="icon-search">
             Search
           </Button>
@@ -263,57 +216,35 @@ export function Feed() {
             </Button>
           ) : null}
         </form>
+        <div className="repo-filter">
+          <Select
+            size="sm"
+            aria-label="Choose a repo"
+            value={repo}
+            onChange={(event) => setRepo(event.target.value)}
+            options={[
+              { value: "", label: "All repos" },
+              ...repos.map((name) => ({ value: name, label: name })),
+            ]}
+          />
+        </div>
         <div ref={list}>
           {query.trim() ? (
             <SearchResults
-              key={`${query.trim()}:${repo}:${kind}:${searchRevision}`}
+              key={`${query.trim()}:${repo}:${searchRevision}`}
               query={query.trim()}
-              kind={kind}
               repo={repo}
               onOpen={setSelected}
             />
           ) : (
-            <CombPanel
+            <CellPanel
               state={state}
               visible={visible}
-              repo={repo}
               newIds={newIds}
               onOpen={setSelected}
             />
           )}
         </div>
-      </section>
-      <FrictionPanel repo={repo} onOpen={setSelected} />
-      <section className="stack" aria-label="Hive activity">
-        <div className="section-heading">
-          <div>
-            <h2>Fresh nectar</h2>
-          </div>
-          <Sprite name="bee-carry" scale={2} />
-        </div>
-        {!state.loaded ? (
-          <LoadingPanel>Loading recent learnings.</LoadingPanel>
-        ) : state.learnings.length ? (
-          <ActivityFeed
-            items={state.learnings.slice(0, 5).map((item) => ({
-              id: item.id,
-              kind: "learned",
-              who: learnedBy(item),
-              title: item.title,
-              when: relativeTime(item.lastPushedAt),
-              repo: item.repo ?? "across the hive",
-              source: agentKind(item.source) ?? "manual",
-            }))}
-          />
-        ) : state.error ? (
-          <ErrorPanel message={state.error} />
-        ) : (
-          <Card>
-            <p className="muted">
-              Your agents have not saved any learnings yet.
-            </p>
-          </Card>
-        )}
       </section>
       {selected ? (
         <LearningDialog
@@ -327,16 +258,14 @@ export function Feed() {
   );
 }
 
-function CombPanel({
+function CellPanel({
   state,
   visible,
-  repo,
   newIds,
   onOpen,
 }: {
   state: { loaded: boolean; error: string };
   visible: LearningView[];
-  repo: string;
   newIds: Set<string>;
   onOpen: (id: string) => void;
 }) {
@@ -347,18 +276,15 @@ function CombPanel({
       {state.loaded && !state.error && !visible.length ? (
         <Card className="empty-state">
           <Sprite name="cell-empty" scale={4} />
-          <h2>No cells match these filters.</h2>
-          <p className="muted">
-            Change the filters or connect your agent to save a learning.
-          </p>
-          <Link href="/app/install" className="hm-btn hm-btn-primary hm-btn-md">
-            Add your agent
+          <p className="muted">There are no cells here yet.</p>
+          <Link href="/app/connect" className="hm-btn hm-btn-primary hm-btn-md">
+            Connect your agent
           </Link>
         </Card>
       ) : null}
       {visible.length ? (
-        <div className="comb-field">
-          <CombGrid columns={4}>
+        <div className="cell-field">
+          <CellGrid columns={4}>
             {visible.map((item) => (
               <LearningCard
                 key={item.id}
@@ -367,7 +293,7 @@ function CombPanel({
                 onOpen={onOpen}
               />
             ))}
-          </CombGrid>
+          </CellGrid>
         </div>
       ) : null}
     </>

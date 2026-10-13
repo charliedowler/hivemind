@@ -5,7 +5,6 @@ import { CombGrid } from "@hivemind/design-system";
 import { InstallPage, InstallSnippets, KeyBox } from "./install";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
-import { FrictionContent } from "./friction-panel";
 import { DecisionCard } from "./conflicts-panel";
 import { Markdown } from "./markdown";
 import { learningStatus } from "@/lib/learning-presentation";
@@ -80,7 +79,7 @@ describe("dashboard components", () => {
     expect(html).toContain('type="button" class="hm-cell hm-cell-confirmed"');
     expect(html).toContain('aria-label="Linked worktrees share one stash"');
     expect(html).toContain("Maya&#x27;s Claude");
-    expect(html).toContain("seen 3 times");
+    expect(html).toContain("Seen 3 times");
     expect(html).toContain('data-sprite="cell-filling"');
   });
 
@@ -182,27 +181,6 @@ describe("dashboard components", () => {
     expect(html).toContain('href="/app/cells/lrn_abcdefghijkl"');
     expect(html).toContain(">Open cell</a>");
     expect(html).not.toContain(">lrn_abcdefghijkl</a>");
-  });
-
-  it("shows friction titles and keeps ids in tooltips", () => {
-    const html = renderToStaticMarkup(
-      <FrictionContent
-        data={{
-          since: hit.createdAt,
-          count: 1,
-          minutes: 7,
-          unmeasured: 0,
-          blocked: 0,
-          areas: [{ area: "tool", count: 1, minutes: 7, ids: [hit.id] }],
-          recurring: [],
-          cells: [{ id: hit.id, title: hit.title }],
-        }}
-        onOpen={() => {}}
-      />,
-    );
-    expect(html).toContain(`>${hit.title}</a>`);
-    expect(html).toContain(`title="${hit.title} (${hit.id})"`);
-    expect(html).not.toContain(`>${hit.id}</a>`);
   });
 
   it("shows supersession and expiry despite earlier useful votes", () => {

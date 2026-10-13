@@ -1,14 +1,7 @@
 "use client";
 
 import type { LearningView, SearchHit } from "@hivemind/core";
-import {
-  Badge,
-  Card,
-  LearningCell,
-  MemberBee,
-  Sprite,
-  Tag,
-} from "@hivemind/design-system";
+import { Badge, Card, MemberBee, Sprite, Tag } from "@hivemind/design-system";
 import { relativeTime } from "@/lib/client";
 import {
   agentKind,
@@ -25,44 +18,70 @@ export function LearningCard({
   highlighted?: boolean;
   onOpen: (id: string) => void;
 }) {
+  if (learning.lifecycle === "retracted") return null;
+  const status = learningStatus(learning);
   return (
-    <LearningCell
-      title={learning.title}
-      repo={learning.repo ?? "Across the hive"}
-      learnedBy={learnedBy(learning)}
-      when={relativeTime(learning.lastPushedAt)}
-      votes={learning.votes.up}
-      status={learningStatus(learning)}
-      filling={highlighted}
+    <button
+      type="button"
+      className={`hm-cell hm-cell-${status}`}
+      aria-label={learning.title}
       onClick={() => onOpen(learning.id)}
-      footer={
-        <>
-          {learning.lifecycle === "superseded" ||
-          learning.lifecycle === "retracted" ? (
-            <span>{learning.lifecycle}</span>
-          ) : null}
-          {learning.verifyBeforeUse ? <span>Verify before use</span> : null}
-          {learning.kind === "friction" || learning.kind === "insight" ? (
-            <span className={`kind-mark kind-mark-${learning.kind}`}>
+    >
+      <div className="hm-cell-edge">
+        <div className="hm-cell-wall">
+          <div className="hm-cell-face">
+            <div className="hm-cell-status">
               <Sprite
                 name={
-                  learning.kind === "friction" ? "cell-outdated" : "cell-asked"
+                  highlighted
+                    ? "cell-filling"
+                    : status === "confirmed"
+                      ? "cell-sealed"
+                      : status === "outdated"
+                        ? "cell-outdated"
+                        : "cell-half"
                 }
-                scale={1}
+                scale={2}
               />
-              {learning.kind}
-            </span>
-          ) : null}
-          {learning.source === "slack" ? <span>From Slack</span> : null}
-          <Sprite name="thumb" scale={1} />
-          {learning.votes.up}
-          {learning.pushCount > 1 ? (
-            <span>seen {learning.pushCount} times</span>
-          ) : null}
-        </>
-      }
-    />
+              <span>{kindLabel(learning.kind)}</span>
+            </div>
+            <div className="hm-cell-main">
+              <h3 className="hm-cell-title">{learning.title}</h3>
+              <span className="hm-cell-repo">
+                {learning.repo ?? "Across the hive"}
+              </span>
+            </div>
+            <div className="hm-cell-meta">
+              {learnedBy(learning)}
+              <time>{relativeTime(learning.lastPushedAt)}</time>
+            </div>
+            <div className="hm-cell-votes">
+              <LifecycleBadge learning={learning} />
+              <Sprite name="thumb" scale={1} title="Useful votes" />
+              {learning.votes.up}
+            </div>
+          </div>
+        </div>
+      </div>
+    </button>
   );
+}
+
+function kindLabel(kind: LearningView["kind"]) {
+  return kind === "decision" || kind === "friction" ? kind : "learning";
+}
+
+function LifecycleBadge({ learning }: { learning: LearningView }) {
+  const status = learningStatus(learning);
+  const label =
+    learning.lifecycle === "superseded"
+      ? "Replaced"
+      : status === "outdated"
+        ? "Outdated"
+        : status === "confirmed"
+          ? `Seen ${learning.pushCount} times`
+          : undefined;
+  return label ? <Badge tone={status}>{label}</Badge> : null;
 }
 
 export function SearchHitCard({
@@ -72,14 +91,14 @@ export function SearchHitCard({
   hit: SearchHit;
   onOpen: (id: string) => void;
 }) {
+  if (hit.lifecycle === "retracted") return null;
   return (
     <Card className="search-hit" id={hit.id}>
       <div className="row between wrap">
-        <Badge tone={learningStatus(hit)}>
-          {hit.lifecycle ?? learningStatus(hit)}
-        </Badge>
+        <span className="small">{kindLabel(hit.kind)}</span>
+        <LifecycleBadge learning={hit} />
         {hit.verifyBeforeUse ? (
-          <span className="small">Verify before use</span>
+          <span className="small">Check this is still true</span>
         ) : null}
         <span className="score">Score {hit.score.toFixed(2)}</span>
       </div>
@@ -93,10 +112,7 @@ export function SearchHitCard({
           size="sm"
         />
         <code className="repo">{hit.repo ?? "Across the hive"}</code>
-        <span className="small muted">
-          {relativeTime(hit.lastPushedAt)}
-          {hit.pushCount > 1 ? ` · seen ${hit.pushCount} times` : ""}
-        </span>
+        <span className="small muted">{relativeTime(hit.lastPushedAt)}</span>
       </div>
       {hit.permalink ? (
         <a href={hit.permalink} target="_blank" rel="noreferrer">
