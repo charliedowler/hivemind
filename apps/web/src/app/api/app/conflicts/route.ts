@@ -3,30 +3,9 @@ import { authenticated, readJson } from "@/lib/http";
 import {
   listDecisions,
   reverseDecision,
-  decisionRepos,
   updateDecisionReason,
 } from "@/server/conflict-decisions";
-import { decisionKinds } from "@/server/conflict-judgments";
 import { redactSecrets } from "@hivemind/core";
-export async function GET(request: Request) {
-  const query = new URL(request.url).searchParams;
-  return authenticated(async (ctx) => {
-    const filters = z
-      .object({
-        decision: z
-          .enum([...decisionKinds, "undecided", "reversed"])
-          .optional(),
-        repo: z.string().max(200).optional(),
-        search: z.string().max(200).optional(),
-      })
-      .parse(Object.fromEntries(query));
-    const [decisions, repos] = await Promise.all([
-      listDecisions(ctx, filters),
-      decisionRepos(ctx),
-    ]);
-    return Response.json({ decisions, repos });
-  });
-}
 export async function POST(request: Request) {
   return authenticated(async (ctx) => {
     const data = z

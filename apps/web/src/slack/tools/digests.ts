@@ -9,7 +9,7 @@ import {
 } from "@/server/digests/instructions";
 import { listSchedules } from "@/server/digests/store";
 import { slackMemberTimezone } from "@/server/digests/connection";
-import { restateSchedule } from "@/server/digests/proposal";
+import { restateSchedule } from "@/server/digests/schedule-text";
 import { slackEscape } from "@/server/slack/format";
 const input = z.strictObject({ text: z.string().min(1).max(2000) });
 const listing = z.strictObject({ text: z.string().max(2000).optional() });

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Members } from "@/components/members";
 import { SlackSettings } from "@/components/slack-settings";
 import { CaptureRules } from "@/components/capture-rules";
-import { KnowledgeBrowser } from "@/components/knowledge-browser";
+import { ExportArchive } from "@/components/export-archive";
 import { publicUrl } from "@/lib/public-url";
 import { getWebContext } from "@/server/auth";
 import { memberPage } from "@/server/identity/member-page";
@@ -41,8 +41,7 @@ export default async function Page() {
       <section className={styles.section} aria-labelledby="export">
         <h2 id="export">Export</h2>
         <fieldset className={styles.controls} disabled={!isAdmin}>
-          {/* TODO Round E: replace this export-only view with the extracted ExportArchive. */}
-          <KnowledgeBrowser exportOnly />
+          <ExportArchive />
         </fieldset>
       </section>
     </div>

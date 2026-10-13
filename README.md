@@ -90,7 +90,7 @@ Both install paths were run for real against production on 12 October 2026: Code
 | `hive_snapshot` | Returns a private read-only tarball link that expires after 15 minutes. |
 | `hive_feedback` | Optional direct vote or actor-bound receipt withdrawal.                                                                                                                                                                                                                 |
 
-Signed-in navigation has Hive, Team, Connect and an avatar menu. Team holds Members, Slack, What Hive keeps and Export. Account and Sign out are in the avatar menu. `/app/install` redirects to `/app/connect`; `/app/members` redirects to `/app/team`; `/app/settings/slack` and `/app/settings/capture` redirect to the Slack and What Hive keeps sections. The other dashboard pages remain reachable by URL.
+Signed-in navigation has Hive, Team, Connect and an avatar menu. Team holds Members, Slack, What Hive keeps and Export. Account and Sign out are in the avatar menu. `/app/install` redirects to `/app/connect`; `/app/members` redirects to `/app/team`; `/app/settings/slack` and `/app/settings/capture` redirect to the Slack and What Hive keeps sections. `/app/conflicts` and `/app/admin/analytics` redirect to `/app`. `/app/tree` redirects to `/app/team#export`; `/app/settings/slack/digests` redirects to `/app/team#slack`. The separate waitlist, switch-account and root `/settings/capture` routes are removed. The landing early-access form remains.
 
 ## Architecture
 
@@ -146,7 +146,7 @@ Postgres is the source of truth: typed metadata, a Markdown body, explicit lifec
 
 Cells are fresh, confirmed, superseded, outdated or retracted. Superseded and retracted cells remain readable, but default search and ask use fresh and confirmed cells. Verification horizons range from 14 days for environment facts to 180 days for decisions. Expired cells say “Verify before use” and receive less weight. Authors and admins can edit through the revision-checked API; edits preserve versions. New facts replace old ones through `hive_push({ ..., supersedes: "lrn_existing" })`.
 
-The [Decisions log](https://gohive.dev/app/conflicts) records automatic outcomes, reasons, confidence, Jev probabilities and the newer cell's pusher. Filter by decision or repo, or search titles and reasons. Members need no action. A team admin can reverse a decision in one action if neither cell has changed. Hive supplies the audit reason. The admin can edit it afterward or use Undo to reapply the decision. Legacy decisions without snapshots cannot be reversed. The [tree browser](https://gohive.dev/app/tree) exposes repos, topics, people, friction and INDEX.md. Citation chips show titles; IDs are available in tooltips and cell details. Local archives are read-only views, so edits must return through `hive_push`.
+Hive records automatic outcomes, reasons, confidence, Jev probabilities and the newer cell’s pusher in `conflict_decisions`. Admins can reverse a decision through MCP, Slack or `POST /api/app/conflicts` if neither cell has changed. The reason is optional; legacy decisions without snapshots cannot be reversed. Agents browse generated knowledge with `hive_browse` and `hive_read`. Members use [Team’s export section](https://gohive.dev/app/team#export) to prepare an archive. Local archives are read-only views, so edits return through `hive_push`.
 
 Connect a private Vercel Blob store and set `BLOB_READ_WRITE_TOKEN` on the server. Run `pnpm --filter web knowledge:rebuild` with database and Blob credentials to rebuild every team and drain pending evidence. Changed files use content-addressed object keys. A database revision check prevents an older worker from publishing over a newer tree. Reads retry pending publication, and verification deadlines invalidate the tree even without another push.
 
@@ -154,7 +154,7 @@ Snapshots are limited to 10,000 cells and 50 MB of source Markdown. The download
 
 ## Capture rules
 
-Open [What Hive keeps](https://gohive.dev/settings/capture) to exclude repos, paths, agents, keywords or content categories from your captures. Describe a rule to save a clear instruction directly, or use the structured form. Admins can set team rules. Rules can drop, redact or hold cells for their owner's review. Description-based drop and redact rules also apply to existing memories automatically. Reply undo within an hour to remove the rule and reverse its recorded changes. The [capture rules guide](docs/capture-rules.md) explains enforcement and hook filtering.
+Open [What Hive keeps](https://gohive.dev/app/team#keeps) to exclude repos, paths, agents, keywords or content categories from your captures. Describe a rule to save a clear instruction directly, or use the structured form. Admins can set team rules. Rules can drop, redact or hold cells for their owner's review. Description-based drop and redact rules also apply to existing memories automatically. Reply undo within an hour to remove the rule and reverse its recorded changes. The [capture rules guide](docs/capture-rules.md) explains enforcement and hook filtering.
 
 ## Security notes
 
@@ -170,7 +170,7 @@ Open [What Hive keeps](https://gohive.dev/settings/capture) to exclude repos, pa
 
 - The comb polls every five seconds.
 - No Codex Stop hook equivalent. Codex uses the AGENTS.md instruction block.
-- Team admins can inspect usage, onboarding, knowledge, quality and stalls at `/app/admin/analytics`. General usage quotas are not implemented.
+- Operators can inspect usage, onboarding, knowledge, quality and stalls with the private SQL reports. General usage quotas are not implemented.
 - Google consent is in Testing. Only configured test accounts can complete Google sign-in until the OAuth app is published.
 - Jev thresholds have a small policy eval and live smoke check, not a calibrated team dataset.
 - The Stop gate uses text and explicit local activity. Unsupported transcript formats skip capture.
@@ -236,7 +236,8 @@ Production smoke checks on 12 October 2026 measured Jev at 205 ms for a friction
 
 ## Analytics and event logs
 
-The [analytics contract](docs/analytics.md) describes the private append-only event ledger, privacy limits, five SQL reports and merge-time migration. Team admins can open `/app/admin/analytics` to inspect their team with pixel tables and bars. Waitlist signups remain in `early_access`. Set `HIVE_REPORTING_DATABASE_URL` to a private ledger-only reporting login for a later Lightdash connection. No Lightdash project is created here.
+The [analytics contract](docs/analytics.md) describes the private append-only event ledger, privacy limits and five SQL reports. The analytics page and browser page and error beacons are removed. Cell-view telemetry still requires explicit measurement consent. Server, installer and hook events remain. Early-access signups remain in `early_access`. Set `HIVE_REPORTING_DATABASE_URL` to a private ledger-only reporting login for SQL access. No Lightdash project is created here.
+
 ## Better Auth and forager access
 
 [Better Auth](https://better-auth.com/docs/plugins/mcp) owns passwords, email codes, Google and Slack sign-in, sessions, OAuth consent, PKCE, JWT signing and refresh. Its Drizzle user model maps to `members`; its session model maps to `web_sessions`. No old password hashes exist. Existing verified emails link to the same member, so keys and cell attribution retain their IDs. A signed-in account with no team has no dashboard or MCP context until verification and enrollment succeed.
@@ -270,13 +271,13 @@ Indexing is off until an admin enables a joined channel. Private channels requir
 
 ## Slack digests
 
-Admins choose channels, cadence, local time, timezone and included sections at `/app/settings/slack/digests`. Members can preview updates and read their delivery history. Each update covers learnings, insights, reported friction and automatic conflict decisions since prior successful coverage. Empty updates are skipped by default. The first update covers seven days.
+Admins schedule updates by asking Hive in Slack, for example “post a weekly update here every Monday at 9am London time”. Slack is the only scheduling surface. Each update covers learnings, insights, reported friction and automatic decisions since prior successful coverage. Empty updates are skipped by default. The first update covers seven days.
 
-Mention Hive in a joined channel with “post an update every Monday at 9 in here” to propose a schedule, then press Confirm. The bot restates the channel, timezone and sections before saving. Ask Hive to list schedules, then reply with an exact schedule ID to disable one as an admin.
+Mention Hive in a joined channel with a complete request. Hive saves an allowed admin instruction directly and restates the schedule, or reacts when no clarification is needed. Ask Hive to list or stop schedules. Reply undo in the same thread within one hour to reverse your change.
 
-Set a random `CRON_SECRET` in Production and Preview. The production cron calls `/api/cron/slack-digests` every fifteen minutes. Apply `0016_slack_digests.sql` with `pnpm --filter web db:migrate` before deploying the feature. Its rollback refuses recorded history. Delivery failures keep the content for the next update; uncertain sends require checking the channel before posting manually.
+Set a random `CRON_SECRET` in Production and Preview. The production cron calls `/api/cron/slack-digests` every fifteen minutes. Apply `0016_slack_digests.sql` with `pnpm --filter web db:migrate` before deploying the feature. Its rollback refuses recorded history. Delivery failures keep the content for the next update; uncertain sends require checking the channel.
 
-The pure composer and scheduling tests cover empty periods, escaped mentions, replacement links, section limits, friction totals, DST and month ends. Database tests cover team isolation, admin checks, concurrent reservations, successful and failed coverage, and proposal confirmation replay. To run them in a dedicated local database:
+The pure composer and scheduling tests cover empty periods, escaped mentions, replacement links, section limits, friction totals, DST and month ends. Database tests cover team isolation, admin checks, concurrent reservations, successful and failed coverage, and Slack instruction replay. To run them in a dedicated local database:
 
 ```sh
 DATABASE_URL=postgres://hivemind:hivemind@127.0.0.1:54329/hive_digest_20261013 pnpm --filter web db:migrate

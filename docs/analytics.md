@@ -10,7 +10,7 @@ The events answer five questions:
 4. How often do answers report gaps or classifiers refuse sensitive content, and how long do calls take?
 5. Which failed calls or missing completions explain a stall?
 
-Waitlist signups remain in `early_access`. There is no `waitlist.signup` event and no second signup ledger. Landing, waitlist, and install page views use a small first-party server beacon. The beacon sets no cookies. It cannot identify unique anonymous visitors.
+Early-access signups remain in `early_access`. There is no `waitlist.signup` event or second signup ledger. The separate waitlist page and API, analytics dashboard and browser page and error beacons are removed. Consent-gated cell-view telemetry remains. The server ledger and authenticated installer/hook reports remain.
 
 ## Envelope and privacy
 
@@ -36,7 +36,7 @@ The ledger intentionally has no cascading foreign keys. Removing a member or ope
 | `learning.superseded` | An accepted replacement commits. Links the older cell to its newer cell. Candidate proposals do not count. |
 | `learning.lifecycle_changed` | A committed lifecycle transition from a merge, vote, edit, moderation, or accepted replacement. Stores old and new lifecycle and a fixed reason. |
 | `learning.feedback` | A member's vote persists. Records `up`, `down`, or `outdated`; no vote note. |
-| `learning.viewed` | The browser mounts a cell detail and a session-authenticated beacon confirms that the cell belongs to the team. Citation title lookups and server prefetches do not count. |
+| `learning.viewed` | A consent-gated cell view, authenticated and scoped to the member’s team. |
 | `search.performed` | Search returns. Records result count, score band, latency, and vector, text, prefix, recency, vote, and repo-boost signals. No query or repo is stored. |
 | `ask.performed` | The answer log persists. Records retrieved and cited counts, evidence gate and probability, configured synthesis model when used, latency, and gap flag. Friction answers use `friction_summary`. No question or answer is stored. |
 | `recent.performed` | Recent cells return. Records count and optional kind. Includes dashboard polling; this is observed use, not proof of a deliberate visit. |
@@ -50,7 +50,7 @@ The ledger intentionally has no cascading foreign keys. Removing a member or ope
 | `snapshot.exported` | The private archive and expiring snapshot record persist. Records revision, files, and bytes. No download token or object URL. |
 | `slack.event_received` | Recorded by the signed, deduplicated Slack worker with team, channelId, fixed slackEventKind and queue receipt latency. Backfills do not count as received Slack events. No message text. |
 | `slack.reply_decided` | Recorded after database reply reservation with team, channelId, actual gateDecision (`reply_now`, `react_only`, `stay_silent`) and Jev latency. Outcome is reply or silent. No message text. |
-| `page.viewed` | A same-origin browser beacon for `landing`, `waitlist`, or authenticated `install`. No arbitrary route, referrer, browser identity, or extra cookies. Counts are reported loads, not unique visitors. |
+| `page.viewed` | Historical browser page-view event. New browser emissions stop in Round C. |
 
 Entrypoints are `mcp`, `web`, `slack`, `hook`, `installer`, `scheduled`, and `unknown`. Sources are `claude-code`, `codex`, `slack`, `web`, `hook`, and `unknown`. Existing manual pushes through MCP have unknown agent source. A web manual push has web source. A hook or Slack origin supplies its source. Existing Stop nudges cause later MCP pushes with the agent's source; they do not prove hook attribution.
 
@@ -62,7 +62,7 @@ Environment is `test` under unit tests, otherwise the known Vercel production or
 
 Reports group environments and traffic classes separately. Do not label all null rows real. Fixture values labelled real exist only in isolated local schemas to test that separation.
 
-## SQL examples and admin page
+## Private SQL reports
 
 Run from `apps/web` with a private read-only ledger connection:
 
@@ -86,7 +86,7 @@ On verified email signup, the server matches the existing waitlist email private
 
 `stalls.sql` reports failed model/classifier/request outcomes and starts older than two minutes with no matching completion. An absent completion can mean analytics delivery failed or a process died. It does not prove a business failure. Multiple stalled calls can belong to one request.
 
-`/app/admin/analytics` loads the same five files inside a read-only transaction after `requireAdmin`. A transaction-local setting scopes every report to the authenticated team. No team ID comes from browser input. The page uses Hive cards, sprites, small tables, and square pixel bars. Bars total all traffic; table rows retain environment and traffic labels. Load or Refresh tables runs the reports again. There is no chart library or continuous polling on this page.
+The web analytics page and its server loader are removed. Run the SQL files directly through the private reporting connection. Set `hive.reporting_team` within the read-only transaction when a report must be scoped to one team. No browser receives these results.
 
 The migration creates a `hive_reporting` NOLOGIN role with schema usage and SELECT on `analytics_events` only. Provision a private login with that role through the database's credential controls. Set `HIVE_REPORTING_DATABASE_URL` for reporting tools. Do not use the application write connection for Lightdash. A Lightdash project is not created by this change. The report role grants no access to the separate waitlist table.
 
@@ -159,6 +159,6 @@ The append-only ledger accepts `digest_scheduled`, `digest_posted`, `digest_skip
 
 Saves emit `digest_scheduled`. Slack instructions emit `digest_action_decided` with the action, decision, trusted member ID, Jev signals and decision source. No request text is recorded. The Slack decision log stores the same judgement under policy `hive-digest-actions-1`. Message IDs deduplicate retried mutations. Each delivery attempt uses its post ID as the replay key. Cron events retain trusted team and system origin; manual actions retain their current actor. Analytics do not cause a second send.
 
-Saves and confirmed proposals emit `digest_scheduled`. Confirm replay uses the same schedule identity. Each delivery attempt uses its post ID as the replay key. Empty skipped attempts use outcome `skipped`, successful delivery uses `completed`, and rejected or uncertain delivery uses `failed` with the fixed `request_failed` reason. Cron events have a trusted team and system session with entrypoint `scheduled`; manual attempts retain web or Slack origin and the current actor. Best-effort analytics delivery does not change the operational delivery record or cause a second send. Section counts describe included records, including items linked through the overflow line; they do not measure Slack readership.
+Delivery attempts retain their post IDs as replay keys. Empty attempts use `skipped`, successful delivery uses `completed`, and rejected or uncertain delivery uses `failed`. Cron retains trusted team and system origin. Section counts measure included records, not Slack readership. The old proposal table stays, but no proposal confirmation flow remains.
 
 `slack.reaction_added` records an actual bot acknowledgement after reactions.add succeeds (including idempotent already_reacted). It carries the team/channel envelope, API latency and gateDecision react_only. Its stable key includes team, channel, message timestamp and emoji internally; no message text or raw timestamp/emoji is added to properties. `slack.reply_decided` records the preceding gate policy; the reaction outcome joins through request_id.

@@ -2,7 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import {
-  digestCadence,
   digestScheduleInput,
   redactSecrets,
   type HiveContext,
@@ -10,7 +9,8 @@ import {
 import { getSql } from "../db/client";
 import { HiveError } from "../errors";
 import { listSchedules } from "./store";
-export async function proposalContext(
+import { restateSchedule } from "./schedule-text";
+export async function digestMemberContext(
   teamId: string,
   memberId: string,
 ): Promise<HiveContext> {
@@ -38,20 +38,18 @@ export const digestInstructionSchema = z.strictObject({
     .enum(["time", "cadence", "channel", "target", "intent"])
     .nullable(),
 });
-export function restateSchedule(schedule: z.infer<typeof digestScheduleInput>) {
-  return digestCadence(schedule);
-}
-export async function proposeScheduleFromText(
+
+export async function parseScheduleInstruction(
   teamId: string,
   memberId: string,
   text: string,
   defaults: { channelId: string; timezone: string },
   history: Array<{ question: string; answer: string }> = [],
 ) {
-  await proposalContext(teamId, memberId);
+  await digestMemberContext(teamId, memberId);
   if (!process.env.ANTHROPIC_API_KEY)
     throw new HiveError(
-      "Schedule requests are unavailable. Add the schedule in Hive settings.",
+      "Schedule requests are unavailable. Try again in Slack later.",
       503,
     );
   const safeText = redactSecrets(z.string().min(1).max(2000).parse(text)).text;

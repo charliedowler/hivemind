@@ -1,7 +1,7 @@
-import { withHiveBearerAuth } from "../bearer-auth";
-import { z } from "zod";
 import { getWebContext } from "../auth";
 import { getLearning } from "../hive";
+import { withHiveBearerAuth } from "../bearer-auth";
+import { z } from "zod";
 import { httpError } from "@/lib/http";
 import { originFor, recordEvent, withOrigin } from "./events";
 import { rateLimit } from "../identity/rate-limit";
@@ -22,23 +22,6 @@ export async function beaconInput(request: Request) {
   if (text.length > 1024)
     throw Object.assign(new Error("Event is too large."), { status: 413 });
   return parseBeacon(text);
-}
-export async function pageBeacon(request: Request) {
-  try {
-    const { page } = z
-      .object({ page: z.enum(["landing", "waitlist", "install"]) })
-      .parse(await beaconInput(request));
-    const ctx = await getWebContext().catch(() => null);
-    if (page === "install" && !ctx) return new Response(null, { status: 401 });
-    await recordEvent({
-      name: "page.viewed",
-      origin: originFor(ctx ?? undefined),
-      properties: { page, actorKind: ctx ? "member" : "anonymous" },
-    });
-    return new Response(null, { status: 204 });
-  } catch (error) {
-    return httpError(error);
-  }
 }
 export async function learningBeacon(request: Request) {
   try {

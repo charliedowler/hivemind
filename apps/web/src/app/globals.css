@@ -832,24 +832,6 @@ pre:focus-visible {
 .cell-citation:hover {
   background: var(--honey-200);
 }
-.conflict-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-}
-.conflict-source {
-  gap: 12px;
-  padding: 20px;
-  border: 2px solid var(--wax-200);
-  background: var(--wax-50);
-}
-.conflict-source:last-child {
-  background: var(--honey-100);
-}
-.conflict-excerpt {
-  max-height: 220px;
-  overflow-y: auto;
-}
 .cell-page {
   max-width: 900px;
   margin-inline: auto;
@@ -857,36 +839,6 @@ pre:focus-visible {
 .cell-page h1 {
   overflow-wrap: anywhere;
 }
-.tree-breadcrumbs {
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
-.tree-entries {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.tree-entries li {
-  border-top: 2px solid var(--wax-200);
-}
-.tree-entries button {
-  width: 100%;
-  display: flex;
-  gap: 14px;
-  padding: 18px 8px;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
-.tree-entries button:hover {
-  background: var(--honey-100);
-}
-.tree-entries button .small {
-  margin-left: auto;
-}
-.tree-file,
 .version-change pre {
   overflow: auto;
   max-width: 100%;
@@ -896,9 +848,6 @@ pre:focus-visible {
   color: var(--teal-100);
   font-size: 13px;
   line-height: 1.7;
-}
-.tree-file {
-  max-height: 650px;
 }
 .version-entry {
   padding-top: 12px;
@@ -915,29 +864,9 @@ pre:focus-visible {
   flex-wrap: wrap;
 }
 @media (max-width: 760px) {
-  .conflict-pair {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .conflict-source {
-    padding: 16px;
-  }
   .app-header nav a {
     flex: 1 1 28%;
   }
-  .tree-card {
-    padding: 16px;
-  }
-}
-
-.tree-breadcrumbs button {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  font: inherit;
-  color: var(--teal-700);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .auth-divider { text-align: center; }

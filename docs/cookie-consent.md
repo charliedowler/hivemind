@@ -1,5 +1,10 @@
 # Cookie consent
 
+## Round C, 13 October 2026
+
+The analytics, Decisions, tree, digest-settings and separate waitlist pages are removed. Team retains export; Slack retains scheduling. The analytics ledger and private SQL reports remain. Browser page and error beacons are removed. The cookie banner, privacy preferences and consent-gated cell-view telemetry remain. The earlier verification below is historical and does not describe the current page set. Screenshots of removed pages are deleted.
+
+
 Hive uses hosted c15t 3.0.0. The install adds one consent root, a banner, a preferences dialog and an app-owned Cookie preferences button in the root footer. The banner and dialog use Hive's honey, wax, ink, fonts, chamfered corners and hard shadows. The service remains usable without optional measurement.
 
 ## Hosted setup

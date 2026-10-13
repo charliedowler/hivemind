@@ -28,7 +28,7 @@ import {
 } from "./conflict-judgments";
 import { judgeMemory } from "./memory-judgments";
 import { runReversibleAction, undoLastAction } from "./slack/actions";
-import { GET, POST } from "../app/api/app/conflicts/route";
+import { POST } from "../app/api/app/conflicts/route";
 const auth = vi.hoisted(() => ({ ctx: null as HiveContext | null }));
 vi.mock("./auth", async (original) => ({
   ...(await original<typeof import("./auth")>()),
@@ -323,41 +323,17 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect((await listDecisions(a, { id: record.id }))[0].canReverse).toBe(false);
       await expect(reverseDecision(a, record.id)).rejects.toMatchObject({ status: 404 });
     });
-    it("serves the log with scoped filters and rejects the old vote API", async () => {
-      const { record } = await pair("keep_both", "API filter");
-      const response = await GET(
-        new Request(
-          "https://hive.test/api/app/conflicts?decision=keep_both&repo=team/conflicts&search=API",
-        ),
-      );
-      expect(response.status).toBe(200);
-      expect(
-        (await response.json()).decisions.map(
-          (value: { id: string }) => value.id,
-        ),
-      ).toEqual([record.id]);
-      expect(
-        (
-          await POST(
-            new Request("https://hive.test/api/app/conflicts", {
-              method: "POST",
-              body: JSON.stringify({ id: record.id, action: "confirm" }),
-            }),
-          )
-        ).status,
-      ).toBe(400);
+    it("rejects the old vote API, cross-team reversals and missing sessions", async () => {
+      const { record } = await pair("keep_both", "API reversal");
+      const request = (action: string) => new Request("https://hive.test/api/app/conflicts", {
+        method: "POST",
+        body: JSON.stringify({ id: record.id, action }),
+      });
+      expect((await POST(request("confirm"))).status).toBe(400);
       auth.ctx = b;
-      expect(
-        (
-          await (
-            await GET(new Request("https://hive.test/api/app/conflicts"))
-          ).json()
-        ).decisions,
-      ).toEqual([]);
+      expect((await POST(request("reverse"))).status).toBe(404);
       auth.ctx = null;
-      expect(
-        (await GET(new Request("https://hive.test/api/app/conflicts"))).status,
-      ).toBe(401);
+      expect((await POST(request("reverse"))).status).toBe(401);
     });
   },
 );

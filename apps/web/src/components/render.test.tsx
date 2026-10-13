@@ -5,11 +5,11 @@ import { CombGrid } from "@hivemind/design-system";
 import { InstallPage, InstallSnippets, KeyBox } from "./install";
 import { LearningCard, SearchHitCard } from "./learning-card";
 import { LearningDetail } from "./learning-dialog";
-import { DecisionCard } from "./conflicts-panel";
 import { Markdown } from "./markdown";
 import { learningStatus } from "@/lib/learning-presentation";
 import { Login } from "./login";
 import { enabledSignInProviders } from "@/lib/auth-providers";
+
 
 vi.mock("@/lib/measurement-consent", () => ({ useMeasurementConsent: () => false }));
 
@@ -199,34 +199,6 @@ describe("dashboard components", () => {
     expect(html).toContain("Show history");
   });
 
-  it("shows automatic decisions without member actions", () => {
-    const html = renderToStaticMarkup(
-      <DecisionCard
-        record={{
-          id: "dec_test",
-          older: { id: hit.id, title: hit.title },
-          newer: { id: "lrn_replacement", title: "Use an explicit stash ref" },
-          decision: "undecided",
-          confidence: 0.4,
-          reason: "Hive retries with more evidence.",
-          model: "jev-1.13.0",
-          jev: null,
-          latencyMs: 100,
-          author: "Sam",
-          repo: "team/repo",
-          canReverse: false,
-          createdAt: hit.createdAt,
-        }}
-        onOpen={() => {}}
-        onDecision={() => {}}
-      />,
-    );
-    expect(html).toContain("Retry automatically");
-    expect(html).toContain("40% confidence");
-    expect(html).toContain("Newer cell pushed by Sam");
-    expect(html).not.toContain("Confirm replacement");
-    expect(html).not.toContain("Reverse this decision");
-  });
 
   it("leads with the npm installer and keeps manual setup available", () => {
     const html = renderToStaticMarkup(<InstallPage baseUrl="https://hive.example" />);

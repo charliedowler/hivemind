@@ -4,7 +4,7 @@ Missing pages return a branded 404. Unknown API paths return `{"error":"not_foun
 
 The segment and global error boundaries share ErrorShell. The global boundary imports the product styles and shared fonts because it replaces the root layout. Retry calls the framework reset function. A server error reference is the same digest logged by the server.
 
-`error.page_shown` records only the pathname and digest in event properties. It excludes queries, fragments, exception messages and identity. The endpoint checks origin, size and a strict input allowlist. The analytics writer retains its existing timeout and failure isolation. A database outage can prevent event storage; the server exception log still carries the reference.
+Browser error beacons and their endpoint are removed in Round C. Historical `error.page_shown` ledger rows remain. The error page still displays the reference logged by the server; Retry still calls the framework reset function.
 
 Both products currently use light page palettes. The shell uses the existing semantic tokens and opaque sprite backgrounds, with whole-number sprite scales.
 
@@ -15,7 +15,7 @@ Both products currently use light page palettes. The shell uses the existing sem
 - Expired, invalid, revoked or exhausted invites retain their branded form and tell the person to request a new invite. Domain rejection tells the person to ask their team admin for an invite.
 - Unverified email retains the verification form and code flow. Callback verification errors explain how to verify the email.
 - Revoked keys stay 401/403 at the MCP boundary. The browser recovery page explains how to create a new key. Keys are not accepted as a web sign-in method.
-- Missing membership and insufficient admin roles use the 403 boundary. Membership checks remain in the service layer. Switch account is a link to a page with a server-action sign-out button, so a prefetched GET cannot sign someone out.
+- Missing membership and insufficient admin roles use the 403 boundary. Membership checks remain in the service layer. Access-error pages offer a server-action Sign out button, so a prefetched GET cannot sign someone out.
 - Unknown or removed organisations cannot expose private organisation data. Wolf displays the requested organisation identifier when it has no membership; it displays the workspace name for an insufficient role. Hive can display the person's own former hive name.
 
 ## Hive `/auth`
@@ -24,6 +24,6 @@ Both products currently use light page palettes. The shell uses the existing sem
 
 ## Verification
 
-Run `pnpm -r typecheck`, `pnpm test` and `pnpm --filter web build`. Error-page tests cover signed-in and anonymous 404s, session-storage failure, retry clicks, digest privacy, beacon deduplication, auth recovery and unknown API responses. Browser checks use temporary untracked `error-fixture` and `retry-fixture` pages. The throwing routes are removed before the production commit.
+Run `pnpm -r typecheck`, `pnpm test` and `pnpm --filter web build`. Error-page tests cover signed-in and anonymous 404s, session-storage failure, retry clicks, digest privacy, absence of browser telemetry, auth recovery and unknown API responses. Browser checks use temporary untracked `error-fixture` and `retry-fixture` pages. The throwing routes are removed before the production commit.
 
 Screenshots in `docs/screenshots/error-{404,500}-{1280,390}.png` use 1280 × 800 and 390 × 844 CSS viewports. The 500 capture comes from a local production build with a temporary server throw. Pixel dimensions can reflect the automation browser's device scale factor.

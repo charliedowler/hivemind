@@ -12,11 +12,11 @@ import { HiveError } from "../errors";
 import { recordEvent } from "../analytics/events";
 import { digestChannel } from "./connection";
 import {
-  proposalContext,
+  digestMemberContext,
   digestInstructionSchema,
-  proposeScheduleFromText,
-  restateSchedule,
-} from "./proposal";
+  parseScheduleInstruction,
+} from "./parse-instruction";
+import { restateSchedule } from "./schedule-text";
 import { decide, judgeDigest } from "./action-gate";
 import {
   saveSchedule,
@@ -37,7 +37,7 @@ export async function digestInstruction(
   text: string,
   timezone: string,
 ): Promise<SlackToolResult> {
-  const member = await proposalContext(ctx.teamId, ctx.memberId);
+  const member = await digestMemberContext(ctx.teamId, ctx.memberId);
   if (!ctx.messageTs)
     throw new HiveError("Ask Hive in a new message to change a schedule.", 400);
   const prior = (
@@ -52,7 +52,7 @@ export async function digestInstruction(
   )[0];
   ctx = { ...ctx, isAdmin: ctx.isAdmin && role?.role === "admin" };
   const raw = (ctx.requestText ?? ctx.instructionText ?? text).slice(0, 2000);
-  const proposal = await proposeScheduleFromText(
+  const proposal = await parseScheduleInstruction(
     ctx.teamId,
     ctx.memberId,
     raw,
@@ -118,7 +118,7 @@ export async function applyDigestInstruction(
   proposal: z.infer<typeof digestInstructionSchema>,
   expectedInstructionId?: string,
 ) {
-  const member = await proposalContext(ctx.teamId, ctx.memberId);
+  const member = await digestMemberContext(ctx.teamId, ctx.memberId);
   const action = proposal.action;
   const channel =
     action === "set" && proposal.schedule

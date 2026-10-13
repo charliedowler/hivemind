@@ -16,7 +16,7 @@ import {
   DigestDeliveryError,
   type DigestTransport,
 } from "./runner";
-import { proposeScheduleFromText } from "./proposal";
+import { parseScheduleInstruction } from "./parse-instruction";
 import { digestInstruction, undoDigestFromWeb } from "./instructions";
 import type { HiveContext } from "@hivemind/core";
 const model = vi.hoisted(() => vi.fn());
@@ -249,7 +249,7 @@ describe.skipIf(!enabled)(
           content: [{ type: "tool_use", name: "propose_digest", input: value }],
         });
       respond(set);
-      const proposal = await proposeScheduleFromText(
+      const proposal = await parseScheduleInstruction(
         a.teamId,
         a.memberId,
         "post every Monday at 9",

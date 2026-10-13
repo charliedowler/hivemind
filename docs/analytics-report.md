@@ -1,5 +1,10 @@
 # Hive analytics implementation report
 
+## Round C, 13 October 2026
+
+The analytics, Decisions, tree, digest-settings and separate waitlist pages are removed. Team retains export; Slack retains scheduling. The analytics ledger and private SQL reports remain. Browser page and error beacons are removed. The cookie banner, privacy preferences and consent-gated cell-view telemetry remain. The earlier verification below is historical and does not describe the current page set. Screenshots of removed pages are deleted.
+
+
 ## Better Auth integration, 13 October 2026
 
 The landing merge preserves main at `dec46f6` and adds Better Auth access events. Signup is the committed verified enrollment milestone. Enrollment records invite creation, invite acceptance, domain joins and creator role promotion. Sessions record login and explicit logout; email verification records successful delivery and verification. Failed email login remains anonymous. Consent records a successful authorization-code grant, with no event for denied or invalid consent. Existing key, invite rotation and member removal events remain in place.
@@ -51,7 +56,6 @@ Rollback: `apps/web/drizzle/rollback/0013_analytics_events.sql`. Deploying the p
 
 `docs/screenshots/analytics-admin-1280.png` is a full-page Playwright capture from the local server at a 1280 × 1000 viewport. It contains only synthetic fixture data. The image is opened and visually reviewed. The stalls table keeps outcome and count visible; sprites do not rotate or fade.
 
-![Team analytics with seeded events](screenshots/analytics-admin-1280.png)
 
 ## Seeded SQL outputs
 

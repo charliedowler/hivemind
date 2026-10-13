@@ -4,10 +4,8 @@ import NotFound from "@/app/not-found";
 import { AuthErrorPage } from "@/components/auth-error-page";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } from "@/app/api/[...path]/route";
-import { POST as errorBeacon } from "@/app/api/analytics/error/route";
 import { browserAuthResponse } from "@/server/auth-error-response";
 
-vi.mock("@/lib/measurement-consent", () => ({ useMeasurementConsent: () => false }));
 vi.mock("@/app/app/actions", () => ({ signOutAndContinue: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({ session: vi.fn(), recordEvent: vi.fn() }));
@@ -70,19 +68,5 @@ describe("error pages", () => {
   it("preserves JSON OAuth errors for clients", async () => {
     const response = Response.json({ error: "invalid_grant" }, { status: 400 });
     expect(await browserAuthResponse(new Request("https://example.test/api/auth/oauth2/token", { method: "POST" }), response)).toBe(response);
-  });
-  it("records only route and digest", async () => {
-    const response = await errorBeacon(new Request("https://example.test/api/analytics/error", { method: "POST", headers: { origin: "https://example.test" }, body: JSON.stringify({ route: "/missing", digest: "123" }) }));
-    expect(response.status).toBe(204);
-    expect(mocks.recordEvent).toHaveBeenCalledWith(expect.objectContaining({ name: "error.page_shown", properties: { route: "/missing", digest: "123" } }));
-  });
-  it.each([{ route: "/auth?state=secret", digest: "123" }, { route: "/auth", digest: "123", message: "secret" }])("rejects sensitive extra data", async (body) => {
-    const response = await errorBeacon(new Request("https://example.test/api/analytics/error", { method: "POST", headers: { origin: "https://example.test" }, body: JSON.stringify(body) }));
-    expect(response.status).toBe(400);
-    expect(mocks.recordEvent).not.toHaveBeenCalled();
-  });
-  it("rejects cross-origin beacons", async () => {
-    const response = await errorBeacon(new Request("https://example.test/api/analytics/error", { method: "POST", headers: { origin: "https://other.test" }, body: "{}" }));
-    expect(response.status).toBe(403);
   });
 });

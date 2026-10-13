@@ -3,9 +3,12 @@ import { withConsentManifest } from "c15t/next/build";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  outputFileTracingIncludes: { "/app/admin/analytics": ["./analytics/*.sql"] },
   async redirects() {
     return [
+      { source: "/app/conflicts", destination: "/app", permanent: true },
+      { source: "/app/tree", destination: "/app/team#export", permanent: true },
+      { source: "/app/admin/analytics", destination: "/app", permanent: true },
+      { source: "/app/settings/slack/digests", destination: "/app/team#slack", permanent: true },
       {
         source: "/:path*",
         has: [{ type: "host", value: "www.gohive.dev" }],

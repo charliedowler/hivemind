@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pageBeacon, learningBeacon, clientBeacon } from "./beacons";
+import { learningBeacon, clientBeacon } from "./beacons";
 import { withOrigin, originFor, type EventRow } from "./events";
 const ctx = {
   teamId: "team_aaaaaaaaaaaa",
@@ -8,8 +8,8 @@ const ctx = {
   memberName: "Fixture",
 };
 const auth = vi.hoisted(() => ({
-  web: vi.fn(),
   key: vi.fn(),
+  web: vi.fn(),
   learning: vi.fn(),
 }));
 vi.mock("../auth", () => ({
@@ -37,57 +37,8 @@ function request(
   });
 }
 describe("analytics beacons", () => {
-  it("records only allowed page names and strips client-supplied identity and text", async () => {
-    auth.web.mockResolvedValue(ctx);
-    const rows: EventRow[] = [];
-    await withOrigin(
-      originFor(ctx),
-      async () => {
-        expect(
-          (
-            await pageBeacon(
-              request("/api/analytics/page", {
-                page: "landing",
-                teamId: "other",
-                query: "private",
-              }),
-            )
-          ).status,
-        ).toBe(204);
-        expect(
-          (
-            await pageBeacon(
-              request("/api/analytics/page", { page: "account" }),
-            )
-          ).status,
-        ).toBe(400);
-        expect(
-          (
-            await pageBeacon(
-              request(
-                "/api/analytics/page",
-                { page: "landing" },
-                "https://elsewhere.invalid",
-              ),
-            )
-          ).status,
-        ).toBe(403);
-      },
-      async (row) => {
-        rows.push(row);
-      },
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].team_id).toBe(ctx.teamId);
-    expect(rows[0].properties.page).toBe("landing");
-    expect(JSON.stringify(rows)).not.toContain("private");
-  });
-  it("requires a session for install and a readable team cell for a view", async () => {
+  it("requires a session and a readable team cell for a view", async () => {
     auth.web.mockResolvedValue(null);
-    expect(
-      (await pageBeacon(request("/api/analytics/page", { page: "install" })))
-        .status,
-    ).toBe(401);
     expect(
       (
         await learningBeacon(
