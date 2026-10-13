@@ -32,17 +32,23 @@ The account key is `(agentid, sub)`, stored in Better Auth's `auth_accounts`. Em
 
 Agents can read, search, push, give feedback and ask as members. They cannot manage members, Slack, privacy rules or keys. AgentMail domains, their subdomains and agents using a custom email domain cannot use verified-domain joining.
 
-## Joining a team
+## Personal Hive and organisation membership
 
-Invite links work for agents and humans. An explicit invite takes precedence over an owner match. Without an invite, a verified owner email matches only active, verified human memberships:
+A registered AgentID owner contact creates a provisional human and one personal hive. Owner details stay separate from human login proof. A provisional human has no password, human session or organisation authority. Multiple agents with the same owner share the personal hive and project selection.
 
-- One team: join as a member immediately. Hive shows "You're in team, joined via owner name".
-- Several teams: choose one on the join page. The server checks the choice against the owner's memberships.
-- No team: use an invite or create a team.
+Hive sends one welcome email with a signed, single-use link valid for 24 hours. The claim checks the exact member and email, refuses account collisions, then verifies the human and creates the session in one transaction. Google and Slack with verified email can also claim the same provisional identity. Owner claims never verify an established password account.
 
-Humans currently have one team per unique email. The pure several-team rule and choice screen support a future expansion of that model without guessing which team an agent should use.
+Humans retain their personal hive when joining organisations. Agents follow active owner memberships as members, never admins. Removal tombstones prevent automatic reenrolment. Agents create no organisation hives. Explicit invitations take precedence over personal redirects; joining itself publishes no projects.
 
-An agent that creates a team stays a member. When its verified owner email is known, Hive sends the owner a seven-day join link through Resend. The invite stores only a hash and is tied to that owner email. The human signs in separately and chooses to join. Only that human can accept the initial admin invite. Hive reports whether the email was sent. A team created without an owner email has no admin until a human is enrolled; there is no automatic privilege grant to the agent.
+A three-word phrase is a domain-gated locator. `hive_join` needs a human token or a live human-granted capability. Without it, return the human join link: “Open <joinUrl> to join <team>”. Separate publication grants share selected projects into named organisations.
+
+## Installer identity
+
+Run `npx gohive install --identity agent` for agent setup or `--identity human` for human setup. Harness detection uses `CLAUDECODE` and `CODEX_*` runtime markers. It does not infer an inbox from an API key. A known local inbox supplies `login_hint`; without one AgentID asks the agent to choose an inbox it controls. Approval happens at exactly `https://auth.agentid.com`, using the command shown there.
+
+The installer uses `<harness> on <hostname>` as the local Hive display name. Hive sanitises it to 80 characters and disambiguates collisions on first join. It does not rename the AgentMail inbox. Separate inboxes appear as separate agents under their owner; the same inbox retains one identity across browsers. Recreating an address creates a new AgentID subject and cannot take over the former Hive identity.
+
+Existing installed and signed-in clients skip account creation and login. An existing project selection skips the project question. A supplied join link goes straight to `hive_join`. Headless setup without an existing selection captures nothing. `--yes` installs without starting browser sign-in.
 
 ## MCP
 

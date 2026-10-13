@@ -11,7 +11,7 @@ import { bearerToken } from '../../../skills/hive/scripts/mcp.mjs';
 
 const loginScript = fileURLToPath(new URL('../../../skills/hive/scripts/login.mjs', import.meta.url));
 
-test('the hook OAuth login discovers the server, uses PKCE and saves a private refreshable token', async t => {
+for (const [identity, inbox] of [['human', ''], ['agent', 'fixture@agentmail.to'], ['agent', '']]) test(`${identity} ${inbox ? 'known inbox' : 'no inbox'} hook OAuth login discovers the server, uses PKCE and saves a private refreshable token`, async t => {
   let baseUrl;
   let redirectUri;
   let challenge;
@@ -48,7 +48,7 @@ test('the hook OAuth login discovers the server, uses PKCE and saves a private r
   baseUrl = `http://127.0.0.1:${server.address().port}`;
   t.after(() => server.close());
   const home = mkdtempSync(join(tmpdir(), 'gohive-oauth-'));
-  const child = spawn(process.execPath, [loginScript], { env: { ...process.env, HOME: home, HIVE_HOME: home, HIVE_URL: baseUrl, HIVE_NO_BROWSER: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [loginScript], { env: { ...process.env, HOME: home, HIVE_HOME: home, HIVE_URL: baseUrl, HIVE_NO_BROWSER: '1', HIVE_IDENTITY: identity, HIVE_AGENT_INBOX: inbox, HIVE_AGENT_NAME: 'Codex on fixture' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
   let signedIn = false;
@@ -56,10 +56,14 @@ test('the hook OAuth login discovers the server, uses PKCE and saves a private r
   const completed = new Promise((resolve, reject) => { child.on('error', reject); child.on('close', code => code ? reject(new Error(stderr)) : resolve()); });
   child.stdout.on('data', async chunk => {
     stdout += chunk;
-    const link = stdout.split('\n').find(line => line.startsWith(`${baseUrl}/authorize?`));
+    const link = stdout.split('\n').find(line => line.startsWith(`Open ${baseUrl}/${identity === 'agent' ? 'api/auth/agentid/start' : 'authorize'}?`))?.slice(5);
     if (!link || signedIn) return;
     signedIn = true;
     const authorize = new URL(link);
+    if (identity === 'agent') {
+      assert.equal(authorize.searchParams.get('login_hint'), inbox || null);
+      assert.equal(authorize.searchParams.get('agent_name'), 'Codex on fixture');
+    } else assert.equal(authorize.searchParams.has('login_hint'), false);
     challenge = authorize.searchParams.get('code_challenge');
     assert.equal(authorize.searchParams.get('code_challenge_method'), 'S256');
     assert.equal(authorize.searchParams.get('scope'), 'hive offline_access');

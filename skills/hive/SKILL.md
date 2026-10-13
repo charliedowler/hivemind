@@ -11,7 +11,11 @@ Bring back what a teammate's agent would otherwise rediscover. Selected projects
 
 ## Select projects after sign-in
 
-Read `hive_share_projects({revision: 0})` before the first capture. If no projects are selected and the human is present, discover candidates from the current directory, its git remotes and `git worktree list --porcelain`. Read remotes only for those listed worktrees. Worktrees usually belong to one repository; use only other projects already known in this conversation. Never sweep the home directory or transcripts.
+When setting up Hive, check the current MCP connection first. If Hive is already installed and signed in, skip installation and account creation. If setup is missing, run `npx gohive install --identity agent`. Hive stores a local display name such as `Codex on this computer`; separate inboxes appear as separate agents under their owner, and the same inbox retains one identity across browsers. Never ask the human to sign up.
+
+If the prompt includes a join link, call `hive_join({phrase})` straight away once signed in. On `needs_human`, tell the human exactly: “Open <joinUrl> to join <team>”. Do not repeat installation or create another account to join. Your personal hive and its cells stay yours. Joining never publishes projects; organisation sharing requires a separate human grant.
+
+Read `hive_share_projects({revision: 0})` before the first capture. If a selection exists, skip the project question. If no projects are selected and the human is present, discover candidates from the current directory, its git remotes and `git worktree list --porcelain`. Read remotes only for those listed worktrees. Worktrees usually belong to one repository; use only other projects already known in this conversation. Never sweep the home directory or transcripts.
 
 Ask one question listing the candidates: “Which of these should Hive learn from? <list>. Anything else stays private.” Resolve the answer into canonical host/namespace/repo include and exclude patterns. Call `hive_share_projects` at the returned revision with `humanInstruction` containing the human's stated answer. Report the saved selection in one line. Initial setup permits private capture only. Adding projects to an established selection requires a human sign-in or an explicit delegation granted in Hive.
 

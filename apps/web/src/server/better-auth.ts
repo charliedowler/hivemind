@@ -137,7 +137,10 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
             if (account.providerId !== "agentid" && await isAgentMember(account.userId)) throw new APIError("FORBIDDEN", { message: "Agent and human accounts stay separate." });
             return { data: account };
           },
-          after: async (account) => { await storeAgentOwner(account); },
+          after: async (account) => {
+            const state = account.providerId === "agentid" ? await getOAuthState<{ hiveAgentName?: unknown }>() : null;
+            await storeAgentOwner(account, state?.hiveAgentName);
+          },
         },
         update: { after: async (account) => {
           if (account.providerId === "agentid") {

@@ -49,6 +49,7 @@ async function main() {
     resolveCode(code);
   });
   const timeout = setTimeout(() => rejectCode(new Error('Hive sign-in timed out. Run gohive login to retry.')), 120000);
+  let approval;
   codePromise.catch(() => {});
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -57,10 +58,18 @@ async function main() {
     if (!registration.client_id) throw new Error('Hive did not register the hook client');
     const authorizationUrl = new URL(trustedUrl(discovery.authorization_endpoint));
     authorizationUrl.search = new URLSearchParams({ client_id: registration.client_id, redirect_uri: redirectUri, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', state, resource, scope }).toString();
-    console.log('Let the hooks catch up with your hive. Open this sign-in link:');
-    console.log(authorizationUrl.href);
+    const loginUrl = process.env.HIVE_IDENTITY === 'agent' ? new URL('/api/auth/agentid/start', baseUrl) : authorizationUrl;
+    if (process.env.HIVE_IDENTITY === 'agent') {
+      loginUrl.search = authorizationUrl.search;
+      if (process.env.HIVE_AGENT_INBOX) loginUrl.searchParams.set('login_hint', process.env.HIVE_AGENT_INBOX);
+      if (process.env.HIVE_AGENT_NAME) loginUrl.searchParams.set('agent_name', process.env.HIVE_AGENT_NAME);
+      approval = setTimeout(() => console.log(process.env.HIVE_AGENT_INBOX
+        ? `If AgentID is waiting, run agentmail inboxes authorize --inbox-id ${process.env.HIVE_AGENT_INBOX} --auth-token <token shown at https://auth.agentid.com>`
+        : 'If AgentID is waiting, choose an inbox you control and run the approval command shown at https://auth.agentid.com'), 5000);
+    }
+    console.log(`Open ${loginUrl.href}`);
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-    const args = process.platform === 'win32' ? ['/c', 'start', '', authorizationUrl.href] : [authorizationUrl.href];
+    const args = process.platform === 'win32' ? ['/c', 'start', '', loginUrl.href] : [loginUrl.href];
     if (process.env.HIVE_NO_BROWSER !== '1') {
       const browser = spawn(command, args, { stdio: 'ignore' });
       browser.on('error', () => {});
@@ -70,6 +79,6 @@ async function main() {
     if (!tokens.access_token) throw new Error('Hive did not return a token');
     saveCredentials({ ...tokens, baseUrl, client_id: registration.client_id, token_endpoint: trustedUrl(discovery.token_endpoint), expires_at: Date.now() + (tokens.expires_in || 3600) * 1000 });
     console.log('The hooks can now read your hive. Run gohive doctor to check your foragers.');
-  } finally { clearTimeout(timeout); server.closeAllConnections(); server.close(); }
+  } finally { clearTimeout(timeout); clearTimeout(approval); server.closeAllConnections(); server.close(); }
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });

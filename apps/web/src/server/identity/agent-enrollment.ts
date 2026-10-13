@@ -38,7 +38,7 @@ export async function ownerTeams(memberId: string) {
   return rows.map(row => ({ id: String(row.id), name: String(row.name) }));
 }
 
-export async function storeAgentOwner(account: { id: string; userId: string; accountId: string; providerId: string; accessToken?: string | null }) {
+export async function storeAgentOwner(account: { id: string; userId: string; accountId: string; providerId: string; accessToken?: string | null }, displayName?: unknown) {
   if (account.providerId !== "agentid") return;
   if (!account.accessToken) throw new HiveError("AgentID did not return an access token.", 403);
   const response = await fetch(`${agentIdIssuer}/v0/userinfo`, { headers: { Authorization: `Bearer ${account.accessToken}` }, cache: "no-store", signal: AbortSignal.timeout(10000) });
@@ -53,6 +53,7 @@ export async function storeAgentOwner(account: { id: string; userId: string; acc
     if (verified) await bindVerifiedOwner(tx, { sub: claims.owner_sub!, email: claims.owner_email!, name: claims.owner_name }, Boolean(process.env.AGENTID_CLIENT_SECRET));
     await tx`UPDATE auth_accounts SET owner_issuer = ${claims.owner_sub ? agentIdIssuer : null}, owner_sub = ${claims.owner_sub ?? null}, owner_name = ${claims.owner_name ?? null}, owner_email = ${verified ? claims.owner_email!.toLowerCase() : null}, owner_email_verified = ${verified} WHERE id = ${account.id}`;
   });
+  if (typeof displayName === "string") await setFirstAgentName(account.userId, displayName);
   await enrollAgent(account.userId);
   const owners = await getSql()`SELECT b.owner_member_id FROM agent_owner_bindings b WHERE b.issuer = ${agentIdIssuer} AND b.owner_sub = ${claims.owner_sub ?? ""}`;
   if (owners[0]) {
@@ -60,6 +61,19 @@ export async function storeAgentOwner(account: { id: string; userId: string; acc
       try { await deliverWelcome(owners[0].owner_member_id); } catch { break; }
     }
   }
+}
+
+export async function setFirstAgentName(memberId: string, input: string) {
+  const label = input.normalize("NFKC").replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/[^\p{L}\p{N} ._()-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!label) return;
+  await getSql().begin(async tx => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${`agent-name:${label}`}))`;
+    const members = await tx`SELECT id FROM members WHERE id = ${memberId} AND actor_type = 'agent' AND NOT EXISTS (SELECT 1 FROM hive_memberships WHERE member_id = ${memberId}) FOR UPDATE`;
+    if (!members.length) return;
+    let name = label;
+    for (let index = 2; (await tx`SELECT id FROM members WHERE name = ${name} AND id <> ${memberId} AND actor_type = 'agent'`).length; index++) name = `${label.slice(0, 80 - String(index).length - 1)} ${index}`;
+    await tx`UPDATE members SET name = ${name}, updated_at = now() WHERE id = ${memberId}`;
+  });
 }
 
 export async function enrollAgent(memberId: string, input?: HiveRegistration, selectedTeam?: string): Promise<HiveContext | null> {

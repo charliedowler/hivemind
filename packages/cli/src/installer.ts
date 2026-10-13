@@ -81,7 +81,7 @@ export function markInstructions(text: string, agent: Agent, remove = false): st
   const end = text.indexOf(endMarker);
   if ((begin === -1) !== (end === -1) || (begin !== -1 && (end < begin || text.indexOf(startMarker, begin + 1) !== -1 || text.indexOf(endMarker, end + 1) !== -1))) throw new Error('The Hive instruction markers are incomplete or duplicated. No files were changed');
   const skill = agent === 'claude' ? '~/.claude/skills/hive/SKILL.md' : '~/.agents/skills/hive/SKILL.md (also ~/.codex/skills/hive/SKILL.md)';
-  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. After sign-in, read the Hive skill and select projects with hive_share_projects before capture. Ask the human the one project question from the skill; without an existing selection and a human, capture nothing. Never ask the human to sign up. Before finishing, capture a scrubbed observation only from a selected project with consistent runtime context via hive_push. Hive derives metadata and relations. After using a cell, report a known result with hive_outcome; retrieval alone never votes. Skip routine summaries and sensitive data.\n${endMarker}`;
+  const block = `${startMarker}\n## Hive team memory\nRead ${skill} when starting repo work, investigating an unfamiliar error, choosing an approach, or answering how this repo works. Call hive_search before investigating. Already installed and signed in means skip installation and account creation. With a join link, go straight to hive_join once signed in; on needs_human say "Open <joinUrl> to join <team>". After sign-in, read hive_share_projects before capture; skip the project question when a selection exists. Otherwise ask the human the one project question from the skill; without an existing selection and a human, capture nothing. Never ask the human to sign up. Before finishing, capture a scrubbed observation only from a selected project with consistent runtime context via hive_push. Hive derives metadata and relations. After using a cell, report a known result with hive_outcome; retrieval alone never votes. Skip routine summaries and sensitive data.\n${endMarker}`;
   if (begin !== -1) {
     const after = end + endMarker.length;
     return remove ? text.slice(0, begin) + text.slice(after).replace(/^\r?\n/, '') : text.slice(0, begin) + block + text.slice(after);
@@ -240,6 +240,23 @@ export function connectionHealthy(options: Options, client: Agent | 'hooks'): bo
 }
 
 export type SignInRunner = (client: 'codex' | 'hooks', home: string, script: string) => number;
+export function completeAgentSignIn(options: Options, signIn: SignInRunner): boolean {
+  const agents = options.agents || detectAgents(options.home, options.run);
+  const log = options.log || console.log;
+  if (agents.every(agent => connectionHealthy(options, agent)) && (!agents.includes('claude') || connectionHealthy(options, 'hooks'))) return true;
+  if (!connectionHealthy(options, 'hooks')) {
+    const directory = agents.includes('claude') ? '.claude' : '.codex';
+    if (signIn('hooks', options.home, join(options.home, directory, 'skills/hive/scripts/login.mjs')) !== 0) {
+      log('Open the AgentID sign-in link, approve the waiting request, then run gohive install --identity agent again');
+      return false;
+    }
+  }
+  if (agents.includes('codex') && !connectionHealthy(options, 'codex') && signIn('codex', options.home, '') !== 0) {
+    log('Run codex mcp login hive to grant this Codex client access');
+    return false;
+  }
+  return true;
+}
 export function completeSignIn(options: Options, interactive: boolean, signIn: SignInRunner) {
   const agents = options.agents || detectAgents(options.home, options.run);
   const log = options.log || console.log;
