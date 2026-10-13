@@ -44,3 +44,5 @@ The fixture libraries are `humans.mjs` (real email-code and claim flows), `oauth
 The E2E workflow runs the fast subset for pushes and pull requests, and the full deterministic matrix nightly or on manual dispatch. It uses the same PostgreSQL image and local port as CI. It never receives subscription credentials. Real CLI evidence stays local; CI uploads only synthetic deterministic evidence.
 
 The real npm registry, Claude app and ChatGPT connector UI are outside the hermetic matrix. The installer under test is built from this checkout, and reports record its version and source commit.
+
+The primary matrix targets gohive 0.2.0 agent bootstrap and single-use email claims. Human OAuth is an explicit `gohive login` flow, retained from 0.1.10; its test runs the installed login script, loopback callback and PKCE exchange, verifies the former agent credential is revoked, and checks the completion URL. Retired AgentID start and callback routes must return 404 over HTTP.

@@ -39,9 +39,11 @@ export async function completeInstallerOAuth(ctx, machine, owner, state) {
   const callback = await approveAuthorization(ctx, owner.cookie, state.url);
   const result = await fetch(callback, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
   assert.ok(result.status < 400, `Installer loopback callback failed: ${result.status}`);
+  const callbackResponse = { status: result.status, location: result.headers.get('location') };
+  await ctx.artifact('installer-oauth-callback.json', callbackResponse);
   for (let attempt = 0; attempt < 100; attempt++) {
     const stored = JSON.parse(await machine.read('.hive/oauth.json').catch(() => '{}'));
-    if (stored.access_token) return stored;
+    if (stored.access_token) return { ...stored, callbackResponse };
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   throw new Error('Installer callback did not save its OAuth credential');

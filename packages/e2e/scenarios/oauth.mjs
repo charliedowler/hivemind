@@ -4,6 +4,23 @@ import { human } from '../fixtures/humans.mjs';
 import { oauthToken } from '../fixtures/oauth.mjs';
 
 export default [{
+  name: 'onboarding-retired-agentid-routes', fast: true,
+  async run(ctx) {
+    const start = ctx.events.length;
+    const results = [];
+    for (const path of ['/api/auth/agentid', '/api/auth/agentid/start', '/api/auth/agentid/anything', '/api/auth/callback/agentid', '/api/auth/callback/agentid/anything']) {
+      for (const method of ['GET', 'POST']) {
+        const response = await ctx.request(path, { method });
+        results.push({ path, method, status: response.status, body: response.body });
+        assert.equal(response.status, 404, `Retired ${method} ${path} must return 404`);
+        assert.equal(response.headers.get('location'), null);
+        assert.equal(response.headers.getSetCookie().length, 0);
+      }
+    }
+    assert.equal(ctx.events.slice(start).filter(event => ['mail', 'slack', 'model'].includes(event.kind)).length, 0);
+    await ctx.artifact('retired-route-responses.json', results);
+  },
+}, {
   name: 'onboarding-human-oauth-person-wide-two-organisations', fast: true,
   async run(ctx) {
     const owner = await human(ctx, { email: `oauth-${randomUUID()}@example.com`, name: 'Robin Example' });

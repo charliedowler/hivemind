@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { createMachine } from '../src/machine.mjs';
 import { installationDecision, installerProtocol, loadPolicy, applyProjectAnswer, assertHumanOutput } from '../src/policy.mjs';
 import { bootstrapWithClaim, human, claim } from '../fixtures/humans.mjs';
+import { completeInstallerOAuth } from '../fixtures/oauth.mjs';
 
 const project = 'example.com/fixture/widget';
 const email = prefix => `${prefix}-${randomUUID().slice(0, 8)}@example.com`;
@@ -55,7 +56,53 @@ async function recordHook(ctx, machine, event, input, name = event) {
   return result;
 }
 
+async function humanLogin(ctx, machine) {
+  await installed(ctx, machine);
+  const state = JSON.parse(await machine.read('.hive/agent.json'));
+  const owner = await claim(ctx, machine.email);
+  const result = await machine.exec(machine.executables.node, [machine.paths.installer, 'login'], { env: { CLAUDECODE: '1' } });
+  await ctx.artifact('human-login-process.json', machine.redact(result));
+  assert.equal(result.status, 0, result.stderr);
+  ctx.output(result.stdout, 'human-login');
+  assert.equal(existsSync(machine.path('.hive/agent.json')), false, 'Human login must remove the machine agent state');
+  const signIn = JSON.parse(await machine.read('.hive/sign-in.json'));
+  assert.equal(signIn.identity, 'human');
+  assert.ok(signIn.url, 'Explicit login must expose its local OAuth URL');
+  assert.equal(new URL(signIn.url).origin, ctx.url);
+  const stored = await completeInstallerOAuth(ctx, machine, owner, signIn);
+  machine.rememberSecret(stored.access_token);
+  machine.rememberSecret(stored.refresh_token);
+  assert.ok(stored.refresh_token, 'Human login must save a refreshable OAuth credential');
+  assert.equal(stored.baseUrl, ctx.url);
+  const denied = await ctx.mcp(state.credential, 'hive_share_projects', { revision: 0 });
+  assert.equal(denied.isError, true, 'The previous agent credential must be revoked');
+  const connected = await ctx.mcp(stored.access_token, 'hive_invite_link');
+  assert.equal(connected.isError, false, connected.text);
+  const native = JSON.parse(await machine.read('.claude.json')).mcpServers.hive;
+  assert.equal(native.url, `${ctx.url}/api/mcp`);
+  assert.equal(native.headers?.Authorization, undefined, 'The agent bearer must not remain in human OAuth configuration');
+  const finalState = JSON.parse(await machine.read('.hive/sign-in.json'));
+  assert.equal(finalState.phase, 'connected');
+  await ctx.artifact('human-login-proof.json', { identity: finalState.identity, phase: finalState.phase, agentRevoked: denied.isError, humanMcpConnected: !connected.isError, refreshTokenSaved: Boolean(stored.refresh_token), callbackResponse: stored.callbackResponse });
+  return stored;
+}
+
 export default [
+  {
+    name: 'installer-human-login-oauth', fast: true,
+    run: ctx => withMachine(ctx, { client: 'claude', email: email('human-login') }, async machine => {
+      await humanLogin(ctx, machine);
+    }),
+  },
+  {
+    name: 'installer-human-login-keeps-local-origin', fast: true,
+    run: ctx => withMachine(ctx, { client: 'claude', email: email('human-redirect') }, async machine => {
+      const stored = await humanLogin(ctx, machine);
+      const completion = new URL(stored.callbackResponse.location);
+      assert.equal(completion.origin, ctx.url, 'Human OAuth completion must stay on the configured Hive origin');
+      assert.equal(completion.pathname, '/signed-in');
+    }),
+  },
   {
     name: 'installer-claude-marker', fast: true,
     run: ctx => withMachine(ctx, { client: 'claude' }, async machine => {

@@ -6,7 +6,7 @@ The normative contract is the 13 October onboarding plan, including Addendum 5, 
 | --- | --- | --- |
 | Isolation | disposable database, server provenance, external network guard, scratch homes, abort cleanup, real-config fingerprints | migration log, health, rejected requests, before/after hashes |
 | Bootstrap | fresh git email, typed email, existing claimed owner, second machine, claim/domain follow, header needs no second auth | installed config, mail, HTTP MCP, owner/agent counts |
-| Human OAuth | legacy 0.1.x callback/PKCE, person-wide consent across two organisations | redirect chain, token scope, invitations |
+| Human OAuth | explicit gohive login with agent revocation, callback/PKCE and completion origin, person-wide consent across two organisations, retired AgentID routes return 404 | redirect chain, token scope, invitations, retirement HTTP responses |
 | Join | domain phrase, outside-domain request, admin Slack notification, approve, decline, undo, expiry | mail, Slack, admin HTTP, memberships |
 | Creation/invites | human create, repeat/concurrent create, generated phrase/domain, member invite, person-wide invitations, status prompt | HTTP, phrase rows, CLI output |
 | Publication | Yes at organisation scope, Choose projects, Not now, future capture, withdrawal/search/snapshot | grant rows, personal originals, audience reads |
