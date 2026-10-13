@@ -38,19 +38,24 @@ export async function enrollSessionContext(memberId: string, sessionId: string) 
   const sql = getSql();
   const sessions = await sql`SELECT s.team_id, s.expires_at, m.actor_type, m.email_verified FROM web_sessions s JOIN members m ON m.id = s.member_id WHERE s.id = ${sessionId} AND s.member_id = ${memberId} AND s.expires_at > now() AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!sessions[0]) return null;
-  if (sessions[0].actor_type !== "human" || !sessions[0].email_verified) return sessionMemberContext(memberId, sessionId);
-  const enrolled = await enrollMember(memberId);
-  if (enrolled) await sql.begin(async tx => {
+  const enrolled = sessions[0].actor_type === "human" && sessions[0].email_verified ? await enrollMember(memberId) : null;
+  await sql.begin(async tx => {
     const selected = await tx`SELECT s.team_id, t.personal_owner_member_id FROM web_sessions s LEFT JOIN teams t ON t.id = s.team_id WHERE s.id = ${sessionId} AND s.member_id = ${memberId} AND s.expires_at > now() FOR UPDATE OF s`;
     if (!selected.length) return;
+    const pending = await tx`DELETE FROM auth_verification WHERE id=${`hive-enrollment-context:${memberId}`} AND expires_at>now() RETURNING value`;
+    const choice = pending[0] ? JSON.parse(pending[0].value) : null;
+    const chosen = choice ? await memberContext(memberId, choice.teamId) : null;
+    const target = chosen ?? enrolled;
+    if (!target) return;
     const id = `hive-domain-landing:${sessionId}`;
     const prior = await tx`SELECT value FROM auth_verification WHERE id = ${id}`;
-    if (prior.length) return;
-    const teams = await tx`SELECT personal_owner_member_id FROM teams WHERE id = ${enrolled.teamId}`;
+    if (prior.length && !chosen) return;
+    const teams = await tx`SELECT personal_owner_member_id FROM teams WHERE id = ${target.teamId}`;
     if (!teams[0] || teams[0].personal_owner_member_id !== null) return;
-    const switchHive = !selected[0].team_id || selected[0].personal_owner_member_id !== null;
-    if (switchHive) await tx`UPDATE web_sessions SET team_id = ${enrolled.teamId} WHERE id = ${sessionId}`;
-    await tx`INSERT INTO auth_verification (id,identifier,value,expires_at) VALUES (${id},${id},${JSON.stringify({ teamId: enrolled.teamId, teamName: enrolled.teamName, via: "domain", announce: switchHive })},${sessions[0].expires_at}) ON CONFLICT DO NOTHING`;
+    const switchHive = Boolean(chosen) || !selected[0].team_id || selected[0].personal_owner_member_id !== null;
+    if (switchHive) await tx`UPDATE web_sessions SET team_id = ${target.teamId} WHERE id = ${sessionId}`;
+    const announce = chosen ? Boolean(choice.joined) : switchHive;
+    await tx`INSERT INTO auth_verification (id,identifier,value,expires_at) VALUES (${id},${id},${JSON.stringify({ teamId: target.teamId, teamName: target.teamName, via: chosen ? choice.via : "domain", announce })},${sessions[0].expires_at}) ON CONFLICT (id) DO UPDATE SET value=EXCLUDED.value,expires_at=EXCLUDED.expires_at`;
   });
   return sessionMemberContext(memberId, sessionId);
 }

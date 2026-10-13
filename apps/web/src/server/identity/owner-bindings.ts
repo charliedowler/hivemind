@@ -1,3 +1,4 @@
+import { recordMembershipJoin } from "./join-receipts";
 import type postgres from "postgres";
 import { newId } from "../db/ids";
 import { HiveError } from "../errors";
@@ -41,7 +42,8 @@ export async function followOwnerMemberships(tx: postgres.TransactionSql, ownerI
   for (const membership of memberships) {
     if (!membership.personal_owner_member_id && (owners[0].provisional || !owners[0].email_verified)) continue;
     for (const agent of agents) {
-      await tx`INSERT INTO hive_memberships (member_id, team_id, role, owner_member_id) VALUES (${agent.id}, ${membership.team_id}, 'member', ${ownerId}) ON CONFLICT DO NOTHING`;
+      const added = await tx`INSERT INTO hive_memberships (member_id, team_id, role, owner_member_id) VALUES (${agent.id}, ${membership.team_id}, 'member', ${ownerId}) ON CONFLICT DO NOTHING RETURNING member_id`;
+      if (added.length && !membership.personal_owner_member_id) await recordMembershipJoin(tx, agent.id, membership.team_id, 'owner');
     }
   }
 }

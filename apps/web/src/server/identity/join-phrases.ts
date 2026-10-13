@@ -1,3 +1,4 @@
+import { recordMembershipJoin } from "./join-receipts";
 import { randomInt } from "node:crypto";
 import { isIP } from "node:net";
 import type postgres from "postgres";
@@ -134,7 +135,8 @@ export async function lookupJoinPhrase(ctx: HiveContext, phrase: string, options
 
 export async function joinByPhrase(ctx: HiveContext, phrase: string, options: JoinOptions): Promise<HiveContext> {
   const member = await attempt(ctx, phrase, options, async (tx, team, human) => {
-    await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${human.id}, ${team.id}, 'member') ON CONFLICT DO NOTHING`;
+    const added = await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${human.id}, ${team.id}, 'member') ON CONFLICT DO NOTHING RETURNING member_id`;
+    if (added.length) await recordMembershipJoin(tx, human.id, team.id, 'phrase');
     await followOwnerMemberships(tx, human.id);
     const active = await tx`SELECT role FROM hive_memberships WHERE member_id = ${ctx.memberId} AND team_id = ${team.id} AND removed_at IS NULL`;
     if (!active.length) throw failure();

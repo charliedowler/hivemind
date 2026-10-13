@@ -1,3 +1,4 @@
+import { recordMembershipJoin } from "./join-receipts";
 import type postgres from "postgres";
 import { z } from "zod";
 import type { HiveContext } from "@hivemind/core";
@@ -93,7 +94,8 @@ export async function enrollAgent(memberId: string, input?: HiveRegistration, se
       const teams = await tx`SELECT id FROM teams WHERE invite_code = ${registration.inviteCode} AND invite_expires_at > now() AND personal_owner_member_id IS NULL FOR UPDATE`;
       if (!teams[0]) throw new HiveInputError("This invite has expired or is not valid. Ask your team admin for a new invite.");
       teamId = teams[0].id;
-      await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId!}, 'member') ON CONFLICT DO NOTHING`;
+      const added = await tx`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${memberId}, ${teamId!}, 'member') ON CONFLICT DO NOTHING RETURNING member_id`;
+      await recordMembershipJoin(tx, memberId, teamId!, 'invite', added.length > 0);
     } else if (selectedTeam) {
       const owned = await tx`SELECT h.team_id FROM hive_memberships h JOIN teams t ON t.id = h.team_id JOIN members human ON human.id = h.member_id WHERE human.disabled_at IS NULL AND human.email_verified AND NOT human.provisional AND h.member_id = ${member.owner_member_id ?? ""} AND h.team_id = ${selectedTeam} AND h.removed_at IS NULL AND t.personal_owner_member_id IS NULL`;
       if (!owned.length) throw new HiveError("Your verified owner is not a member of this team.", 403);

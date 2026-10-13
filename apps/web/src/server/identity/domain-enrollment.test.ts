@@ -2,9 +2,10 @@ import { randomBytes } from "node:crypto";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { getSql } from "../db/client";
 import { hashToken, newId } from "../db/ids";
-import { enrollMember, personalMemberContext } from "./enrollment";
+import { enrollMember, personalMemberContext, memberContext } from "./enrollment";
 import { loadMemberContext } from "./session-context";
 import { bindVerifiedOwner } from "./owner-bindings";
+import { joinByPhrase, rotateJoinPhrase, pauseJoinPhrase } from "./join-phrases";
 import { createHiveAuth } from "../better-auth";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
 vi.mock("server-only", () => ({}));
@@ -30,7 +31,11 @@ describe.skipIf(!process.env.DATABASE_URL)("automatic verified-domain enrollment
       await sql`DELETE FROM auth_verification WHERE id=${`hive-domain-landing:${id}`}`;
       await sql`DELETE FROM web_sessions WHERE id=${id}`;
     }
-    for (const team of teams) await sql`DELETE FROM teams WHERE id=${team}`;
+    for (const team of teams) {
+      await sql`DELETE FROM hive_join_capabilities WHERE team_id=${team}`;
+      await sql`DELETE FROM hive_join_phrases WHERE team_id=${team}`;
+      await sql`DELETE FROM teams WHERE id=${team}`;
+    }
     for (const id of people) {
       await sql`DELETE FROM auth_verification WHERE id=${`hive-enrollment-context:${id}`}`;
       await sql`DELETE FROM capture_rules WHERE team_id IN (SELECT id FROM teams WHERE personal_owner_member_id=${id})`;
@@ -62,6 +67,31 @@ describe.skipIf(!process.env.DATABASE_URL)("automatic verified-domain enrollment
     await sql`UPDATE web_sessions SET team_id=${signed.personal} WHERE id=${signed.id}`;
     expect((await loadMemberContext(member, signed.id))?.selectedHiveId).toBe(signed.personal);
   });
+  it("consumes a phrase join once and does not turn the next sign-in into another join notice", async () => {
+    const f = await fixture();
+    const signed = await session(f.member);
+    const admin = (await memberContext(f.admin, f.team))!;
+    const phrase = await rotateJoinPhrase(admin);
+    await pauseJoinPhrase(admin, false);
+    await joinByPhrase((await personalMemberContext(f.member))!, phrase.phrase, {trustedProxyIp:null});
+    const first = await loadMemberContext(f.member, signed.id);
+    expect(first?.justJoined).toEqual({teamId:f.team,teamName:"Lightdash fixture",via:"phrase"});
+    expect(first?.selectedHiveId).toBe(f.team);
+    expect(await sql`SELECT id FROM auth_verification WHERE id=${`hive-enrollment-context:${f.member}`}`).toHaveLength(0);
+    expect((await loadMemberContext(f.member,signed.id))?.justJoined).toBeNull();
+    const next = await session(f.member);
+    expect((await loadMemberContext(f.member,next.id))?.justJoined?.via).not.toBe("phrase");
+  });
+  it("keeps an explicit new hive selected ahead of domain enrollment", async () => {
+    const f = await fixture();
+    const signed = await session(f.member);
+    const created = (await enrollMember(f.member,{intent:"create",teamName:"My organisation"}))!;
+    teams.push(created.teamId);
+    const first = await loadMemberContext(f.member,signed.id);
+    expect(first?.selectedHiveId).toBe(created.teamId);
+    expect(first?.justJoined).toEqual({teamId:created.teamId,teamName:"My organisation",via:"owner"});
+    expect((await loadMemberContext(f.member,signed.id))?.justJoined).toBeNull();
+  });
   it("keeps removal tombstones and excludes unverified and public inbox domains", async () => {
     const removed = await fixture();
     await sql`INSERT INTO hive_memberships (member_id,team_id,removed_at) VALUES (${removed.member},${removed.team},now())`;
@@ -85,6 +115,13 @@ describe.skipIf(!process.env.DATABASE_URL)("automatic verified-domain enrollment
     await sql`INSERT INTO members (id,name,email,email_verified,actor_type) VALUES (${agent},'Agent',${`${agent}@agentmail.to`},true,'agent')`;
     await sql`INSERT INTO auth_accounts (id,user_id,account_id,provider_id,owner_sub,owner_email_verified) VALUES (${newId("auth")},${agent},${agent},'agentid',${sub},true)`;
     await enrollMember(f.member);
+    const agentSession=newId("auth"); sessions.push(agentSession);
+    const personal=(await sql`SELECT team_id FROM hive_memberships h JOIN teams t ON t.id=h.team_id WHERE h.member_id=${agent} AND t.personal_owner_member_id IS NOT NULL`)[0].team_id;
+    await sql`INSERT INTO web_sessions (id,member_id,team_id,token_hash,expires_at) VALUES (${agentSession},${agent},${personal},${hashToken(agentSession)},now()+interval '1 day')`;
+    const agentContext=await loadMemberContext(agent,agentSession);
+    expect(agentContext?.selectedHiveId).toBe(f.team);
+    expect(agentContext?.justJoined?.via).toBe("owner");
+    expect((await loadMemberContext(agent,agentSession))?.justJoined).toBeNull();
     expect((await sql`SELECT role,owner_member_id FROM hive_memberships WHERE member_id=${agent} AND team_id=${f.team}`)[0]).toEqual({ role: "member", owner_member_id: f.member });
   });
   it("runs domain enrollment during the real Google callback before the first human session", async () => {

@@ -7,6 +7,7 @@ import { hashToken, newId, newToken } from "../db/ids";
 import { HiveError, HiveInputError } from "../errors";
 import { emailDomain, isPublicDomain } from "./email-domain";
 import { enrollAgent, isAgentMember, ownerInviteRole } from "./agent-enrollment";
+import { recordMembershipJoin } from "./join-receipts";
 import { claimProvisionalHuman, followOwnerMemberships } from "./owner-bindings";
 
 export function registrationForStorage(value: unknown): string | null {
@@ -70,7 +71,7 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
     const active = await tx`SELECT role FROM hive_memberships WHERE member_id = ${memberId} AND team_id = ${teamId} AND removed_at IS NULL`;
     if (!active.length) throw new HiveError("This membership was removed. Ask your team admin.", 403);
     await tx`UPDATE members SET hive_registration = NULL, updated_at = now() WHERE id = ${memberId}`;
-    if ((intent === "create" || intent === "invite") || (intent === "domain" && added.length)) await tx`INSERT INTO auth_verification (id, identifier, value, expires_at) VALUES (${`hive-enrollment-context:${memberId}`}, ${`hive-enrollment-context:${memberId}`}, ${JSON.stringify({teamId, via: intent === "create" ? "owner" : intent, joined: added.length > 0})}, now() + interval '15 minutes') ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at`;
+    if ((intent === "create" || intent === "invite") || (intent === "domain" && added.length)) await recordMembershipJoin(tx, memberId, teamId, intent === "create" ? "owner" : intent!, added.length > 0);
     if (intent === "create") await tx`SELECT hive_create_default_capture_rules(${teamId}, ${memberId})`;
     await tx`UPDATE web_sessions SET team_id = ${teamId} WHERE member_id = ${memberId} AND team_id IS NULL`;
     await followOwnerMemberships(tx, memberId);
