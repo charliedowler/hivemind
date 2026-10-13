@@ -16,8 +16,13 @@ export function isPublicDomain(domain: string): boolean {
     (_, i) =>
       i < labels.length - 1 &&
       (!isCompanyDomain(labels.slice(i).join(".")) ||
-        ["google.com", "microsoft.com", "onmicrosoft.com", "sfr.fr"].includes(
+        ["google.com", "microsoft.com", "onmicrosoft.com", "sfr.fr", "agentmail.to", "agentmail.cc"].includes(
           labels.slice(i).join("."),
         )),
   );
+}
+
+export function canJoinByDomain(email: string, actorType: string): boolean {
+  const domain = emailDomain(email);
+  return actorType !== "agent" && Boolean(domain && !isPublicDomain(domain));
 }

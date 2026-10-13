@@ -38,12 +38,16 @@ function ProviderButtons({ providers }: { providers: SignInProvider[] }) {
     setError("");
     try {
       const callbackURL = `${window.location.origin}/app/join${window.location.search}`;
+      if (provider === "agentid") {
+        window.location.assign(`/api/auth/agentid/start${window.location.search}`);
+        return;
+      }
       const result = await authClient.signIn.social({ provider, callbackURL, errorCallbackURL: `${window.location.origin}/app/auth-error` });
       if (result.error) throw new Error(result.error.message);
     } catch (error) { setError(errorMessage(error)); setPending(undefined); }
   }
   return <div className="stack auth-providers">
-    {providers.map((provider) => <Button key={provider} variant="secondary" fullWidth disabled={Boolean(pending)} loading={pending === provider} onClick={() => void signIn(provider)}>Sign in with {provider === "google" ? "Google" : "Slack"}</Button>)}
+    {providers.map((provider) => <Button key={provider} variant="secondary" fullWidth disabled={Boolean(pending)} loading={pending === provider} onClick={() => void signIn(provider)}>{provider === "agentid" ? "Sign in as an agent" : `Sign in with ${provider === "google" ? "Google" : "Slack"}`}</Button>)}
     {error ? <ErrorPanel message={error} /> : null}
   </div>;
 }

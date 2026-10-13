@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, bigint } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, bigint, boolean } from "drizzle-orm/pg-core";
 import { members } from "./schema";
 
 const date = (name: string) => timestamp(name, { withTimezone: true });
@@ -8,6 +8,10 @@ export const authAccounts = pgTable("auth_accounts", {
   userId: text("user_id").notNull().references(() => members.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
+  ownerSub: text("owner_sub"),
+  ownerName: text("owner_name"),
+  ownerEmail: text("owner_email"),
+  ownerEmailVerified: boolean("owner_email_verified").notNull().default(false),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   idToken: text("id_token"),

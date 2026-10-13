@@ -11,7 +11,9 @@ import { getSql } from "../db/client";
 import { hashToken, newToken } from "../db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "../errors";
 import { emailDomain, isPublicDomain } from "./email-domain";
+import { requireHuman } from "./agent-enrollment";
 export async function requireAdmin(ctx: HiveContext): Promise<void> {
+  await requireHuman(ctx.memberId);
   const rows =
     await getSql()`SELECT id FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND role = 'admin' AND removed_at IS NULL`;
   if (!rows.length)
@@ -42,6 +44,7 @@ export async function account(ctx: HiveContext) {
   };
 }
 export async function revokeKey(ctx: HiveContext, id: string): Promise<void> {
+  await requireHuman(ctx.memberId);
   const rows =
     await getSql()`UPDATE api_keys SET revoked_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} AND (member_id = ${ctx.memberId} OR EXISTS (SELECT 1 FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND role = 'admin' AND removed_at IS NULL)) RETURNING id`;
   if (!rows.length) throw new HiveNotFoundError("Key not found in your team.");

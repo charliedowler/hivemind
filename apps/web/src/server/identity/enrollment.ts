@@ -6,6 +6,7 @@ import { getSql } from "../db/client";
 import { hashToken, newId, newToken } from "../db/ids";
 import { HiveError, HiveInputError } from "../errors";
 import { emailDomain, isPublicDomain } from "./email-domain";
+import { enrollAgent, isAgentMember, ownerInviteRole } from "./agent-enrollment";
 
 export function registrationForStorage(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
@@ -23,6 +24,7 @@ export async function memberContext(memberId: string, teamId?: string): Promise<
 }
 
 export async function enrollMember(memberId: string, input?: HiveRegistration): Promise<HiveContext | null> {
+  if (await isAgentMember(memberId)) return enrollAgent(memberId, input);
   const enrollment = await getSql().begin(async (tx) => {
     const rows = await tx`SELECT * FROM members WHERE id = ${memberId} FOR UPDATE`;
     const member = rows[0];
@@ -51,7 +53,8 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
       }
       teamId = teams[0].id;
     }
-    await tx`UPDATE members SET team_id = ${teamId}, role = ${registration.intent === "create" ? "admin" : "member"}, hive_registration = NULL, updated_at = now() WHERE id = ${memberId} AND team_id IS NULL AND removed_at IS NULL`;
+    const role = registration.intent === "create" ? "admin" : registration.intent === "invite" ? await ownerInviteRole(tx, memberId, member.email, teamId, registration.inviteCode) : "member";
+    await tx`UPDATE members SET team_id = ${teamId}, role = ${role}, hive_registration = NULL, updated_at = now() WHERE id = ${memberId} AND team_id IS NULL AND removed_at IS NULL`;
     if (registration.intent === "create") await tx`SELECT hive_create_default_capture_rules(${teamId}, ${memberId})`;
     await tx`UPDATE web_sessions SET team_id = ${teamId} WHERE member_id = ${memberId} AND team_id IS NULL`;
     return { intent: registration.intent as "create" | "invite" | "domain", email: member.email as string, promoted: registration.intent === "create" && member.role !== "admin" };

@@ -43,6 +43,7 @@ design/system                @hivemind/design-system: tokens, pixel sprites and 
 | `RESEND_EMAIL_DOMAIN` | configured sender domain for delivery operations | sender-domain configuration needs checking |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in | Google button hidden |
 | `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | Slack OpenID Connect sign-in | Slack button hidden |
+| `AGENTID_CLIENT_ID` / `AGENTID_CLIENT_SECRET` | AgentID sign-in with verified owner claims | agent button hidden |
 | `BETTER_AUTH_SECRET` | session, verification and OAuth secrets | production authentication refuses to start; development has a local fallback |
 | `BETTER_AUTH_URL` | authorization origin | uses publicUrl() |
 | `PUBLIC_URL`        | canonical URL in metadata, install snippets and invite links | falls back to the request origin                              |
@@ -61,7 +62,9 @@ Driver: `postgres` (postgres.js) with `drizzle-orm/postgres-js`, `prepare: false
 ## Tables
 
 - `teams` (id, name, invite_code unique hash, invite_expires_at, created_at)
-- `members` (id, team_id, name, email unique nullable, email_verified, role, removed_at, created_at, last_seen_at)
+- `members` (id, team_id, name, email unique nullable, email_verified, actor_type human or agent, role, removed_at, created_at, last_seen_at)
+- `auth_accounts`: AgentID accounts use `(provider_id, account_id)` with `sub` as `account_id`. Owner snapshots are nullable `owner_sub`, `owner_name`, `owner_email` and `owner_email_verified`.
+- `agent_owner_invites`: one owner invite per agent-created team; stores the expected owner email, invite hash, expiry, delivery time and accepting human.
 - `api_keys` (id, team_id, member_id, key_hash unique, prefix, label, created_at, last_used_at, revoked_at)
 - `web_sessions` (id, member_id, team_id, token_hash unique, created_at, expires_at)
 - `learnings` (id, team_id, member_id, title, body, kind, tags text[], repo, paths text[], area, cost, blocked, workaround, classification jsonb, confidence real, source, session_ref, push_count int default 1, up_votes, down_votes, outdated_votes, created_at, updated_at, last_pushed_at)
@@ -74,6 +77,14 @@ Driver: `postgres` (postgres.js) with `drizzle-orm/postgres-js`, `prepare: false
 - `early_access` (id, name, email, company, team_size, source, created_at)
 
 The migration runner keeps a `_migrations` table. It applies the pgvector migration inside its own try/catch and logs a warning when it fails.
+
+## Agent sign-in and team access
+
+AgentID is a Generic OAuth provider through `@agentmail/agentid-better-auth`. Better Auth 1.7.7 verifies its ES256 tokens, issuer and audience. The helper requires PKCE S256. The registered provider requests `openid email profile owner_profile owner_email`. Its callback is `/api/auth/callback/agentid`; `/api/auth/agentid/start` forwards `login_hint` and copies all state cookies.
+
+Agent accounts stay separate from human accounts. An AgentID subject identifies the account; an email collision never links identities or transfers old history. Agents always have the member role, enforced by the database. Agent inbox domains and every agent actor are excluded from domain joins. A verified owner email may match only an active, verified human member. One matching team joins immediately. Several matching teams require one choice. No match uses the normal create or invite page. The current human account schema allows one team per email; the several-team decision and UI also support a future membership expansion.
+
+An agent-created team keeps its creator as a member. A known verified owner receives the existing join-link email and accepts explicitly with a separate human account. Only that verified human, with the matching invite, becomes the admin. Unknown owners can use the normal invite flow when a human admin becomes available. Agents cannot change members, Slack, privacy rules or keys. They can read, search, push, give feedback and ask through the same OAuth MCP consent flow as humans. The AgentID console account limit is unlimited. Hive adds no cap on agents per team, agents per owner, or separate MCP OAuth grants and harness connections.
 
 ## Contracts (`@hivemind/core`)
 

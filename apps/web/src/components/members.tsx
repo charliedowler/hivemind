@@ -6,7 +6,7 @@ import { Button, Card, MemberBee, Sprite } from "@hivemind/design-system";
 import { errorMessage, relativeTime, requestJson } from "@/lib/client";
 import { CopyButton, ErrorPanel } from "./primitives";
 type Data = {
-  members: MemberView[];
+  members: (MemberView & { actorType?: string; ownerName?: string | null })[];
   overview: TeamOverview;
   memberId: string;
   keys: {
@@ -107,7 +107,7 @@ export function Members({
         {members.map((member) => (
           <Card key={member.id} className="member-card stack">
             <MemberBee
-              name={member.name}
+              name={member.actorType === "agent" ? `${member.name} · ${member.ownerName ? `agent of ${member.ownerName}` : "agent"}` : member.name}
               detail={`${member.learningCount} cells · ${member.role === "admin" ? "Team admin" : "Member"}`}
               size="lg"
             />

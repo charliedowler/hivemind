@@ -15,6 +15,7 @@ import { cookies, headers } from "next/headers";
 import { getSql } from "./db/client";
 import { hashToken, newId, newToken, randomBase32 } from "./db/ids";
 import { HiveInputError, HiveNotFoundError } from "./errors";
+import { requireHuman } from "./identity/agent-enrollment";
 
 function context(row: Record<string, unknown>): HiveContext {
   return {
@@ -106,6 +107,7 @@ export async function issueApiKey(
   ctx: HiveContext,
   label?: string,
 ): Promise<{ apiKey: string; prefix: string }> {
+  await requireHuman(ctx.memberId);
   const apiKey = `hm_${newToken()}`;
   const prefix = apiKey.slice(0, 10);
   const rows =

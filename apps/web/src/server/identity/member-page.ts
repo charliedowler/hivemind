@@ -10,8 +10,10 @@ export async function memberPage(ctx: HiveContext) {
     overview.role === "admin"
       ? await getSql()`SELECT id, member_id, label, prefix, revoked_at FROM api_keys WHERE team_id = ${ctx.teamId} ORDER BY created_at DESC`
       : [];
+  const agents = await getSql()`SELECT m.id, m.actor_type, a.owner_name FROM members m LEFT JOIN auth_accounts a ON a.user_id = m.id AND a.provider_id = 'agentid' WHERE m.team_id = ${ctx.teamId} AND m.removed_at IS NULL`;
+  const identities = new Map(agents.map(row => [String(row.id), row]));
   return {
-    members,
+    members: members.map(member => ({ ...member, actorType: String(identities.get(member.id)?.actor_type ?? "human"), ownerName: identities.get(member.id)?.owner_name as string | null })),
     overview,
     keys: keys.map((key) => ({
       id: String(key.id),

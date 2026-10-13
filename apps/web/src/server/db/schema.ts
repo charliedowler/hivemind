@@ -32,6 +32,7 @@ export const members = pgTable("members", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   image: text("image"),
   hiveRegistration: text("hive_registration"),
+  actorType: text("actor_type").notNull().default("human"),
   email: text("email").unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   role: text("role").notNull().default("member"),

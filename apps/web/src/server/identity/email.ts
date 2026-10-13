@@ -8,6 +8,14 @@ export async function deliverCode(
   code: string,
   id: string,
 ): Promise<boolean> {
+  return deliverEmail(email, "Your Hive code", `Your Hive code is ${code}.\n\nIt expires in 15 minutes.`, `hive-email-verification/${id}`);
+}
+
+export async function deliverInvite(email: string, teamName: string, url: string, id: string): Promise<boolean> {
+  return deliverEmail(email, `Join ${teamName} on Hive`, `Your agent created ${teamName} on Hive and invited you as its team admin.\n\nSign in with your own account to join:\n${url}\n\nThis invite expires in seven days.`, `hive-owner-invite/${id}`);
+}
+
+async function deliverEmail(email: string, subject: string, text: string, id: string): Promise<boolean> {
   if (!emailConfigured()) return false;
   try {
     const response = await fetch("https://api.resend.com/emails", {
@@ -17,13 +25,13 @@ export async function deliverCode(
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `hive-email-verification/${id}`,
+        "Idempotency-Key": id,
       },
       body: JSON.stringify({
         from: process.env.EMAIL_FROM,
         to: [email],
-        subject: "Your Hive code",
-        text: `Your Hive code is ${code}.\n\nIt expires in 15 minutes.`,
+        subject,
+        text,
       }),
     });
     if (!response.ok) {

@@ -35,7 +35,7 @@ Screenshots of every step at 1280 and 390 wide are in [docs/screenshots](docs/sc
 
 ## Install for a teammate
 
-**MCP auth is OAuth-first.** Web sign-in uses email and password, Google or Slack. Create a team, or join with an invite link or an allowed work domain. Email accounts verify a six-digit Resend code within 15 minutes.
+**MCP auth is OAuth-first.** People sign in with email and password, Google or Slack. Agents use AgentID with their own identity. Create a team, or join with an invite link or an allowed work domain. Email accounts verify a six-digit Resend code within 15 minutes.
 
 Run the installer with Node 20 or later:
 
@@ -243,6 +243,8 @@ The [analytics contract](docs/analytics.md) describes the private append-only ev
 [Better Auth](https://better-auth.com/docs/plugins/mcp) owns passwords, email codes, Google and Slack sign-in, sessions, OAuth consent, PKCE, JWT signing and refresh. Its Drizzle user model maps to `members`; its session model maps to `web_sessions`. No old password hashes exist. Existing verified emails link to the same member, so keys and cell attribution retain their IDs. A signed-in account with no team has no dashboard or MCP context until verification and enrollment succeed.
 
 `GOOGLE_CLIENT_ID` plus `GOOGLE_CLIENT_SECRET` enable the Google button. `SLACK_CLIENT_ID` plus `SLACK_CLIENT_SECRET` enable Slack. Missing pairs hide the buttons. `SLACK_SIGNING_SECRET` verifies Slack events, commands and interactivity; it is not used for sign-in. Production requires `BETTER_AUTH_SECRET`; `BETTER_AUTH_URL` sets the authorization origin. `PUBLIC_URL` supplies the protected MCP resource. Development can run without provider credentials; the local secret fallback is never used in production.
+
+`AGENTID_CLIENT_ID` plus `AGENTID_CLIENT_SECRET` enable "Sign in as an agent" below the human providers. AgentID uses the Generic OAuth helper with PKCE and verified owner claims. An agent joins its verified owner's team as a member, or chooses when several teams match. Invite links also work. Agents cannot manage members, Slack, privacy rules or keys. Apply migration `0026_agentid.sql` before deploying this provider. See [AgentID setup and join rules](docs/agentid.md).
 
 Apply `0011_better_auth.sql` and `0012_mcp_oauth.sql` with the repository migrate script from committed main before deploying the auth code. SQL uses guarded schema changes, lock and statement timeouts. Rollbacks refuse to discard linked accounts or populated OAuth grants. Old session hashes are not copied into raw Better Auth tokens. They remain readable through a compatibility path until expiry or sign-out. API keys never open a web session.
 
