@@ -18,7 +18,7 @@ it("renders an empty period as one short line under the period", () => {
   const result = composeDigest(data(), include, "Europe/London");
   expect(result.empty).toBe(true);
   expect(result.blocks).toHaveLength(2);
-  expect(result.text).toContain("Tue 6 Oct to Tue 13 Oct");
+  expect(result.text).toContain("Tuesday 6 October to Tuesday 13 October");
   expect(result.text).toContain("No changes since");
 });
 it("limits items, escapes unintended mentions, and links replacements", () => {

@@ -1,6 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { digestScheduleInput } from "@hivemind/core";
+import {
+  formatHumanDateTime,
+  formatHumanClock,
+  timeZoneLabel,
+  digestScheduleInput,
+} from "@hivemind/core";
 import type { SlackTool, SlackToolContext } from "./index";
 import { toolActor } from "./context";
 import { HiveError } from "@/server/errors";
@@ -63,7 +68,7 @@ const tools: SlackTool[] = [
               expectedUpdatedAt: String(rows[0].expected_updated_at),
               enabled: false,
             },
-            text: `Schedule saved for #${slackEscape(saved.channelName)}: ${saved.cadence} at ${saved.time} (${saved.timezone}); next update ${saved.nextDueAt}.`,
+            text: `Schedule saved for #${slackEscape(saved.channelName)}: ${saved.cadence} at ${formatHumanClock(saved.time)} (${timeZoneLabel(saved.timezone)}); next update ${formatHumanDateTime(saved.nextDueAt, { timeZone: saved.timezone })}.`,
             undo: "pause this schedule",
           };
         },
@@ -120,7 +125,7 @@ const tools: SlackTool[] = [
           schedules
             .map(
               (s) =>
-                `${s.id}: #${slackEscape(s.channelName)}, ${s.cadence} at ${s.time} (${s.timezone}); ${s.enabled ? `next ${s.nextDueAt}` : "paused"}`,
+                `${s.id}: #${slackEscape(s.channelName)}, ${s.cadence} at ${formatHumanClock(s.time)} (${timeZoneLabel(s.timezone)}); ${s.enabled ? `next ${formatHumanDateTime(s.nextDueAt, { timeZone: s.timezone })}` : "paused"}`,
             )
             .join("\n") ||
           "No digest schedules yet. An admin can ask Hive to set one up in this channel.",

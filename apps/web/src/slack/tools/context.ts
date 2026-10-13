@@ -10,6 +10,7 @@ export type SlackToolContext = {
   threadTs: string;
   messageTs?: string;
   instructionText?: string;
+  timeZone?: string;
   actionType?: "digest" | "digest_pause" | "capture" | "undo";
 };
 export async function slackToolContext(

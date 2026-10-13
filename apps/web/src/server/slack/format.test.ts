@@ -30,7 +30,7 @@ describe("Slack answer presentation", () => {
   it("renders prose, one short marker and one source for repeated cells and duplicate Slack evidence", () => {
     const text = slackAnswer(result);
     expect(text).toBe(
-      "No. Hive never indexes direct messages. Channel indexing needs an admin selection and the bot being invited [1].\n\nSources\n1. <https://gohive.dev/app/cells/lrn_abc|Hive never indexes direct messages> (2026-10-12)",
+      "No. Hive never indexes direct messages. Channel indexing needs an admin selection and the bot being invited [1].\n\nSources\n1. <https://gohive.dev/app/cells/lrn_abc|Hive never indexes direct messages> (Monday 12 October)",
     );
     expect(text.match(/\[1\]/g)).toHaveLength(1);
     expect(text).not.toContain("Confidence");
@@ -78,8 +78,20 @@ describe("Slack answer presentation", () => {
 });
 
 it("never quotes a dropped or owner-private capture", () => {
-  expect(slackCaptureReply({dropped: true, rule: "content_category"})).toBe("This capture was excluded by a capture rule.");
-  const result = {id: "lrn_fixture", merged: false, pushCount: 1, redactions: 0, learning: {title: "private-marker", body: "private-body", captureFlagged: true}} as import("@hivemind/core").PushResult;
+  expect(slackCaptureReply({ dropped: true, rule: "content_category" })).toBe(
+    "This capture was excluded by a capture rule.",
+  );
+  const result = {
+    id: "lrn_fixture",
+    merged: false,
+    pushCount: 1,
+    redactions: 0,
+    learning: {
+      title: "private-marker",
+      body: "private-body",
+      captureFlagged: true,
+    },
+  } as import("@hivemind/core").PushResult;
   const reply = slackCaptureReply(result);
   expect(reply).toContain("Kept privately");
   expect(reply).not.toContain("private-marker");

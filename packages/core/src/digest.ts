@@ -1,3 +1,4 @@
+import { formatHumanDate } from "./human-time";
 export type DigestAuthor = { name: string; slackId?: string | null };
 export type DigestItem = {
   id: string;
@@ -78,15 +79,7 @@ export function composeDigest(
   timezone: string,
   base = "https://gohive.dev",
 ): ComposedDigest {
-  const date = (s: string) =>
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: timezone,
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    })
-      .format(new Date(s))
-      .replace(/,/g, "");
+  const date = (s: string) => formatHumanDate(s, { timeZone: timezone });
   const counts = {
     learnings: include.learnings ? data.learnings.length : 0,
     insights: include.insights ? data.insights.length : 0,
