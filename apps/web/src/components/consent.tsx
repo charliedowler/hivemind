@@ -25,7 +25,7 @@ export function Consent({ clientName, teamName, email, scopes, claims, oauthQuer
       {claims.map((claim) => <li key={claim}>Read the requested profile field: {claim}.</li>)}
     </ul>
     <p className="small muted">Access is limited to this hive. Cancel to leave the forager disconnected.</p>
-    {error ? <ErrorPanel message={error} /> : null}
+    {error ? <ErrorPanel message="This connection request has expired or changed. Start the connection again from your agent." /> : null}
     <form className="stack" action={submit}>
       <Button type="submit" name="decision" value="allow" loading={pending}>Allow access</Button>
       <Button type="submit" name="decision" value="cancel" variant="secondary" disabled={pending}>Cancel</Button>

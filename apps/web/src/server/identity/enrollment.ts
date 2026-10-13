@@ -36,17 +36,17 @@ export async function enrollMember(memberId: string, input?: HiveRegistration): 
       await tx`INSERT INTO teams (id, name, invite_code) VALUES (${teamId}, ${registration.teamName}, ${hashToken(`hive-${newToken()}`)})`;
     } else if (registration.intent === "invite") {
       const teams = await tx`SELECT id FROM teams WHERE invite_code = ${registration.inviteCode} AND invite_expires_at > now() FOR UPDATE`;
-      if (!teams[0]) throw new HiveInputError("This invite has expired or is not valid.");
+      if (!teams[0]) throw new HiveInputError("This invite has expired or is not valid. Ask your team admin for a new invite.");
       teamId = teams[0].id;
     } else {
       const domain = emailDomain(member.email);
       if (!domain || isPublicDomain(domain)) {
-        if (input) throw new HiveInputError("Use an invite for a public email provider.");
+        if (input) throw new HiveInputError("Your email domain cannot join this hive. Ask your team admin for an invite.");
         return;
       }
       const teams = await tx`SELECT t.id FROM teams t JOIN team_domains d ON d.team_id = t.id WHERE d.domain = ${domain} FOR UPDATE OF t`;
       if (!teams[0]) {
-        if (input) throw new HiveInputError("Your work domain has no hive yet. Use an invite or create a team.");
+        if (input) throw new HiveInputError("Your work domain has no hive yet. Ask your team admin for an invite.");
         return;
       }
       teamId = teams[0].id;

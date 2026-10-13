@@ -27,6 +27,7 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
   }]));
   return betterAuth({
     appName: "Hive",
+    onAPIError: { errorURL: "/app/auth-error" },
     baseURL: baseUrl,
     secret,
     database: drizzleAdapter(getDb(), {
