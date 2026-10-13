@@ -2,7 +2,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button, Card, Sprite } from "@hivemind/design-system";
-import type { ComposedDigest } from "@hivemind/core";
+import {
+  formatHumanDateTime,
+  formatHumanClock,
+  timeZoneLabel,
+  type ComposedDigest,
+} from "@hivemind/core";
 import type {
   DigestChannel,
   DigestSchedule,
@@ -12,23 +17,10 @@ import { requestJson, errorMessage } from "@/lib/client";
 import { DigestForm } from "./digest-form";
 import { DigestBlocks } from "./digest-blocks";
 import { ErrorPanel } from "./primitives";
-const historyDate = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
-const scheduleDates = new Map<string, Intl.DateTimeFormat>();
 function nextDate(schedule: DigestSchedule) {
-  let formatter = scheduleDates.get(schedule.timezone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-GB", {
-      timeZone: schedule.timezone,
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-    scheduleDates.set(schedule.timezone, formatter);
-  }
-  return formatter.format(new Date(schedule.nextDueAt));
+  return formatHumanDateTime(schedule.nextDueAt, {
+    timeZone: schedule.timezone,
+  });
 }
 export type DigestSettingsData = {
   schedules: DigestSchedule[];
@@ -153,7 +145,8 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
                     : schedule.cadence === "weekdays"
                       ? "Weekdays"
                       : "Daily"}{" "}
-                at {schedule.time} in {schedule.timezone}
+                at {formatHumanClock(schedule.time)} (
+                {timeZoneLabel(schedule.timezone)})
               </p>
               <p className="muted">
                 {schedule.enabled
@@ -233,9 +226,7 @@ export function DigestSettings({ initial }: { initial: DigestSettingsData }) {
                             : "Failed"}
                   </span>
                 </div>
-                <p className="muted">
-                  {historyDate.format(new Date(post.at))} UTC
-                </p>
+                <p className="muted">{formatHumanDateTime(post.at)}</p>
                 {post.permalink ? (
                   <a href={post.permalink}>Open Slack post</a>
                 ) : null}

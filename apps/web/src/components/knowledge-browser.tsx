@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDateTime } from "@hivemind/core";
 import { useEffect, useState } from "react";
 import type { KnowledgeFile, KnowledgeListing } from "@hivemind/core";
 import { Button, Card, Sprite } from "@hivemind/design-system";
@@ -59,11 +60,7 @@ export function KnowledgeBrowser() {
         ) : null}
         {snapshot.expiresAt ? (
           <span className="small muted">
-            Link expires at{" "}
-            {new Date(snapshot.expiresAt).toLocaleTimeString("en-GB", {
-              timeZone: "UTC",
-            })}{" "}
-            UTC
+            Link expires at {formatHumanDateTime(snapshot.expiresAt)}
           </span>
         ) : null}
       </div>
@@ -166,10 +163,7 @@ function TreeContent({
         </pre>
       </>
     );
-  if (!state.listing)
-    return (
-      <LoadingPanel>Loading this folder.</LoadingPanel>
-    );
+  if (!state.listing) return <LoadingPanel>Loading this folder.</LoadingPanel>;
   return (
     <>
       <p className="small muted">

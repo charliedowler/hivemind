@@ -1,4 +1,5 @@
 "use client";
+import { formatHumanDateTime } from "@hivemind/core";
 
 import { useState, type FormEvent } from "react";
 import type { CaptureRule, CaptureRuleInput } from "@hivemind/core";
@@ -858,11 +859,7 @@ function PreviewConfirmation({
         </p>
       ) : null}
       <p className="small">
-        Preview expires at{" "}
-        {new Date(preview.expiresAt).toLocaleTimeString("en-GB", {
-          timeZone: "UTC",
-        })}{" "}
-        UTC.
+        Preview expires at {formatHumanDateTime(preview.expiresAt)}.
       </p>
       {preview.count > 0 ? (
         <Switch
