@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   overview: vi.fn(),
   policy: vi.fn(),
   sql: vi.fn(),
+  phrase: vi.fn(),
 }));
 vi.mock("@/server/identity/agent-enrollment", () => ({
   isAgentMember: mocks.agent,
@@ -24,6 +25,10 @@ vi.mock("@/server/hive", () => ({
 }));
 vi.mock("@/server/project-sharing", () => ({
   ownerCapturePolicy: mocks.policy,
+}));
+
+vi.mock("@/server/identity/join-phrases", () => ({
+  memberJoinPhrase: mocks.phrase,
 }));
 
 const actor = {
@@ -217,16 +222,21 @@ describe("MCP model-facing wire contract", () => {
       {
         name: "Selected hive",
         personal_owner_member_id: null,
-        join_paused: true,
-        phrase: "amber-honey-fox",
+        join_paused: false,
       },
     ]);
+    mocks.phrase.mockResolvedValue({
+      phrase: "amber-honey-fox",
+      generation: 1,
+      paused: true,
+    });
     const result = await rpc("resources/read", { uri: "hive://overview" });
     expect(result.result.contents[0]).toMatchObject({
       mimeType: "text/markdown",
       text: expect.stringContaining("Chat capture: disabled"),
     });
     expect(mocks.overview).toHaveBeenCalledWith(expect.objectContaining(actor));
+    expect(mocks.phrase).toHaveBeenCalledWith(expect.objectContaining(actor));
     expect(result.result.contents[0].text).toContain(
       "https://gohive.dev/j/amber-honey-fox",
     );

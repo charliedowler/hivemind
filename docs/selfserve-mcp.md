@@ -6,7 +6,7 @@ Hive's remote MCP endpoint is `https://gohive.dev/api/mcp`. Sign in through OAut
 
 1. In Claude desktop or web, open **Settings → Connectors** (or **Customize → Connectors**) and select **Add custom connector**.
 2. Name it **Hive** and enter `https://gohive.dev/api/mcp` as the server URL.
-3. Select **Connect**, sign in with Google or Slack, review the requested access and select **Allow access**. Enable Hive in a chat. The connection is also available in the mobile app on the same account.
+3. Select **Connect**, sign in with Google or Slack, choose the hive for this connection, review the requested access and select **Allow access**. Enable Hive in a chat. The connection is also available in the mobile app on the same account.
 
 Custom connectors are available on Pro, Max, Team and Enterprise. Anthropic also lists Free support in its [current connector guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp). Availability and limits depend on the plan. Team and Enterprise admins may need to add or allow the connector before members can connect.
 
@@ -18,7 +18,7 @@ In Claude web, use **+ → Connectors → Add from Hive** to choose **Catch up w
 
 1. Open **Plugins → Add → Add custom MCP server** in ChatGPT web. Older versions may place custom connectors under **Settings → Apps & Connectors → Advanced settings → Developer mode**.
 2. Enter **Hive**, `https://gohive.dev/api/mcp` and **OAuth**. Select **I understand and want to continue**, then **Create as a plugin**. If the name is already used, use the existing connector or choose a distinct name such as **Hive MCP**.
-3. Complete Hive's OAuth sign-in and select **Allow access**. In a new chat, use the **+** menu to enable the connector, then ask a question about the team's memory.
+3. Complete Hive's OAuth sign-in, choose the hive for this connection and select **Allow access**. In a new chat, use the **+** menu to enable the connector, then ask a question about the team's memory.
 
 Menu labels and availability depend on the ChatGPT version, plan and workspace policy. Use the hosted endpoint with OAuth; no local server is required.
 
