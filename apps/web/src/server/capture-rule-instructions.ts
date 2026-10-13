@@ -9,7 +9,7 @@ import { lockLearningWrites } from "./lifecycle";
 import { scheduleKnowledge } from "./knowledge-tree";
 import { jevModel } from "./classify";
 import { analyticsTransaction, beginCall, originFor, recordEvent, reportedModel, withActor, withOrigin } from "./analytics/events";
-import { applyCaptureRule, captureInstructionJudgementSchema, insertCaptureRule, previewCaptureRule, proposeRuleFromText, reverseCaptureRuleApplicationInTransaction } from "./capture-rules";
+import { applyInstructionCells, captureInstructionJudgementSchema, insertCaptureRule, scanInstructionCells, proposeRuleFromText, reverseCaptureRuleApplicationInTransaction } from "./capture-rules";
 
 export type CaptureRuleInstructionContext = {
   source: "web" | "slack" | "mcp";
@@ -251,10 +251,10 @@ async function runInstructionPages(ctx: HiveContext, id: string, pages: number) 
       if (!undone.pending) break;
     } else if (instruction.job_status === "pending") {
       try {
-        const preview = await previewCaptureRule(ctx, instruction.rule_id, instruction.job_cursor ?? undefined, id);
-        const applied = await applyCaptureRule(ctx, instruction.rule_id, preview.token, id, instruction.job_cursor ?? undefined);
-        delta.scanned += preview.scanned;
-        delta.matched += preview.count;
+        const batch = await scanInstructionCells(ctx, instruction.rule_id, id, instruction.job_cursor ?? undefined);
+        const applied = await applyInstructionCells(ctx, instruction.rule_id, batch, id, instruction.job_cursor ?? undefined);
+        delta.scanned += batch.scanned;
+        delta.matched += batch.count;
         delta.applied += applied.applied;
         delta.skipped += applied.skipped;
         if (!applied.nextCursor) break;

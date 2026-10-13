@@ -124,7 +124,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
     if (teamIds.length) {
       const sql = getSql();
-      for (const table of ["learning_conflict_votes", "learning_supersessions", "learning_versions", "feedback", "learning_pushes", "ask_log", "learnings", "api_keys", "web_sessions", "team_domains"]) await sql`DELETE FROM ${sql(table)} WHERE team_id IN ${sql(teamIds)}`;
+      for (const table of ["capture_rules", "learning_conflict_votes", "learning_supersessions", "learning_versions", "feedback", "learning_pushes", "ask_log", "learnings", "api_keys", "web_sessions", "team_domains"]) await sql`DELETE FROM ${sql(table)} WHERE team_id IN ${sql(teamIds)}`;
       if (clientId) await sql`DELETE FROM auth_oauth_client WHERE client_id = ${clientId}`;
       if (executorClientId) await sql`DELETE FROM auth_oauth_client WHERE client_id = ${executorClientId}`;
       await sql`DELETE FROM members WHERE id IN ${sql(memberIds)}`;

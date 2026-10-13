@@ -375,7 +375,6 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     const result = await save();
     expect(result.counts!.applied).toBe(1);
     expect((await read(otherId)).capture_rule_ids).toEqual([]);
-    await expect(captureRules.reverseCaptureRuleApplication(member, (await getSql()`SELECT id FROM capture_rule_applications WHERE learning_id = ${id}`)[0].id, "Manual reversal")).rejects.toMatchObject({status: 403});
     const undone = await undoCaptureRuleInstruction(member, web);
     expect(undone).toMatchObject({status: "undone", counts: {restored: 1, retained: 0, pending: false}});
     expect(await captureRules.effectiveRules(member)).toHaveLength(0);
@@ -417,8 +416,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     expect(result.counts).toMatchObject({scanned: 2, matched: 2, applied: 2});
     expect((await read(privateId)).lifecycle).toBe("retracted");
     expect((await read(external)).lifecycle).toBe("fresh");
-    const log = await captureRules.listCaptureRuleApplications(admin);
-    expect(log.every(row => row.title === "Private capture")).toBe(true);
+    expect(await getSql()`SELECT id FROM capture_rule_applications WHERE team_id = ${admin.teamId}`).toHaveLength(2);
     expect(JSON.stringify(result)).not.toContain("A finding with");
     await getSql()`UPDATE members SET role = 'member' WHERE id = ${admin.memberId}`;
     await expect(undoCaptureRuleInstruction(admin, web)).rejects.toMatchObject({status: 403});
@@ -693,10 +691,10 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     expect((await audits())[0].counts.applied).toBe(16);
   });
 
-  it("skips cells edited between preview and auto apply while advancing counts and cursor", async () => {
+  it("skips cells edited between scan and automatic change while advancing counts and cursor", async () => {
     const id = await cell();
-    const apply = captureRules.applyCaptureRule;
-    vi.spyOn(captureRules, "applyCaptureRule").mockImplementationOnce(async (...args) => {
+    const apply = captureRules.applyInstructionCells;
+    vi.spyOn(captureRules, "applyInstructionCells").mockImplementationOnce(async (...args) => {
       await getSql()`UPDATE learnings SET body = 'Later body' WHERE id = ${id}`;
       return apply(...args);
     });

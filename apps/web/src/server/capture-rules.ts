@@ -11,7 +11,7 @@ import {
   type HiveContext,
 } from "@hivemind/core";
 import { getSql, hasEmbeddingColumn } from "./db/client";
-import { hashToken, newId, newToken } from "./db/ids";
+import { newId } from "./db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "./errors";
 import { lockLearningWrites } from "./lifecycle";
 import { scheduleKnowledge } from "./knowledge-tree";
@@ -29,7 +29,6 @@ import {
 type Row = Record<string, any>;
 type EvaluationInput = Parameters<typeof evaluateCaptureRules>[1];
 type Ingress = "mcp" | "web" | "hook" | "slack" | "unknown";
-const scanLimit = 500;
 
 function ruleView(row: Row): CaptureRule {
   return {
@@ -215,7 +214,8 @@ export async function proposeRuleFromText(teamId: string, memberId: string, text
           question: null,
         };
       }
-      return {...proposal, rule: proposal.rule ? {...proposal.rule, naturalText: redactSecrets(cleaned.data).text} : null};
+      const requestedScope = cleaned.data.startsWith("For the whole team: ") ? "team" : cleaned.data.startsWith("For my agents only: ") ? "member" : proposal.rule?.scope;
+      return {...proposal, rule: proposal.rule ? {...proposal.rule, scope: requestedScope!, naturalText: redactSecrets(cleaned.data).text} : null};
     } catch {
       await finish("failed", "provider_failed");
       return fallback;
@@ -223,8 +223,8 @@ export async function proposeRuleFromText(teamId: string, memberId: string, text
   });
 }
 
-export async function previewCaptureRule(ctx: HiveContext, id: string, cursor?: string, instructionId?: string) {
-  if (cursor && !/^lrn_[a-z2-7]{12}$/.test(cursor)) throw new HiveInputError("Check the preview cursor.");
+export async function scanInstructionCells(ctx: HiveContext, id: string, instructionId: string, cursor?: string) {
+  if (cursor && !/^lrn_[a-z2-7]{12}$/.test(cursor)) throw new HiveInputError("Check the saved scan position.");
   const sql = getSql();
   const [admin, rows] = await Promise.all([
     membership(ctx),
@@ -233,12 +233,12 @@ export async function previewCaptureRule(ctx: HiveContext, id: string, cursor?: 
   const row = rows[0];
   if (!row) throw new HiveNotFoundError("Rule not found in your hive.");
   if (!canManage(row, ctx, admin)) throw new HiveError("Only the rule owner or a team admin can apply this rule.", 403);
-  const instruction = instructionId ? (await sql`SELECT * FROM capture_rule_instructions WHERE id = ${instructionId} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND rule_id = ${id} AND job_status = 'pending'`)[0] : null;
-  if (instructionId && (!instruction || instruction.rule_revision !== row.revision || instruction.job_cursor !== (cursor ?? null)))
+  const instruction = (await sql`SELECT * FROM capture_rule_instructions WHERE id = ${instructionId} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND rule_id = ${id} AND job_status = 'pending'`)[0];
+  if (!instruction || instruction.rule_revision !== row.revision || instruction.job_cursor !== (cursor ?? null))
     throw new HiveError("This instruction changed. Review its current state.", 409);
   const rule = {...ruleView(row), enabled: true};
-  const batchLimit = rule.kind === "content_category" ? 8 : instructionId ? 100 : scanLimit;
-  const cells = await sql`SELECT id, revision, title, body, repo, paths, source, lifecycle, capture_categories, capture_context, workaround, tags, session_ref, COALESCE((SELECT jsonb_agg(e.payload) FROM learning_evidence e WHERE e.learning_id = learnings.id AND e.team_id = learnings.team_id), '[]'::jsonb) || COALESCE((SELECT jsonb_agg(jsonb_build_object('outcome', r.outcome, 'evidence', r.evidence)) FROM feedback_receipts r WHERE r.learning_id = learnings.id AND r.team_id = learnings.team_id), '[]'::jsonb) AS evidence FROM learnings WHERE team_id = ${ctx.teamId} AND lifecycle IN ('fresh', 'confirmed', 'outdated') AND (${row.scope === "team"} OR member_id = ${ctx.memberId}) AND (${Boolean(instructionId && row.scope === 'team')} OR NOT capture_flagged OR member_id = ${ctx.memberId}) AND (${instruction?.created_at ?? null}::timestamptz IS NULL OR created_at <= ${instruction?.created_at ?? null}) AND (${cursor ?? null}::text IS NULL OR id > ${cursor ?? null}) ORDER BY id LIMIT ${batchLimit + 1}`;
+  const batchLimit = rule.kind === "content_category" ? 8 : 100;
+  const cells = await sql`SELECT id, revision, title, body, repo, paths, source, lifecycle, capture_categories, capture_context, workaround, tags, session_ref, COALESCE((SELECT jsonb_agg(e.payload) FROM learning_evidence e WHERE e.learning_id = learnings.id AND e.team_id = learnings.team_id), '[]'::jsonb) || COALESCE((SELECT jsonb_agg(jsonb_build_object('outcome', r.outcome, 'evidence', r.evidence)) FROM feedback_receipts r WHERE r.learning_id = learnings.id AND r.team_id = learnings.team_id), '[]'::jsonb) AS evidence FROM learnings WHERE team_id = ${ctx.teamId} AND lifecycle IN ('fresh', 'confirmed', 'outdated') AND (${row.scope === "team"} OR member_id = ${ctx.memberId}) AND (${row.scope === 'team'} OR NOT capture_flagged OR member_id = ${ctx.memberId}) AND (${instruction.created_at}::timestamptz IS NULL OR created_at <= ${instruction.created_at}) AND (${cursor ?? null}::text IS NULL OR id > ${cursor ?? null}) ORDER BY id LIMIT ${batchLimit + 1}`;
   const bounded = cells.slice(0, batchLimit);
   const matches: {id: string; revision: number; title: string; body: string; categories: Record<string, boolean>}[] = [];
   for (let start = 0; start < bounded.length; start += 8) {
@@ -253,12 +253,10 @@ export async function previewCaptureRule(ctx: HiveContext, id: string, cursor?: 
     }));
     for (const cell of results) if (cell) matches.push(cell);
   }
-  const token = newToken(), expiresAt = new Date(Date.now() + 10 * 60000);
-  await sql`INSERT INTO capture_rule_previews (token_hash, rule_id, team_id, member_id, rule_revision, cells, scanned, truncated, expires_at, next_cursor) VALUES (${hashToken(token)}, ${id}, ${ctx.teamId}, ${ctx.memberId}, ${row.revision}, ${sql.json(matches)}, ${bounded.length}, ${cells.length > bounded.length}, ${expiresAt}, ${cells.length > bounded.length ? bounded.at(-1)?.id : null})`;
-  return {token, ruleId: id, count: matches.length, scanned: bounded.length, truncated: cells.length > bounded.length, expiresAt: expiresAt.toISOString(), nextCursor: cells.length > bounded.length ? bounded.at(-1)?.id as string : null};
+  return {ruleRevision: row.revision as number, cells: matches, count: matches.length, scanned: bounded.length, nextCursor: cells.length > bounded.length ? bounded.at(-1)?.id as string : null};
 }
 
-export function applyCaptureRule(ctx: HiveContext, id: string, token: string, instructionId?: string, cursor?: string) {
+export function applyInstructionCells(ctx: HiveContext, id: string, batch: Awaited<ReturnType<typeof scanInstructionCells>>, instructionId: string, cursor?: string) {
   return withActor(ctx, async () => {
     const embeddingAvailable = await hasEmbeddingColumn();
     return analyticsTransaction(async () => {
@@ -266,21 +264,16 @@ export function applyCaptureRule(ctx: HiveContext, id: string, token: string, in
       await lockLearningWrites(tx, ctx);
       const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
       const rules = await tx`SELECT * FROM capture_rules WHERE id = ${id} AND team_id = ${ctx.teamId} FOR UPDATE`;
-      const previews = await tx`SELECT * FROM capture_rule_previews WHERE token_hash = ${hashToken(token)} AND rule_id = ${id} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} FOR UPDATE`;
-      if (!members.length || !rules.length || !previews.length) throw new HiveNotFoundError("Rule preview not found in your hive.");
+      if (!members.length || !rules.length) throw new HiveNotFoundError("Saved exclusion not found in your hive.");
       if (!canManage(rules[0], ctx, members[0].role === "admin")) throw new HiveError("Only the rule owner or a team admin can apply this rule.", 403);
-      const instruction = instructionId ? (await tx`SELECT * FROM capture_rule_instructions WHERE id = ${instructionId} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND rule_id = ${id} AND job_status = 'pending' FOR UPDATE`)[0] : null;
-      if (instructionId && (!instruction || instruction.rule_revision !== rules[0].revision || instruction.job_cursor !== (cursor ?? null)))
+      const instruction = (await tx`SELECT * FROM capture_rule_instructions WHERE id = ${instructionId} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND rule_id = ${id} AND job_status = 'pending' FOR UPDATE`)[0];
+      if (!instruction || instruction.rule_revision !== rules[0].revision || instruction.job_cursor !== (cursor ?? null))
         throw new HiveError("This instruction changed. Review its current state.", 409);
-      const preview = previews[0];
-      if (new Date(preview.expires_at).getTime() <= Date.now() || preview.rule_revision !== rules[0].revision)
-        throw new HiveError("This preview expired or the rule changed. Preview it again.", 409);
-      const expected = z.array(z.object({id: z.string(), revision: z.number().int().positive(), title: z.string(), body: z.string(), categories: z.record(z.string(), z.boolean())})).max(scanLimit).parse(preview.cells);
+      if (batch.ruleRevision !== rules[0].revision) throw new HiveError("This instruction changed.", 409);
+      const expected = batch.cells;
       const expectedById = new Map(expected.map(cell => [cell.id, cell]));
       const cells = await tx`SELECT * FROM learnings WHERE team_id = ${ctx.teamId} AND id = ANY(${expected.map(cell => cell.id)}::text[]) ORDER BY id FOR UPDATE`;
-      const currentCells = cells.filter(cell => cell.revision === expectedById.get(cell.id)?.revision && ["fresh", "confirmed", "outdated"].includes(cell.lifecycle) && (rules[0].scope === "team" || cell.member_id === ctx.memberId) && (Boolean(instructionId && rules[0].scope === "team") || !cell.capture_flagged || cell.member_id === ctx.memberId));
-      if (!instructionId && currentCells.length !== expected.length)
-        throw new HiveError("A cell changed after this preview. Preview the rule again.", 409);
+      const currentCells = cells.filter(cell => cell.revision === expectedById.get(cell.id)?.revision && ["fresh", "confirmed", "outdated"].includes(cell.lifecycle) && (rules[0].scope === "team" || cell.member_id === ctx.memberId) && (rules[0].scope === "team" || !cell.capture_flagged || cell.member_id === ctx.memberId));
       const logIds: string[] = [];
       for (const cell of currentCells) {
         const match = expectedById.get(cell.id)!;
@@ -306,18 +299,17 @@ export function applyCaptureRule(ctx: HiveContext, id: string, token: string, in
         }
         const updated = await tx`SELECT revision FROM learnings WHERE id = ${cell.id} AND team_id = ${ctx.teamId}`;
         const logId = newId("crlog");
-        await tx`INSERT INTO capture_rule_applications (id, team_id, rule_id, learning_id, member_id, previous_state, applied_revision, action, rule_name, before_snapshot, instruction_id) VALUES (${logId}, ${ctx.teamId}, ${id}, ${cell.id}, ${ctx.memberId}, ${cell.lifecycle}, ${updated[0].revision}, ${action}, ${rules[0].name}, ${tx.json(before)}, ${instructionId ?? null})`;
-        await recordMutation({name: "capture.rule_applied", key: logId, learningId: cell.id, reasonCode: "capture_rule", properties: {ruleKind: rules[0].kind, ruleAction: action, ingress: instruction?.source ?? "web", agent: null}});
+        await tx`INSERT INTO capture_rule_applications (id, team_id, rule_id, learning_id, member_id, previous_state, applied_revision, action, rule_name, before_snapshot, instruction_id) VALUES (${logId}, ${ctx.teamId}, ${id}, ${cell.id}, ${ctx.memberId}, ${cell.lifecycle}, ${updated[0].revision}, ${action}, ${rules[0].name}, ${tx.json(before)}, ${instructionId})`;
+        await recordMutation({name: "capture.rule_applied", key: logId, learningId: cell.id, reasonCode: "capture_rule", properties: {ruleKind: rules[0].kind, ruleAction: action, ingress: instruction.source, agent: null}});
         if (action === "drop") await recordMutation({name: "learning.lifecycle_changed", key: logId, learningId: cell.id, reasonCode: "capture_rule", properties: {ruleId: id, previousState: cell.lifecycle, state: "retracted"}});
         logIds.push(logId);
       }
       if (currentCells.length) await tx`DELETE FROM knowledge_snapshots WHERE team_id = ${ctx.teamId}`;
-      await tx`DELETE FROM capture_rule_previews WHERE token_hash = ${hashToken(token)} AND team_id = ${ctx.teamId}`;
-      if (instructionId) {
-        const counts = {...instruction!.counts, scanned: Number(instruction!.counts.scanned ?? 0) + Number(preview.scanned), matched: Number(instruction!.counts.matched ?? 0) + expected.length, applied: Number(instruction!.counts.applied ?? 0) + currentCells.length, skipped: Number(instruction!.counts.skipped ?? 0) + expected.length - currentCells.length};
-        await tx`UPDATE capture_rule_instructions SET counts = ${tx.json(counts)}, job_cursor = ${preview.next_cursor}, job_status = ${preview.next_cursor ? "pending" : "complete"}, updated_at = clock_timestamp() WHERE id = ${instructionId} AND team_id = ${ctx.teamId}`;
+      {
+        const counts = {...instruction!.counts, scanned: Number(instruction!.counts.scanned ?? 0) + Number(batch.scanned), matched: Number(instruction!.counts.matched ?? 0) + expected.length, applied: Number(instruction!.counts.applied ?? 0) + currentCells.length, skipped: Number(instruction!.counts.skipped ?? 0) + expected.length - currentCells.length};
+        await tx`UPDATE capture_rule_instructions SET counts = ${tx.json(counts)}, job_cursor = ${batch.nextCursor}, job_status = ${batch.nextCursor ? "pending" : "complete"}, updated_at = clock_timestamp() WHERE id = ${instructionId} AND team_id = ${ctx.teamId}`;
       }
-      return {applied: currentCells.length, skipped: expected.length - currentCells.length, logIds, nextCursor: preview.next_cursor as string | null};
+      return {applied: currentCells.length, skipped: expected.length - currentCells.length, logIds, nextCursor: batch.nextCursor as string | null};
     });
     scheduleKnowledge(ctx);
     return result;
@@ -325,35 +317,24 @@ export function applyCaptureRule(ctx: HiveContext, id: string, token: string, in
   });
 }
 
-export async function listCaptureRuleApplications(ctx: HiveContext) {
-  const admin = await membership(ctx);
-  const rows = await getSql()`SELECT a.id, a.team_id, a.rule_id, a.learning_id, a.member_id, a.previous_state, a.applied_revision, a.reason_code, a.action, a.rule_name, a.created_at, a.reversed_at, a.reversal_reason, CASE WHEN NOT l.capture_flagged OR l.member_id = ${ctx.memberId} THEN l.title ELSE 'Private capture' END AS title FROM capture_rule_applications a JOIN learnings l ON l.id = a.learning_id AND l.team_id = a.team_id WHERE a.team_id = ${ctx.teamId} AND (${admin} OR a.member_id = ${ctx.memberId}) ORDER BY a.created_at DESC, a.id DESC LIMIT 100`;
-  return rows.map(row => ({id: row.id, ruleId: row.rule_id, learningId: row.learning_id, title: row.title, reasonCode: "capture_rule" as const, previousState: row.previous_state, createdAt: new Date(row.created_at).toISOString(), reversedAt: row.reversed_at ? new Date(row.reversed_at).toISOString() : null, reversalReason: row.reversal_reason, ruleName: row.rule_name ?? "Deleted rule", action: row.action ?? row.rule_action ?? "drop", count: 1}));
-}
-
-export async function reverseCaptureRuleApplicationInTransaction(tx: Parameters<typeof lockLearningWrites>[0], ctx: HiveContext, logId: string, reason: string, instructionId?: string) {
+export async function reverseCaptureRuleApplicationInTransaction(tx: Parameters<typeof lockLearningWrites>[0], ctx: HiveContext, logId: string, reason: string, instructionId: string) {
   await lockLearningWrites(tx, ctx);
   const members = await tx`SELECT role FROM members WHERE id = ${ctx.memberId} AND team_id = ${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
   if (!members.length) throw new HiveNotFoundError("Member not found in your hive.");
-  if (instructionId) {
-    const instructions = await tx`SELECT id, rule_snapshot FROM capture_rule_instructions WHERE id = ${instructionId} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND job_status = 'undo_pending' AND undo_started_at < undo_until FOR UPDATE`;
-    if (!instructions.length) throw new HiveError("This instruction cannot be undone.", 403);
-    if (instructions[0].rule_snapshot.scope === "team" && members[0].role !== "admin")
-      throw new HiveError("A team admin is needed to undo a team capture instruction.", 403);
-  } else if (members[0].role !== "admin") {
-    throw new HiveError("A team admin is needed to reverse this application.", 403);
-  }
+  const instructions = await tx`SELECT id, rule_snapshot FROM capture_rule_instructions WHERE id = ${instructionId} AND team_id = ${ctx.teamId} AND member_id = ${ctx.memberId} AND job_status = 'undo_pending' AND undo_started_at < undo_until FOR UPDATE`;
+  if (!instructions.length) throw new HiveError("This instruction cannot be undone.", 403);
+  if (instructions[0].rule_snapshot.scope === "team" && members[0].role !== "admin")
+    throw new HiveError("A team admin is needed to undo a team capture instruction.", 403);
   const rows = await tx`SELECT a.*, l.lifecycle, l.revision, l.member_id AS cell_member_id, l.capture_flagged, l.push_count FROM capture_rule_applications a JOIN learnings l ON l.id = a.learning_id AND l.team_id = a.team_id WHERE a.id = ${logId} AND a.team_id = ${ctx.teamId} FOR UPDATE OF a, l`;
   const row = rows[0];
   if (!row) throw new HiveNotFoundError("Rule application not found in your hive.");
-  if (instructionId && (row.instruction_id !== instructionId || row.member_id !== ctx.memberId))
+  if (row.instruction_id !== instructionId || row.member_id !== ctx.memberId)
     throw new HiveError("This instruction cannot reverse that application.", 403);
   const snapshot = row.before_snapshot as {cell: Record<string, any>; versions: {revision: number; content: unknown; diff: unknown}[]; evidence?: Row[]; pushes?: Row[]; pushCount?: number};
   if (row.reversed_at || (row.action === "drop" && row.lifecycle !== "retracted") || row.revision !== row.applied_revision || (snapshot.pushCount !== undefined && row.push_count !== snapshot.pushCount)) {
-    if (instructionId) return {id: logId, reversed: false};
-    throw new HiveError("This cell changed after the rule was applied. Review its current state.", 409);
+    return {id: logId, reversed: false};
   }
-  if (instructionId) {
+  {
     const rules = await tx`SELECT * FROM capture_rules WHERE team_id = ${ctx.teamId} AND enabled AND (scope = 'team' OR member_id = ${row.cell_member_id})`;
     const currentEvidence = await tx`SELECT payload FROM learning_evidence WHERE learning_id = ${row.learning_id} AND team_id = ${ctx.teamId}`;
     const context = snapshot.cell.capture_context ?? {};
@@ -365,7 +346,6 @@ export async function reverseCaptureRuleApplicationInTransaction(tx: Parameters<
   }
   const columns = ["title", "body", "kind", "source", "tags", "paths", "repo", "area", "cost", "blocked", "workaround", "confidence", "session_ref", "lifecycle", "verify_after", "superseded_by", "admin_outdated", "capture_flagged", "capture_redacted", "capture_rule_ids", "capture_categories", "capture_context"];
   const restored = Object.fromEntries(columns.filter(key => key in snapshot.cell).map(key => [key, snapshot.cell[key]]));
-  if (!instructionId && row.capture_flagged && row.cell_member_id !== ctx.memberId) restored.capture_flagged = true;
   restored.capture_context = tx.json((restored.capture_context ?? {}) as Record<string, string>);
   restored.capture_categories = tx.json((restored.capture_categories ?? {}) as Record<string, boolean>);
   await tx`UPDATE learnings SET ${tx(restored)} WHERE id = ${row.learning_id} AND team_id = ${ctx.teamId}`;
@@ -383,19 +363,6 @@ export async function reverseCaptureRuleApplicationInTransaction(tx: Parameters<
   await tx`UPDATE capture_rule_applications SET reversed_at = clock_timestamp(), reversed_by = ${ctx.memberId}, reversal_reason = ${redactSecrets(reason).text} WHERE id = ${logId} AND team_id = ${ctx.teamId}`;
   if (row.action === "drop") await recordMutation({name: "learning.lifecycle_changed", key: `${logId}:reversed`, learningId: row.learning_id, reasonCode: "capture_rule", properties: {ruleId: row.rule_id, previousState: "retracted", state: row.previous_state}});
   return {id: logId, reversed: true};
-}
-
-export function reverseCaptureRuleApplication(ctx: HiveContext, logId: string, reason: string) {
-  const parsed = z.string().trim().min(1).max(1000).safeParse(reason);
-  if (!parsed.success) throw new HiveInputError("Enter a reason for reversing this application.");
-  return withActor(ctx, () => analyticsTransaction(async () => {
-    const result = await getSql().begin(async tx => {
-      await lockLearningWrites(tx, ctx);
-      return reverseCaptureRuleApplicationInTransaction(tx, ctx, logId, parsed.data);
-    });
-    scheduleKnowledge(ctx);
-    return result;
-  }));
 }
 
 export function confirmFlaggedCapture(ctx: HiveContext, id: string) {

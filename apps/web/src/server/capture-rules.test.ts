@@ -3,7 +3,7 @@ import {captureRuleInputSchema, hivePushInput, type HiveContext} from "@hivemind
 import {createTeam, joinTeam} from "./auth";
 import {getSql} from "./db/client";
 import {newId} from "./db/ids";
-import {createCaptureRule, updateCaptureRule, deleteCaptureRule, listCaptureRules, effectiveRules, previewCaptureRule, applyCaptureRule, listCaptureRuleApplications, reverseCaptureRuleApplication, confirmFlaggedCapture, proposeRuleFromText} from "./capture-rules";
+import {createCaptureRule, updateCaptureRule, deleteCaptureRule, listCaptureRules, effectiveRules, enforceCaptureRules, confirmFlaggedCapture, proposeRuleFromText} from "./capture-rules";
 import {pushLearning, getLearning, searchLearnings, recentLearnings, askHive} from "./hive";
 import {learningVersions} from "./lifecycle";
 import {originFor, withOrigin, type EventRow} from "./analytics/events";
@@ -120,7 +120,7 @@ describe.skipIf(!enabled)("capture rule storage and ingress", {timeout: 60000}, 
     expect(context[0].capture_context).toMatchObject({agent: "codex", sessionType: "personal", home: "/Users/fixture"});
     for (const config of [{kind: "repo_match", pattern: "https://github.com/private/*.git"}, {kind: "path_match", pattern: "~/personal/**"}, {kind: "agent_or_client", sessionType: "personal"}]) {
       const rule = await createCaptureRule(member, ruleInput(config));
-      expect((await previewCaptureRule(member, rule.id)).count).toBe(1);
+      expect((await enforceCaptureRules(member, {title: cell.learning.title, body: cell.learning.body, ...context[0].capture_context})).action).toBe("drop");
       await deleteCaptureRule(member, rule.id);
     }
   });
@@ -136,15 +136,14 @@ describe.skipIf(!enabled)("capture rule storage and ingress", {timeout: 60000}, 
     expect(JSON.stringify(models.classify.mock.calls)).not.toContain("private-marker");
   });
 
-  it("persists requested category verdicts and reuses them for preview", async () => {
+  it("persists requested category verdicts and reuses them during enforcement", async () => {
     const rule = await createCaptureRule(member, ruleInput({kind: "content_category", category: "customer_data", action: "flag"}));
     const cell = await accepted(member, {title: "Categorised fixture", body: "Observed work fixture"});
     expect(cell.learning.captureFlagged).toBe(true);
     const stored = await getSql()`SELECT capture_categories FROM learnings WHERE id = ${cell.id} AND team_id = ${a.teamId}`;
     expect(stored[0].capture_categories).toEqual({customer_data: true});
     vi.mocked(classifyCaptureCategories).mockClear();
-    const preview = await previewCaptureRule(member, rule.id);
-    expect(preview.count).toBeGreaterThan(0);
+    expect((await enforceCaptureRules(member, {title: cell.learning.title, body: cell.learning.body, categories: stored[0].capture_categories})).flagged).toBe(true);
     expect(classifyCaptureCategories).not.toHaveBeenCalled();
   });
 
@@ -178,73 +177,6 @@ describe.skipIf(!enabled)("capture rule storage and ingress", {timeout: 60000}, 
     await deleteCaptureRule(member, rule.id);
     await confirmFlaggedCapture(member, flagged.id);
     expect((await getLearning(other, flagged.id))?.captureFlagged).toBe(false);
-  });
-
-  it.each(["drop", "redact", "flag"] as const)("applies %s with revision guards, private history and admin reversal", async action => {
-    const marker = `retro-${action}-marker`;
-    const cell = await accepted(member, {title: `Retro ${action}`, body: `Before ${marker} after`, kind: "friction", area: "tool", cost: 4});
-    const rule = await createCaptureRule(member, ruleInput({pattern: marker, action}));
-    const preview = await previewCaptureRule(member, rule.id);
-    expect(preview.count).toBe(1);
-    await expect(applyCaptureRule(other, rule.id, preview.token)).rejects.toMatchObject({status: 404});
-    await getSql()`INSERT INTO knowledge_snapshots (token_hash, team_id, member_id, revision, object_key, expires_at) VALUES (${newId("snapshot")}, ${a.teamId}, ${other.memberId}, 0, 'fixture-private-snapshot', now() + interval '1 hour')`;
-    const applied = await applyCaptureRule(member, rule.id, preview.token);
-    expect(await getSql()`SELECT token_hash FROM knowledge_snapshots WHERE team_id = ${a.teamId}`).toHaveLength(0);
-    expect(applied.applied).toBe(1);
-    const own = await getLearning(member, cell.id);
-    if (action === "drop") {
-      expect(own).toMatchObject({lifecycle: "retracted", captureFlagged: true});
-      expect(await getLearning(other, cell.id)).toBeNull();
-      expect((await searchLearnings(other, {query: marker, include_history: true, limit: 25})).map(hit => hit.id)).not.toContain(cell.id);
-      await expect(learningVersions(other, cell.id)).rejects.toMatchObject({status: 404});
-    } else if (action === "redact") {
-      expect(own).toMatchObject({lifecycle: "fresh", body: "Before [removed] after", captureRedacted: true});
-      expect(JSON.stringify(await learningVersions(other, cell.id))).not.toContain(marker);
-      expect(await getSql()`SELECT push_id FROM learning_evidence WHERE learning_id = ${cell.id} AND team_id = ${a.teamId}`).toHaveLength(0);
-    } else {
-      expect(own).toMatchObject({lifecycle: "fresh", captureFlagged: true});
-      expect(await getLearning(a, cell.id)).toBeNull();
-    }
-    const ownHistory = await listCaptureRuleApplications(member);
-    expect(ownHistory.map(log => log.id)).toContain(applied.logIds[0]);
-    expect(JSON.stringify(ownHistory)).not.toContain("before_snapshot");
-    expect((await listCaptureRuleApplications(other)).map(log => log.id)).not.toContain(applied.logIds[0]);
-    const adminHistory = await listCaptureRuleApplications(a);
-    if (action !== "redact") expect(adminHistory.find(log => log.id === applied.logIds[0])?.title).toBe("Private capture");
-    await expect(reverseCaptureRuleApplication(member, applied.logIds[0], "Restore fixture")).rejects.toMatchObject({status: 403});
-    await reverseCaptureRuleApplication(a, applied.logIds[0], "Restore fixture");
-    const restored = await getLearning(member, cell.id);
-    expect(restored?.body).toContain(marker);
-    expect(restored?.lifecycle).toBe("fresh");
-    if (action !== "redact") expect(await getLearning(other, cell.id)).toBeNull();
-    await expect(reverseCaptureRuleApplication(a, applied.logIds[0], "Repeat reversal")).rejects.toMatchObject({status: 409});
-    await expect(applyCaptureRule(member, rule.id, preview.token)).rejects.toMatchObject({status: 404});
-  });
-
-  it("rejects stale rule and cell previews without partial writes", async () => {
-    const cell = await accepted(member, {title: "Revision preview", body: "revision-marker fact"});
-    const rule = await createCaptureRule(member, ruleInput({pattern: "revision-marker"}));
-    const staleRule = await previewCaptureRule(member, rule.id);
-    await updateCaptureRule(member, rule.id, ruleInput({pattern: "revision-marker", name: "Edited"}));
-    await expect(applyCaptureRule(member, rule.id, staleRule.token)).rejects.toMatchObject({status: 409});
-    const staleCell = await previewCaptureRule(member, rule.id);
-    await getSql()`UPDATE learnings SET body = 'A changed body' WHERE id = ${cell.id} AND team_id = ${a.teamId}`;
-    await expect(applyCaptureRule(member, rule.id, staleCell.token)).rejects.toMatchObject({status: 409});
-    expect((await getLearning(member, cell.id))?.lifecycle).toBe("fresh");
-  });
-
-  it("pages past 500 nonmatching cells", async () => {
-    const sql = getSql();
-    const prefix = newId("x").slice(2, 5);
-    const rows = Array.from({length: 501}, (_, index) => ({id: `lrn_${prefix}${index.toString(2).padStart(9, "0").replaceAll("0", "a").replaceAll("1", "b")}`, team_id: b.teamId, member_id: b.memberId, title: "Unmatched batch", body: index === 500 ? "later-match" : "No match", kind: "learning", source: "manual", confidence: 0.7}));
-    await sql`INSERT INTO learnings ${sql(rows)} ON CONFLICT (id) DO NOTHING`;
-    const rule = await createCaptureRule(b, ruleInput({pattern: "later-match"}));
-    const first = await previewCaptureRule(b, rule.id);
-    expect(first).toMatchObject({count: 0, scanned: 500, truncated: true});
-    expect(first.nextCursor).toBeTruthy();
-    const second = await previewCaptureRule(b, rule.id, first.nextCursor!);
-    expect(second).toMatchObject({count: 1, scanned: 1, truncated: false});
-    expect((await applyCaptureRule(b, rule.id, second.token)).applied).toBe(1);
   });
 
   it("makes one proposal tool call without forced tool choice or invented owner context", async () => {

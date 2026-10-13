@@ -23,8 +23,8 @@ import { reportOutcome, recordFeedback, feedbackHistory } from "./feedback";
 import {
   createCaptureRule,
   deleteCaptureRule,
-  previewCaptureRule,
-  applyCaptureRule,
+  scanInstructionCells,
+  applyInstructionCells,
 } from "./capture-rules";
 import { deriveCaptureDetails } from "./llm/capture";
 import { classifyPush } from "./classify";
@@ -103,6 +103,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const ids = [a.teamId, b.teamId];
       for (const table of [
         "feedback",
+        "capture_rule_applications",
+        "capture_rule_instructions",
         "capture_rules",
         "learning_pushes",
         "ask_log",
@@ -499,8 +501,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
         action: "redact",
         enabled: true,
       });
-      const preview = await previewCaptureRule(a, redact.id);
-      await applyCaptureRule(a, redact.id, preview.token);
+      const instructionId = newId("cinstr");
+      await getSql()`INSERT INTO capture_rule_instructions (id, team_id, member_id, source, decision, outcome, rule_id, rule_revision, rule_snapshot, restatement, natural_text, job_status, undo_until) VALUES (${instructionId}, ${a.teamId}, ${a.memberId}, 'web', '{}', 'saved', ${redact.id}, 1, ${getSql().json(redact)}, 'Remove private outcome content.', 'Remove private-outcome from existing cells.', 'pending', now() + interval '1 hour')`;
+      const batch = await scanInstructionCells(a, redact.id, instructionId);
+      await applyInstructionCells(a, redact.id, batch, instructionId);
       expect(JSON.stringify(await feedbackHistory(a, cell.id))).not.toContain(
         "private-outcome",
       );

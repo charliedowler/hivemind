@@ -1,53 +1,54 @@
 .capture-page {
+  width: 100%;
   max-width: var(--container-md);
   margin-inline: auto;
-  gap: var(--space-8);
+  gap: var(--space-6);
 }
-.capture-section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-.capture-rule {
-  border-color: var(--border-ink);
-}
-.capture-textarea {
-  min-height: var(--space-24);
-  width: 100%;
-  resize: vertical;
-  padding: var(--space-3);
-  color: var(--text-body);
+.capture-defaults {
+  padding: var(--space-4);
   background: var(--surface-card);
   border: var(--outline-w) solid var(--border-ink);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-hard-sm);
 }
-.capture-proposal {
-  padding: var(--space-4);
-  background: var(--surface-sunken);
-  border: var(--outline-w) solid var(--border-ink);
-  border-radius: var(--radius-md);
+.capture-defaults p {
+  margin-top: var(--space-2);
 }
 .capture-summary {
   padding: var(--space-4);
   background: var(--success-soft);
   border: var(--outline-w) solid var(--border-ink);
   border-radius: var(--radius-md);
-}
-.capture-history {
-  display: grid;
-  gap: var(--space-4);
-  list-style: none;
-  padding: var(--space-0);
-  margin: var(--space-0);
-}
-.capture-history li {
-  padding: var(--space-4);
-  border: var(--outline-w) solid var(--border-ink);
-  border-radius: var(--radius-md);
-  background: var(--surface-card);
-  box-shadow: var(--shadow-hard-sm);
   overflow-wrap: anywhere;
+}
+.capture-undo {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.capture-list {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.capture-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-bottom: var(--outline-w) solid var(--border-ink);
+  overflow-wrap: anywhere;
+}
+.capture-item > :first-child {
+  min-width: 0;
+}
+.capture-undo:focus-visible {
+  outline: var(--outline-w) solid var(--border-ink);
+  outline-offset: var(--space-1);
 }

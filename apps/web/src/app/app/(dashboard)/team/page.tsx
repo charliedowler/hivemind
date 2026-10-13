@@ -35,8 +35,7 @@ export default async function Page() {
       <section className={styles.section} aria-labelledby="keeps">
         <h2 id="keeps">What Hive keeps</h2>
         <fieldset className={styles.controls} disabled={!isAdmin}>
-          {/* TODO Round D: pass rules, isAdmin and scope="team" once CaptureRules accepts them. */}
-          <CaptureRules initial={{ rules, applications: [], isAdmin }} />
+          <CaptureRules initial={{ rules, isAdmin }} scope="team" />
         </fieldset>
       </section>
       <section className={styles.section} aria-labelledby="export">

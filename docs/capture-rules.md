@@ -1,6 +1,10 @@
 # What Hive keeps
 
-Members choose which observations their agents may save at `/settings/capture`. Admins can also set rules for the whole team. Team rules and the member's own rules apply to each capture. A member cannot change another member's rules or weaken a team rule.
+Team admins choose what Hive leaves out on the Team page. Account can show the member's own exclusions through the same component in personal mode. The capture settings route redirects to Team until its removal. Team exclusions and the member's own exclusions apply together. A member cannot change another member's exclusions or weaken a team exclusion.
+
+Every new team starts with three enabled content exclusions: credentials, personal data and customer data. These use the existing `credentials`, `personal_info` and `customer_data` categories and the `drop` action. Each switch excludes that content when on. Only team admins can change it. Turning a switch off affects future captures; earlier changes to cells stay as they are. The default IDs are stable for each team. The backfill adds any missing defaults without duplicating them or overwriting a saved choice.
+
+Describe something Hive should not keep in one sentence, then select Save. A complete instruction takes effect immediately. Hive shows one highlighted line and Undo. The list below uses plain words, with enable and delete controls. Deletion also offers Undo, which restores the exclusion for future captures and leaves earlier cell changes alone. Team mode saves for every member; personal mode saves for the caller's agents only.
 
 ## Rules
 
@@ -27,9 +31,9 @@ Hive evaluates repo, path, agent and keyword rules first. It asks the content cl
 
 A matching drop takes precedence over other actions. Redaction and flagging can apply together. All reads still require current team membership.
 
-## Describe a rule
+## Save an exclusion
 
-Describe what Hive should keep in settings or through `hive_set_capture_rule` in Slack. A clear, specific instruction saves the rule immediately. Hive restates the result in one line. There is no proposal or confirmation step. The web description field also accepts undo.
+Describe what Hive should not keep on Team or Account or through `hive_set_capture_rule` in Slack. A clear, specific instruction saves the rule immediately. Hive restates the result in one line. There is no proposal or confirmation step. The web description field also accepts undo.
 
 A pure decision checks whether the text is an instruction, whether it identifies the required matches and whether the requested scope is allowed. It has a 500 ms timeout. When this decision is unavailable, the schema model's own judgement provides the fallback. Current database membership and the admin role still control team rules. A model cannot grant permission.
 
@@ -49,9 +53,11 @@ Channel replies describe the action, match type and scope without quoting privat
 
 ## Existing cells
 
-The structured editor offers a bounded preview before manual application. Description-based rules use the same guarded batches automatically. The preview includes learnings, insights and friction. Drop rules retract matching cells through the existing lifecycle with reason `capture_rule` and the rule ID. Redact and flag rules use the same actions as new captures. The history records the action and count, and an admin can reverse it through Applied history in capture settings.
+Sentence-based drop and redact exclusions also update existing memories automatically. Team exclusions check the whole team's existing memories. A member's private-until-confirmed exclusion applies to future captures. The instruction worker scans at most 100 cells per batch, or eight for a content category. Empty batches advance the cursor. It uses an in-memory batch, with no stored preview token or separate human action.
 
-A preview checks at most 500 cells for a cheap rule or eight cells for a content rule. The smaller content batch bounds model work within the request. If more cells remain, Preview next batch advances the cursor, including batches with no matches. A changed rule or cell needs a new preview. Snapshot links issued before an applied privacy action are revoked and cannot be used to bypass a later privacy action.
+The worker rechecks membership, ownership, the saved revision and the cursor before each change. It skips cells edited after the scan. Drop retracts matching cells and keeps their content private. Redaction removes matching content from shared history and sidecars. Flagging keeps a cell private to its owner. Snapshot links issued before an applied privacy action are revoked. The action history remains private audit data; it has no web editor or reversal form. Undo uses the instruction's audited changes and preserves later edits and other exclusions.
+
+This automatic path already supports an instruction to remove matching existing cells. It also runs for complete drop or redact descriptions that do not explicitly mention older cells. The three default switches do not trigger a historical scan.
 
 ## Hooks
 
@@ -63,4 +69,4 @@ Hooks send working directory, remote URL, repo name, branch, agent and session m
 
 ## Operations
 
-Apply the reviewed SQL migration through `pnpm --filter web db:migrate` from the merged landing commit before deploying code that uses capture rules. The migration and rollback set lock and statement timeouts. The rollback preserves recorded privacy history rather than silently discarding it. Never use schema push for this change.
+Migration `0024_default_capture_rules.sql` creates the idempotent default helper and backfills existing teams. Enrollment calls the helper in the same transaction as new team membership. The rollback refuses to remove the helper while default exclusions remain, so it cannot silently weaken privacy. No table is dropped. Apply reviewed SQL migrations through `pnpm --filter web db:migrate` from the merged landing commit before deploying code that uses capture rules. The migration and rollback set lock and statement timeouts. The rollback preserves recorded privacy history rather than silently discarding it. Never use schema push for this change.

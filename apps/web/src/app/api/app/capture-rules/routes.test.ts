@@ -4,10 +4,6 @@ import { GET as list, POST as create } from "./route";
 import { PATCH as update, DELETE as remove } from "./[id]/route";
 import { POST as instruct } from "./propose/route";
 import { POST as undo } from "./undo/route";
-import { POST as preview } from "./[id]/preview/route";
-import { POST as apply } from "./[id]/apply/route";
-import { GET as history } from "./history/route";
-import { POST as reverse } from "./history/[id]/reverse/route";
 import { POST as confirmFlagged } from "./flagged/[id]/confirm/route";
 
 const fixture = vi.hoisted(() => {
@@ -19,6 +15,7 @@ const fixture = vi.hoisted(() => {
   };
   return {
     ctx,
+    latest: vi.fn(async () => [{id: "cinstr_test", rule_id: "crule_test"}]),
     getWebContext: vi.fn(async () => ctx as typeof ctx | null),
     authenticateApiKey: vi.fn(async (_key: string) => ctx as typeof ctx | null),
     memberContext: vi.fn(
@@ -61,21 +58,10 @@ const fixture = vi.hoisted(() => {
         pending: false,
       },
     })),
-    previewCaptureRule: vi.fn(async () => ({
-      token: "preview_test",
-      count: 3,
-      scanned: 500,
-      truncated: true,
-    })),
-    applyCaptureRule: vi.fn(async () => ({ applied: 3, logIds: [] })),
-    listCaptureRuleApplications: vi.fn(async () => []),
-    reverseCaptureRuleApplication: vi.fn(async () => ({
-      id: "app_test",
-      reversed: true,
-    })),
     confirmFlaggedCapture: vi.fn(async () => ({ id: "lrn_test" })),
   };
 });
+vi.mock("@/server/db/client", () => ({getSql: () => fixture.latest}));
 vi.mock("@/server/auth", () => ({
   getWebContext: fixture.getWebContext,
   authenticateApiKey: fixture.authenticateApiKey,
@@ -98,15 +84,11 @@ vi.mock("@/server/analytics/events", () => ({
   withOrigin: async (_origin: unknown, action: () => unknown) => action(),
 }));
 vi.mock("@/server/capture-rules", () => ({
-  reverseCaptureRuleApplication: fixture.reverseCaptureRuleApplication,
   effectiveRules: fixture.effectiveRules,
   listCaptureRules: fixture.listCaptureRules,
   createCaptureRule: fixture.createCaptureRule,
   updateCaptureRule: fixture.updateCaptureRule,
   deleteCaptureRule: fixture.deleteCaptureRule,
-  previewCaptureRule: fixture.previewCaptureRule,
-  applyCaptureRule: fixture.applyCaptureRule,
-  listCaptureRuleApplications: fixture.listCaptureRuleApplications,
   confirmFlaggedCapture: fixture.confirmFlaggedCapture,
 }));
 vi.mock("@/server/capture-rule-instructions", () => ({
@@ -143,6 +125,7 @@ beforeEach(() => {
   );
   fixture.memberContext.mockResolvedValue(fixture.ctx);
   fixture.requireAdmin.mockResolvedValue(undefined);
+  fixture.latest.mockResolvedValue([{id: "cinstr_test", rule_id: "crule_test"}]);
   fixture.requireMcpAuth.mockImplementation(
     (_auth, handler, _options) => async (req: Request) => {
       if (req.headers.get("authorization") !== "Bearer valid-oauth")
@@ -227,40 +210,6 @@ describe("capture rule cookie routes", () => {
       naturalText: "Exclude repos outside our work owners.",
     });
   });
-  it("requires a reason and explicit reversal, and preserves admin-only enforcement", async () => {
-    expect(
-      (await reverse(request({ reason: "Review completed" }), params)).status,
-    ).toBe(400);
-    expect(
-      (await reverse(request({ reason: " ", confirmed: true }), params)).status,
-    ).toBe(400);
-    expect(fixture.reverseCaptureRuleApplication).not.toHaveBeenCalled();
-    expect(
-      (
-        await reverse(
-          request({ reason: "Review completed", confirmed: true }),
-          params,
-        )
-      ).status,
-    ).toBe(200);
-    expect(fixture.reverseCaptureRuleApplication).toHaveBeenCalledWith(
-      fixture.ctx,
-      "crule_test",
-      "Review completed",
-    );
-    fixture.reverseCaptureRuleApplication.mockRejectedValueOnce(
-      Object.assign(new Error("A team admin is needed."), { status: 403 }),
-    );
-    expect(
-      (
-        await reverse(
-          request({ reason: "Review completed", confirmed: true }),
-          params,
-        )
-      ).status,
-    ).toBe(403);
-  });
-
   it("rejects every settings route without a cookie session, even with a bearer", async () => {
     fixture.getWebContext.mockResolvedValue(null);
     const routes = [
@@ -269,20 +218,11 @@ describe("capture rule cookie routes", () => {
       () => update(request(input), params),
       () => remove(request(), params),
       () => instruct(request({ text: "Avoid private repos" })),
-      () => undo(),
-      () => preview(request({}), params),
-      () => apply(request({ token: "preview_test", confirmed: true }), params),
-      () => history(),
-      () =>
-        reverse(
-          request({ reason: "Review completed", confirmed: true }),
-          params,
-        ),
+      () => undo(request({ruleId: "crule_test"})),
       () => confirmFlagged(request({ confirmed: true }), params),
     ];
     for (const route of routes) expect((await route()).status).toBe(401);
     expect(fixture.createCaptureRule).not.toHaveBeenCalled();
-    expect(fixture.applyCaptureRule).not.toHaveBeenCalled();
   });
   it("creates and edits typed rules and rejects an invalid owner list", async () => {
     expect((await create(request(input))).status).toBe(201);
@@ -308,7 +248,7 @@ describe("capture rule cookie routes", () => {
     expect(response.status).toBe(200);
     expect(fixture.setCaptureRuleFromText).toHaveBeenCalledWith(
       fixture.ctx,
-      "Avoid private repos",
+      "For my agents only: Avoid private repos",
       { source: "web" },
     );
     expect(await response.json()).toMatchObject({
@@ -350,7 +290,7 @@ describe("capture rule cookie routes", () => {
     await instruct(request({ text: "team" }));
     expect(fixture.setCaptureRuleFromText).toHaveBeenLastCalledWith(
       fixture.ctx,
-      "team",
+      "For my agents only: team",
       { source: "web" },
     );
   });
@@ -361,39 +301,19 @@ describe("capture rule cookie routes", () => {
       expect(fixture.setCaptureRuleFromText).not.toHaveBeenCalled();
     },
   );
-  it("passes typed undo through the same field and returns restoration counts", async () => {
-    fixture.setCaptureRuleFromText.mockResolvedValueOnce({
-      status: "undone",
-      restatement: "Removed your latest rule.",
-      question: undefined,
-      counts: {
-        scanned: 3,
-        matched: 3,
-        applied: 0,
-        skipped: 0,
-        restored: 2,
-        retained: 1,
-        pending: false,
-      },
-      undoUntil: "",
-    });
-    const response = await instruct(request({ text: "undo" }));
-    expect(fixture.setCaptureRuleFromText).toHaveBeenCalledWith(
-      fixture.ctx,
-      "undo",
-      { source: "web" },
-    );
-    expect(await response.json()).toMatchObject({
-      status: "undone",
-      counts: { restored: 2, retained: 1 },
-    });
+  it("passes typed undo to the shared undo service", async () => {
+    const response = await instruct(request({text: "undo"}));
+    expect(fixture.undoCaptureRuleInstruction).toHaveBeenCalledWith(fixture.ctx, {source: "web"});
+    expect(fixture.setCaptureRuleFromText).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({status: "undone", counts: {restored: 2}});
   });
   it("undoes the caller's latest web instruction without a confirmation or client-selected id", async () => {
-    const response = await undo();
+    const response = await undo(request({ruleId: "crule_test"}));
     expect(response.status).toBe(200);
     expect(fixture.undoCaptureRuleInstruction).toHaveBeenCalledWith(
       fixture.ctx,
       { source: "web" },
+      "cinstr_test",
     );
     expect(await response.json()).toMatchObject({
       status: "undone",
@@ -404,7 +324,7 @@ describe("capture rule cookie routes", () => {
     fixture.undoCaptureRuleInstruction.mockRejectedValueOnce(
       Object.assign(new Error("The undo window has expired."), { status: 409 }),
     );
-    expect((await undo()).status).toBe(409);
+    expect((await undo(request({ruleId: "crule_test"}))).status).toBe(409);
     fixture.setCaptureRuleFromText.mockRejectedValueOnce(
       Object.assign(new Error("A team admin is needed."), { status: 403 }),
     );
@@ -412,41 +332,6 @@ describe("capture rule cookie routes", () => {
       (await instruct(request({ text: "Exclude all team private repos" })))
         .status,
     ).toBe(403);
-  });
-  it("passes a bounded batch cursor and rejects malformed cursors", async () => {
-    const cursor = "lrn_abcdefghijkl";
-    expect((await preview(request({ cursor }), params)).status).toBe(200);
-    expect(fixture.previewCaptureRule).toHaveBeenCalledWith(
-      fixture.ctx,
-      "crule_test",
-      cursor,
-    );
-    fixture.previewCaptureRule.mockClear();
-    expect((await preview(request({ cursor: "wrong" }), params)).status).toBe(
-      400,
-    );
-    expect(fixture.previewCaptureRule).not.toHaveBeenCalled();
-  });
-  it("previews the authenticated member's rule and requires explicit apply confirmation", async () => {
-    const response = await preview(request({}), params);
-    expect(await response.json()).toMatchObject({
-      count: 3,
-      scanned: 500,
-      truncated: true,
-    });
-    expect(
-      (await apply(request({ token: "preview_test" }), params)).status,
-    ).toBe(400);
-    expect(fixture.applyCaptureRule).not.toHaveBeenCalled();
-    expect(
-      (await apply(request({ token: "preview_test", confirmed: true }), params))
-        .status,
-    ).toBe(200);
-    expect(fixture.applyCaptureRule).toHaveBeenCalledWith(
-      fixture.ctx,
-      "crule_test",
-      "preview_test",
-    );
   });
   it("requires explicit sharing confirmation before calling the owner-guarded backend", async () => {
     expect((await confirmFlagged(request({}), params)).status).toBe(400);
@@ -459,34 +344,22 @@ describe("capture rule cookie routes", () => {
       "crule_test",
     );
   });
-  it("reads history for members and hides admin controls when admin guard rejects", async () => {
-    fixture.requireAdmin.mockRejectedValue(
-      Object.assign(new Error("Only an admin."), { status: 403 }),
-    );
-    expect(await (await list()).json()).toMatchObject({
-      isAdmin: false,
-      rules: [],
-    });
-    expect((await history()).status).toBe(200);
-    expect(fixture.listCaptureRuleApplications).toHaveBeenCalledWith(
-      fixture.ctx,
-    );
+  it("hides admin controls when the admin guard rejects", async () => {
+    fixture.requireAdmin.mockRejectedValue(Object.assign(new Error("Only an admin."), {status: 403}));
+    expect(await (await list()).json()).toMatchObject({isAdmin: false, rules: []});
   });
-  it("preserves backend permission and stale-preview failures", async () => {
-    fixture.updateCaptureRule.mockRejectedValueOnce(
-      Object.assign(new Error("Only a team admin can change this rule."), {
-        status: 403,
-      }),
-    );
-    expect((await update(request(input), params)).status).toBe(403);
-    fixture.applyCaptureRule.mockRejectedValueOnce(
-      Object.assign(new Error("Preview it again."), { status: 409 }),
-    );
-    const response = await apply(
-      request({ token: "preview_test", confirmed: true }),
-      params,
-    );
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: "Preview it again." });
+  it("rejects team instructions before model work for a member", async () => {
+    fixture.requireAdmin.mockRejectedValueOnce(Object.assign(new Error("Only an admin."), {status: 403}));
+    expect((await instruct(request({text: "Avoid wayfarer", scope: "team"}))).status).toBe(403);
+    expect(fixture.setCaptureRuleFromText).not.toHaveBeenCalled();
+  });
+  it("adds the team context to a sentence without a second step", async () => {
+    expect((await instruct(request({text: "never keep anything from the wayfarer repo", scope: "team"}))).status).toBe(200);
+    expect(fixture.setCaptureRuleFromText).toHaveBeenCalledWith(fixture.ctx, "For the whole team: never keep anything from the wayfarer repo", {source: "web"});
+  });
+  it("refuses Undo for an older result rather than undoing a newer action", async () => {
+    fixture.latest.mockResolvedValueOnce([{id: "cinstr_new", rule_id: "crule_new"}]);
+    expect((await undo(request({ruleId: "crule_test"}))).status).toBe(409);
+    expect(fixture.undoCaptureRuleInstruction).not.toHaveBeenCalled();
   });
 });
