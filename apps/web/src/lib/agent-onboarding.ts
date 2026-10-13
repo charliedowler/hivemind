@@ -6,7 +6,11 @@ export const signInGuidance =
 
 export const agentInstructions = `# Set up Hive
 
-Before running the installer, tell the person one line: “Installing Hive for Claude Code and Codex: the MCP server, a skill, and capture hooks that only act on projects you choose; your config is backed up first.”
+Before running the installer, name exactly the selected clients in one line: “Installing Hive for <clients>: the MCP server, a skill, and capture hooks that only act on projects you choose; your config is backed up first.”
+CLAUDECODE selects Claude Code; CODEX_* session markers (except CODEX_HOME) select Codex. Claude Code wins if both are present.
+Use “Installing Hive for Claude Code” in Claude Code and “Installing Hive for Codex” in Codex; mention capture hooks only for Claude Code.
+Without session markers, install configures the clients detected on the machine and announces “(detected on this machine)”.
+Use \`--client claude\`, \`--client codex\`, \`--client all\` or \`--client claude,codex\` only when the person selects them explicitly.
 Run \`npx gohive@latest install\` from the current repo.
 If the setup prompt includes a join link, add \`--join-url <joinUrl>\` to the install command.
 If a person is present, sign in as them with one click; use agent identity only when no human is at the keyboard.
@@ -14,7 +18,8 @@ It opens a browser tab. Tell the person: “Sign in with Google in the tab that 
 Continue when \`gohive status\` reports signed in.
 Use agent identity only when no person is at the keyboard: \`npx gohive@latest install --identity agent\`.
 After sign-in, run \`npx gohive status\` to finish joining; if Hive tools are not loaded in Claude Code, run \`/mcp\` to reconnect Hive. Never create an AgentMail inbox for a person.
-Keep MCP OAuth continuation and the hook connection the installer configures.
+Claude Code uses the same sign-in for MCP and hooks. Reconnect Hive in \`/mcp\` after status succeeds; a second OAuth sign-in is not needed.
+Codex keeps its native \`codex mcp login hive\` connection.
 If Hive is already installed and signed in, reuse that setup.
 Read the current project selection with \`hive_share_projects { revision: 0 }\`.
 If a selection exists, keep it and skip the project question.
