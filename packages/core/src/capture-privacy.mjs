@@ -11,7 +11,7 @@ const secretPatterns = [
 ];
 const placeholder = /^(?:\[redacted\]|\[removed\]|<[^>]+>|\*+|\$\{[^}]+\}|process\.env\.[\w]+|(?:undefined|null|true|false))$/i;
 const secretName = String.raw`\b(?:[\w.-]*[_-])?(?:password|passwd|pwd|secret|api[_ -]?key|token|access[_ -]?token|refresh[_ -]?token|auth[_ -]?token|client[_ -]?secret|session(?:[_ -]?(?:id|token|key))?|cookie)\b["']?\s*(?:[:=]\s*|(?:is|was)\s+)`;
-const assignment = new RegExp(`(${secretName})(["\x60'])([^\\r\\n]*?)\\2|(${secretName})(\\[[^\\]\\r\\n]*\\]|\\$\\{[^}\\r\\n]*\\}|<[^>\\r\\n]*>|[^\\s,;"'\x60]+)`, "gi");
+const assignment = new RegExp(`(${secretName})(["\x60'])([^\\r\\n]*?)\\2|(${secretName})(\\[[^\\]\\r\\n]*\\]|\\$\\{[^}\\r\\n]*\\}|<[^>\\r\\n]*>|[^\\r\\n,;"'\x60]+)`, "gi");
 
 export function redactSecrets(value) {
   let text = value;

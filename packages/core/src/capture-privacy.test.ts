@@ -8,6 +8,7 @@ describe("local capture privacy gate", () => {
     "PASSWORD=example-only-password",
     '"password": "example-only-password"',
     "The service password is example-only-password.",
+    "The service password is example-only alpha beta.",
     "client_secret = 'example-only-secret'",
     "api key: example-only-key",
     "password = `example-only-password`",
@@ -104,6 +105,12 @@ describe("local capture privacy gate", () => {
     expect(JSON.stringify(result)).not.toContain("dummy-password");
     expect(input.body).toContain("dummy-password");
     expect(gateCapturePrivacy(result.input).action).toBe("allow");
+  });
+
+  it("removes the entire unquoted credential value when it has spaces", () => {
+    const result = gateCapturePrivacy({body: "The database config uses password: example-only alpha beta."});
+    expect(result).toMatchObject({action: "redact", input: {body: "The database config uses password: [redacted]"}});
+    expect(JSON.stringify(result)).not.toMatch(/example-only|alpha|beta/);
   });
 
   it("checks sidecars and all context fields even when categories claim they are safe", () => {
