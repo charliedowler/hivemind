@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { excludedFromRetrieval, type LearningStanding, type LearningView, type SearchHit } from "@hivemind/core";
+import {
+  excludedFromRetrieval,
+  type LearningStanding,
+  type LearningView,
+  type SearchHit,
+} from "@hivemind/core";
 import {
   Badge,
   Button,
@@ -37,7 +42,12 @@ function SearchResults({
     const timer = setTimeout(() => {
       requestJson<{ hits: SearchHit[] }>(
         "/api/app/search",
-        { query, repo: repo || undefined, limit: 25, include_history: includeHistory },
+        {
+          query,
+          repo: repo || undefined,
+          limit: 25,
+          include_history: includeHistory,
+        },
         controller.signal,
       )
         .then(setResult)
@@ -54,7 +64,9 @@ function SearchResults({
   if (result.error) return <ErrorPanel message={result.error} />;
   if (!result.hits)
     return <LoadingPanel>Searching for matching cells.</LoadingPanel>;
-  const hits = result.hits.filter((hit) => includeHistory || !excludedFromRetrieval(hit));
+  const hits = result.hits.filter(
+    (hit) => includeHistory || !excludedFromRetrieval(hit),
+  );
   return (
     <div className="stack">
       <p className="small muted" role="status">
@@ -63,7 +75,12 @@ function SearchResults({
       {hits.length ? (
         <div className="search-results">
           {hits.map((hit) => (
-            <SearchHitCard key={hit.id} hit={hit} onOpen={onOpen} includeHistory={includeHistory} />
+            <SearchHitCard
+              key={hit.id}
+              hit={hit}
+              onOpen={onOpen}
+              includeHistory={includeHistory}
+            />
           ))}
         </div>
       ) : (
@@ -178,7 +195,15 @@ export function Feed({
     setState((previous) => ({
       ...previous,
       learnings: previous.learnings.map((item) =>
-        item.id === id ? { ...item, votes, unhelpfulLabel: votes.down ? `Marked unhelpful by ${votes.down}` : null } : item,
+        item.id === id
+          ? {
+              ...item,
+              votes,
+              unhelpfulLabel: votes.down
+                ? `Marked unhelpful by ${votes.down}`
+                : null,
+            }
+          : item,
       ),
     }));
   }
@@ -235,7 +260,11 @@ export function Feed({
             ]}
           />
         </div>
-        <Switch label="Show history" checked={includeHistory} onChange={() => setIncludeHistory(value => !value)} />
+        <Switch
+          label="Show history"
+          checked={includeHistory}
+          onChange={() => setIncludeHistory((value) => !value)}
+        />
         <div ref={list}>
           {query.trim() ? (
             <SearchResults

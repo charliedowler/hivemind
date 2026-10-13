@@ -680,7 +680,11 @@ async function pushLearningAction(
 export function searchLearnings(
   ctx: HiveContext,
   input: HiveSearchInput,
-  options: { publicOnly?: boolean; cellsOnly?: boolean; excludeFlagged?: boolean } = {},
+  options: {
+    publicOnly?: boolean;
+    cellsOnly?: boolean;
+    excludeFlagged?: boolean;
+  } = {},
 ): Promise<(SearchHit & LearningStanding)[]> {
   return withOperation(ctx, "search", () =>
     searchLearningsAction(ctx, input, options),
@@ -690,7 +694,11 @@ export function searchLearnings(
 async function searchLearningsAction(
   ctx: HiveContext,
   input: HiveSearchInput,
-  options: { publicOnly?: boolean; cellsOnly?: boolean; excludeFlagged?: boolean } = {},
+  options: {
+    publicOnly?: boolean;
+    cellsOnly?: boolean;
+    excludeFlagged?: boolean;
+  } = {},
 ): Promise<(SearchHit & LearningStanding)[]> {
   const started = performance.now();
   const data = validate(hiveSearchInput, input);
@@ -702,17 +710,16 @@ async function searchLearningsAction(
   const tsquery = sql`replace(plainto_tsquery('english', ${data.query})::text, '&', '|')::tsquery`;
   const queryLexemes = sql`tsvector_to_array(to_tsvector('english', ${data.query}))`;
   const coverage = sql`(SELECT count(*) FROM unnest(tsvector_to_array(l.search)) AS lexeme WHERE lexeme = ANY(${queryLexemes}))::float / greatest(cardinality(${queryLexemes}), 1)`;
-  const excludeFlagged = options.excludeFlagged ?? ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
+  const excludeFlagged =
+    options.excludeFlagged ??
+    ["slack", "scheduled"].includes(currentOrigin()?.entrypoint ?? "");
   const filter = sql`${learningVisibleSql(ctx)} AND (NOT ${excludeFlagged} OR NOT l.capture_flagged) AND ${retrievalEligibleSql(data.include_history)} AND (${tags.length === 0} OR l.tags && ${tags}::text[]) AND (${data.kind ?? null}::text IS NULL OR l.kind = ${data.kind ?? null}) AND (${!options.publicOnly} OR l.source <> 'slack' OR EXISTS(SELECT 1 FROM slack_channels sc WHERE sc.team_id=l.team_id AND sc.private=false AND sc.bot_member=true AND l.session_ref LIKE '%' || '/archives/' || sc.channel_id || '/%'))`;
   const ftsRows =
     await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.search @@ ${tsquery} AND ${coverage} >= ${minimumLexemeCoverage} ORDER BY fts DESC LIMIT 40`;
   const vectorRows = embedding
     ? await sql`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name, 1 - (l.embedding <=> ${JSON.stringify(embedding)}::vector) AS vector, ts_rank_cd(l.search, ${tsquery}) AS fts FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${filter} AND l.embedding IS NOT NULL ORDER BY l.embedding <=> ${JSON.stringify(embedding)}::vector LIMIT 40`
     : [];
-  const candidates = new Map<
-    string,
-    RankCandidate
-  >();
+  const candidates = new Map<string, RankCandidate>();
   for (const row of ftsRows)
     candidates.set(row.id, {
       ...view(row, ctx),
@@ -744,7 +751,12 @@ async function searchLearningsAction(
         });
     }
   }
-  const cells = rankCandidates([...candidates.values()], data.repo, new Date(), {includeHistory: data.include_history});
+  const cells = rankCandidates(
+    [...candidates.values()],
+    data.repo,
+    new Date(),
+    { includeHistory: data.include_history },
+  );
   const slack =
     options.cellsOnly ||
     (data.kind && data.kind !== "learning") ||
@@ -781,14 +793,25 @@ async function searchLearningsAction(
   return hits;
 }
 
-async function retrievalLifecycleContext(ctx: HiveContext, hits: LearningView[], includeHistory = false) {
+async function retrievalLifecycleContext(
+  ctx: HiveContext,
+  hits: LearningView[],
+  includeHistory = false,
+) {
   const context = await answerLifecycleContext(ctx, hits);
   if (includeHistory) return context;
   const prompt = JSON.parse(context.prompt);
   return {
     ...context,
-    prompt: JSON.stringify({...prompt, history: []}),
-    text: context.text.split("\n\n").filter(line => !line.startsWith("Replaced ") && !line.startsWith("Earlier history is truncated")).join("\n\n"),
+    prompt: JSON.stringify({ ...prompt, history: [] }),
+    text: context.text
+      .split("\n\n")
+      .filter(
+        (line) =>
+          !line.startsWith("Replaced ") &&
+          !line.startsWith("Earlier history is truncated"),
+      )
+      .join("\n\n"),
     citations: [],
   };
 }
@@ -812,13 +835,23 @@ async function askHiveAction(
     !data.include_history && !options.publicOnly && isFrictionAsk(data.question)
       ? await frictionSummary(ctx, data.repo)
       : null;
-  const frictionEligible = friction?.count ? await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs WHERE l.id = ANY(${friction.cells.map(cell => cell.id)}::text[]) AND ${retrievalEligibleSql()}` : [];
-  if (friction && friction.count && frictionEligible.length === friction.cells.length) {
+  const frictionEligible = friction?.count
+    ? await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs WHERE l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[]) AND ${retrievalEligibleSql()}`
+    : [];
+  if (
+    friction &&
+    friction.count &&
+    frictionEligible.length === friction.cells.length
+  ) {
     const cells =
       await getSql()`SELECT l.*, fs.*, ${visibleSupersededBySql(ctx)} AS superseded_by, m.name AS author_name, m.actor_type AS author_actor_type, (SELECT owner.name FROM members owner WHERE owner.id = l.owner_member_id AND owner.actor_type = 'human') AS owner_name FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs JOIN members m ON m.id = l.member_id WHERE ${learningVisibleSql(ctx)} AND l.id = ANY(${friction.cells.map((cell) => cell.id)}::text[])`;
     const result = appendLifecycleContext(
       frictionAnswer(friction),
-      await retrievalLifecycleContext(ctx, cells.map(row => view(row, ctx)), data.include_history),
+      await retrievalLifecycleContext(
+        ctx,
+        cells.map((row) => view(row, ctx)),
+        data.include_history,
+      ),
     );
     const dates = new Map(
       cells.map((cell) => [
@@ -858,7 +891,7 @@ async function askHiveAction(
       },
       { ...options, excludeFlagged: true },
     ),
-    {includeHistory: data.include_history},
+    { includeHistory: data.include_history },
   );
   const [context, relevance] = await Promise.all([
     retrievalLifecycleContext(ctx, hits, data.include_history),
@@ -900,9 +933,19 @@ async function askHiveAction(
       gaps: "Some retrieved Slack evidence is no longer available.",
       synthesized: false,
     };
-  const visibleIds = new Set((await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs WHERE ${retrievalEligibleSql(data.include_history)} AND l.id = ANY(${hits.filter(h => !h.id.startsWith("slk_")).map(h => h.id)}::text[])`).map(row => String(row.id)));
-  if (hits.some(hit => !hit.id.startsWith("slk_") && !visibleIds.has(hit.id)))
-    return {answer: "Cell permissions changed while Hive answered. Ask again.", citations: [], confidence: "low", gaps: "A publication was withdrawn.", synthesized: false};
+  const visibleIds = new Set(
+    (
+      await getSql()`SELECT l.id FROM ${audienceCellsSql(ctx)} l CROSS JOIN LATERAL ${feedbackStandingSql()} fs WHERE ${retrievalEligibleSql(data.include_history)} AND l.id = ANY(${hits.filter((h) => !h.id.startsWith("slk_")).map((h) => h.id)}::text[])`
+    ).map((row) => String(row.id)),
+  );
+  if (hits.some((hit) => !hit.id.startsWith("slk_") && !visibleIds.has(hit.id)))
+    return {
+      answer: "Cell permissions changed while Hive answered. Ask again.",
+      citations: [],
+      confidence: "low",
+      gaps: "A publication was withdrawn.",
+      synthesized: false,
+    };
   const sources = new Map(
     hits
       .filter((h) => h.source === "slack" && h.permalink)

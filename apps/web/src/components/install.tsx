@@ -1,5 +1,6 @@
 "use client";
 import { PromptBlock } from "./prompt-block";
+import { ChatAppConnect } from "./chat-app-connect";
 import { setupPrompt } from "@/lib/agent-onboarding";
 
 import { useId, useState, useSyncExternalStore, type FormEvent } from "react";
@@ -375,6 +376,7 @@ export function InstallPage({
           searches, saves and cites team learnings.
         </p>
       </section>
+      <ChatAppConnect />
       <HeadlessKeys initial={initialKeys} />
       <details className="install-fallback">
         <summary>Manual setup for Claude Code, Codex or Executor</summary>

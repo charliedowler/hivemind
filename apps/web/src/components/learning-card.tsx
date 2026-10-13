@@ -61,7 +61,9 @@ export function LearningCard({
             </div>
             <div className="hm-cell-votes">
               <LifecycleBadge learning={learning} />
-              {learning.unhelpfulLabel ? <span className="small">{learning.unhelpfulLabel}</span> : null}
+              {learning.unhelpfulLabel ? (
+                <span className="small">{learning.unhelpfulLabel}</span>
+              ) : null}
               <Sprite name="thumb" scale={1} title="Useful votes" />
               {learning.votes.up}
             </div>
@@ -93,7 +95,9 @@ export function SearchHitCard({
       <div className="row between wrap">
         <span className="small">{kindLabel(hit.kind)}</span>
         <LifecycleBadge learning={hit} />
-        {hit.unhelpfulLabel ? <span className="small">{hit.unhelpfulLabel}</span> : null}
+        {hit.unhelpfulLabel ? (
+          <span className="small">{hit.unhelpfulLabel}</span>
+        ) : null}
         {hit.verifyBeforeUse ? (
           <span className="small">Check this is still true</span>
         ) : null}

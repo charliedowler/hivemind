@@ -24,9 +24,7 @@ export default async function JoinPage({
   if (!session?.user.emailVerified)
     redirect(`/app/login${query ? `?${query}` : ""}`);
   const state = await joinPageState(session.user.id, params);
-  const joinedTeamId = (
-    state as typeof state & { joinedTeamId?: string | null }
-  ).joinedTeamId;
+  const joinedTeamId = state.joinedTeamId;
   if (joinedTeamId) {
     const ctx = await memberContext(session.user.id, joinedTeamId);
     if (ctx) await selectHive(ctx, joinedTeamId);

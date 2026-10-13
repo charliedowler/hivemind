@@ -20,7 +20,7 @@ type AccountData = {
     role: string;
   };
 };
-const emptyAgents: {id: string; name: string}[] = [];
+const emptyAgents: { id: string; name: string }[] = [];
 const emptySharing: Awaited<ReturnType<typeof projectShareState>> = [];
 export function Account({
   initial,
@@ -32,7 +32,7 @@ export function Account({
 }: {
   initial: AccountData;
   hasPassword: boolean;
-  agents?: {id: string; name: string}[];
+  agents?: { id: string; name: string }[];
   rules: CaptureRule[];
   policy?: OwnerCapturePolicy;
   sharing?: Awaited<ReturnType<typeof projectShareState>>;
@@ -160,7 +160,13 @@ export function Account({
           </Card>
         </details>
       ) : null}
-      <AccountProjectChoices policy={policy} rules={rules} sharing={sharing} agents={agents} isAdmin={data.member.role === "admin"} />
+      <AccountProjectChoices
+        policy={policy}
+        rules={rules}
+        sharing={sharing}
+        agents={agents}
+        isAdmin={data.member.role === "admin"}
+      />
       <Link href="/app/create-hive">Create a hive for your team</Link>
       <Button
         variant="ghost"
@@ -184,16 +190,41 @@ export function Account({
   );
 }
 
-function AccountProjectChoices({policy, rules, sharing, agents, isAdmin}: {policy?: OwnerCapturePolicy; rules: CaptureRule[]; sharing: Awaited<ReturnType<typeof projectShareState>>; agents: {id: string; name: string}[]; isAdmin: boolean}) {
+function AccountProjectChoices({
+  policy,
+  rules,
+  sharing,
+  agents,
+  isAdmin,
+}: {
+  policy?: OwnerCapturePolicy;
+  rules: CaptureRule[];
+  sharing: Awaited<ReturnType<typeof projectShareState>>;
+  agents: { id: string; name: string }[];
+  isAdmin: boolean;
+}) {
   const [editedPolicy, setEditedPolicy] = useState<OwnerCapturePolicy>();
-  const currentPolicy = editedPolicy && editedPolicy.revision >= (policy?.revision ?? 0) ? editedPolicy : policy;
-  return <>
+  const currentPolicy =
+    editedPolicy && editedPolicy.revision >= (policy?.revision ?? 0)
+      ? editedPolicy
+      : policy;
+  return (
+    <>
       <CaptureRules
         initial={{ rules, policy: currentPolicy, isAdmin }}
         onPolicySaved={setEditedPolicy}
         scope="personal"
       />
-      {currentPolicy ? <ProjectSharing policy={currentPolicy} initial={sharing} /> : null}
-      {currentPolicy ? <ProjectDelegation key={currentPolicy.revision} policy={currentPolicy} agents={agents} /> : null}
-  </>;
+      {currentPolicy ? (
+        <ProjectSharing policy={currentPolicy} initial={sharing} />
+      ) : null}
+      {currentPolicy ? (
+        <ProjectDelegation
+          key={currentPolicy.revision}
+          policy={currentPolicy}
+          agents={agents}
+        />
+      ) : null}
+    </>
+  );
 }

@@ -13,7 +13,7 @@ import { PromptBlock } from "./prompt-block";
 import { setupPrompt } from "@/lib/agent-onboarding";
 import { renderWelcome } from "@/server/identity/welcome-template";
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
-vi.mock("next/navigation", () => ({useRouter: () => ({refresh: vi.fn()})}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/client", () => ({
   requestJson: mocks.request,
   errorMessage: (e: Error) => e.message,
@@ -30,7 +30,10 @@ async function mount(element: React.ReactNode) {
   for (const key of ["window", "self", "document", "AbortController"] as const)
     vi.stubGlobal(key, dom.window[key]);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => { callback(); return 1; });
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => {
+    callback();
+    return 1;
+  });
   const host = dom.window.document.getElementById("root")!;
   const root = createRoot(host);
   await act(async () => root.render(element));
@@ -242,29 +245,100 @@ it("escapes the welcome email and uses one claim link with no cell excerpts", ()
 });
 
 it("shows excluded cells only when history is enabled", async () => {
-  const base = {id: "hidden", title: "Hidden cell", body: "body", kind: "learning", source: "codex", repo: null, paths: [], tags: [], confidence: 0.9, author: {id: "human", name: "Charlie"}, pushCount: 1, votes: {up: 0, down: 2, outdated: 0}, unhelpfulLabel: "Marked unhelpful by 2", lifecycle: "fresh", createdAt: "2026-10-13T10:00:00Z", updatedAt: "2026-10-13T10:00:00Z", lastPushedAt: "2026-10-13T10:00:00Z"};
-  mocks.request.mockResolvedValue({learnings: [base, {...base, id: "visible", title: "Visible cell", votes: {up: 0, down: 0, outdated: 0}, unhelpfulLabel: null}]});
-  const {host, close} = await mount(<Feed />);
+  const base = {
+    id: "hidden",
+    title: "Hidden cell",
+    body: "body",
+    kind: "learning",
+    source: "codex",
+    repo: null,
+    paths: [],
+    tags: [],
+    confidence: 0.9,
+    author: { id: "human", name: "Charlie" },
+    pushCount: 1,
+    votes: { up: 0, down: 2, outdated: 0 },
+    unhelpfulLabel: "Marked unhelpful by 2",
+    lifecycle: "fresh",
+    createdAt: "2026-10-13T10:00:00Z",
+    updatedAt: "2026-10-13T10:00:00Z",
+    lastPushedAt: "2026-10-13T10:00:00Z",
+  };
+  mocks.request.mockResolvedValue({
+    learnings: [
+      base,
+      {
+        ...base,
+        id: "visible",
+        title: "Visible cell",
+        votes: { up: 0, down: 0, outdated: 0 },
+        unhelpfulLabel: null,
+      },
+    ],
+  });
+  const { host, close } = await mount(<Feed />);
   try {
     expect(host.textContent).toContain("Visible cell");
     expect(host.textContent).not.toContain("Hidden cell");
-    expect(mocks.request).toHaveBeenCalledWith("/api/app/feed?include_history=true", undefined, expect.anything());
-    await act(async () => host.querySelector<HTMLInputElement>('input[role="switch"]')!.click());
+    expect(mocks.request).toHaveBeenCalledWith(
+      "/api/app/feed?include_history=true",
+      undefined,
+      expect.anything(),
+    );
+    await act(async () =>
+      host.querySelector<HTMLInputElement>('input[role="switch"]')!.click(),
+    );
     expect(host.textContent).toContain("Hidden cell");
     expect(host.textContent).toContain("Marked unhelpful by 2");
-    await act(async () => host.querySelector<HTMLInputElement>('input[role="switch"]')!.click());
+    await act(async () =>
+      host.querySelector<HTMLInputElement>('input[role="switch"]')!.click(),
+    );
     expect(host.textContent).not.toContain("Hidden cell");
-  } finally {await close();}
+  } finally {
+    await close();
+  }
 });
 
 it("grants one named agent only the exact project selection at the current revision", async () => {
-  mocks.request.mockResolvedValue({id: "delegation"});
-  const {host, close} = await mount(<ProjectDelegation policy={{include: ["github.com/team/platform"], exclude: ["github.com/team/private"], revision: 4}} agents={[{id: "agent", name: "Codex on laptop"}]} />);
+  mocks.request.mockResolvedValue({ id: "delegation" });
+  const { host, close } = await mount(
+    <ProjectDelegation
+      policy={{
+        include: ["github.com/team/platform"],
+        exclude: ["github.com/team/private"],
+        revision: 4,
+      }}
+      agents={[{ id: "agent", name: "Codex on laptop" }]}
+    />,
+  );
   try {
     const select = host.querySelector<HTMLSelectElement>("select")!;
-    await act(async () => {select.value = "agent"; select.dispatchEvent(new window.Event("change", {bubbles: true}));});
-    await act(async () => host.querySelector("form")!.dispatchEvent(new window.Event("submit", {bubbles: true, cancelable: true})));
-    expect(mocks.request).toHaveBeenLastCalledWith("/api/app/project-selection/delegate", {agentId: "agent", selection: {include: ["github.com/team/platform"], exclude: ["github.com/team/private"], revision: 4}});
-    expect(host.textContent).toContain("Allowed Codex on laptop to save these projects once within 15 minutes.");
-  } finally {await close();}
+    await act(async () => {
+      select.value = "agent";
+      select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    await act(async () =>
+      host
+        .querySelector("form")!
+        .dispatchEvent(
+          new window.Event("submit", { bubbles: true, cancelable: true }),
+        ),
+    );
+    expect(mocks.request).toHaveBeenLastCalledWith(
+      "/api/app/project-selection/delegate",
+      {
+        agentId: "agent",
+        selection: {
+          include: ["github.com/team/platform"],
+          exclude: ["github.com/team/private"],
+          revision: 4,
+        },
+      },
+    );
+    expect(host.textContent).toContain(
+      "Allowed Codex on laptop to save these projects once within 15 minutes.",
+    );
+  } finally {
+    await close();
+  }
 });

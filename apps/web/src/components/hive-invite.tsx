@@ -132,16 +132,46 @@ export function HiveInvite({
   );
 }
 
-function RenameHive({teamId, teamName}: {teamId: string; teamName: string}) {
+function RenameHive({
+  teamId,
+  teamName,
+}: {
+  teamId: string;
+  teamName: string;
+}) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = String(new FormData(event.currentTarget).get("name"));
-    setPending(true); setError("");
-    try {await requestJson("/api/app/organisation", {teamId, name}); router.refresh();}
-    catch (error) {setError(errorMessage(error));} finally {setPending(false);}
+    setPending(true);
+    setError("");
+    try {
+      await requestJson("/api/app/organisation", { teamId, name });
+      router.refresh();
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      setPending(false);
+    }
   }
-  return <details><summary>Hive name</summary><form className="stack" onSubmit={event => void save(event)}><Input label="Hive name" name="name" defaultValue={teamName} maxLength={80} required /><Button type="submit" loading={pending}>Save name</Button>{error ? <p role="alert">{error}</p> : null}</form></details>;
+  return (
+    <details>
+      <summary>Hive name</summary>
+      <form className="stack" onSubmit={(event) => void save(event)}>
+        <Input
+          label="Hive name"
+          name="name"
+          defaultValue={teamName}
+          maxLength={80}
+          required
+        />
+        <Button type="submit" loading={pending}>
+          Save name
+        </Button>
+        {error ? <p role="alert">{error}</p> : null}
+      </form>
+    </details>
+  );
 }

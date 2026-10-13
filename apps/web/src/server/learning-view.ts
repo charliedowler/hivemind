@@ -65,7 +65,7 @@ export function learningView(
       row.lifecycle === "outdated" ||
       Boolean(
         row.verify_after &&
-          new Date(row.verify_after as string).getTime() <= Date.now(),
+        new Date(row.verify_after as string).getTime() <= Date.now(),
       ),
     supersededBy: row.superseded_by as string | null,
     sessionRef: row.session_ref as string | null,
@@ -80,10 +80,10 @@ export function learningView(
     captureFlagged: Boolean(row.capture_flagged),
     canConfirmCapture: Boolean(
       row.capture_flagged &&
-        ctx &&
-        (row.member_id === ctx.memberId ||
-          row.owner_member_id === ctx.memberId) &&
-        ["fresh", "confirmed"].includes(String(row.lifecycle)),
+      ctx &&
+      (row.member_id === ctx.memberId ||
+        row.owner_member_id === ctx.memberId) &&
+      ["fresh", "confirmed"].includes(String(row.lifecycle)),
     ),
     captureCategories:
       (row.capture_categories as Record<string, boolean> | undefined) ?? {},

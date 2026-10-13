@@ -103,7 +103,9 @@ export function LearningDetail({
           This cell is marked outdated. Check the learning before you cite it.
         </p>
       ) : null}
-      {learning.unhelpfulLabel ? <p className="cell-warning">{learning.unhelpfulLabel}</p> : null}
+      {learning.unhelpfulLabel ? (
+        <p className="cell-warning">{learning.unhelpfulLabel}</p>
+      ) : null}
       <CaptureNotice learning={learning} />
       <LifecycleNotice learning={learning} />
       {!learning.id.startsWith("slk_") ? (

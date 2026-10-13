@@ -21,6 +21,9 @@ vi.mock("next/navigation", () => ({
   },
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
+vi.mock("@/server/identity/enrollment", () => ({
+  personalMemberContext: async () => mocks.context(),
+}));
 vi.mock("@/server/auth", () => ({ getWebContext: mocks.context }));
 vi.mock("@/server/web-member-page", () => ({ webMemberPage: mocks.members }));
 vi.mock("@/server/identity/onboarding-web", () => ({
@@ -29,7 +32,10 @@ vi.mock("@/server/identity/onboarding-web", () => ({
 vi.mock("@/server/identity/join-phrases", () => ({
   adminJoinPhrase: async () => null,
 }));
-vi.mock("@/server/web-sharing", () => ({ projectShareState: async () => [], ownerAgentChoices: async () => [] }));
+vi.mock("@/server/web-sharing", () => ({
+  projectShareState: async () => [],
+  ownerAgentChoices: async () => [],
+}));
 vi.mock("@/components/hive-invite", () => ({
   HiveInvite: () => <p>Invite control</p>,
 }));

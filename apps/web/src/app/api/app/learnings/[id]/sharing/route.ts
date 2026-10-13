@@ -8,7 +8,9 @@ import { HiveError } from "@/server/errors";
 type Params = { params: Promise<{ id: string }> };
 export async function GET(_request: Request, { params }: Params) {
   return authenticated(async (ctx) =>
-    Response.json(await cellShareState(ctx, (await params).id), {headers: {"Cache-Control": "private, no-store"}}),
+    Response.json(await cellShareState(ctx, (await params).id), {
+      headers: { "Cache-Control": "private, no-store" },
+    }),
   );
 }
 export async function POST(request: Request, { params }: Params) {

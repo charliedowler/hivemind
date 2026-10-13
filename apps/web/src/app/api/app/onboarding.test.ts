@@ -23,16 +23,20 @@ vi.mock("@/server/identity/onboarding-web", () => ({
     "This hive could not be joined. Check the link or ask your admin.",
 }));
 vi.mock("@/server/web-hive-session", () => ({ selectHive: mocks.select }));
-vi.mock("@/server/identity/join-phrases", () => ({issueJoinCapability: mocks.capability}));
-vi.mock("@/server/project-sharing", () => ({delegateProjectSelection: mocks.delegation}));
-import {POST as capability} from "./join-capability/route";
-import {POST as delegation} from "./project-selection/delegate/route";
+vi.mock("@/server/identity/join-phrases", () => ({
+  issueJoinCapability: mocks.capability,
+}));
+vi.mock("@/server/project-sharing", () => ({
+  delegateProjectSelection: mocks.delegation,
+}));
+import { POST as capability } from "./join-capability/route";
+import { POST as delegation } from "./project-selection/delegate/route";
 import * as createRoute from "./create-organisation/route";
 import { POST as join } from "./join-phrase/route";
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.auth.mockResolvedValue(mocks.ctx);
-  mocks.human.mockResolvedValue({id: mocks.ctx.memberId});
+  mocks.human.mockResolvedValue({ id: mocks.ctx.memberId });
   mocks.create.mockResolvedValue({
     teamId: "team",
     teamName: "Team",
@@ -113,10 +117,45 @@ it("selects the joined organisation only after a successful human POST", async (
 });
 
 it("requires human authority and same-origin requests before issuing agent capabilities", async () => {
-  expect((await capability(request("join-capability", {phrase: "amber-honey-fox", agentId: "agent"}))).status).toBe(403);
+  expect(
+    (
+      await capability(
+        request("join-capability", {
+          phrase: "amber-honey-fox",
+          agentId: "agent",
+        }),
+      )
+    ).status,
+  ).toBe(403);
   expect(mocks.capability).not.toHaveBeenCalled();
-  mocks.human.mockRejectedValue(Object.assign(new Error("Human only"), {status: 403}));
-  expect((await capability(request("join-capability", {phrase: "amber-honey-fox", agentId: "agent"}, "https://gohive.dev"))).status).toBe(403);
-  expect((await delegation(request("project-selection/delegate", {agentId: "agent", selection: {include: [], exclude: [], revision: 1}}, "https://gohive.dev"))).status).toBe(403);
-  expect(mocks.capability).not.toHaveBeenCalled(); expect(mocks.delegation).not.toHaveBeenCalled();
+  mocks.human.mockRejectedValue(
+    Object.assign(new Error("Human only"), { status: 403 }),
+  );
+  expect(
+    (
+      await capability(
+        request(
+          "join-capability",
+          { phrase: "amber-honey-fox", agentId: "agent" },
+          "https://gohive.dev",
+        ),
+      )
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await delegation(
+        request(
+          "project-selection/delegate",
+          {
+            agentId: "agent",
+            selection: { include: [], exclude: [], revision: 1 },
+          },
+          "https://gohive.dev",
+        ),
+      )
+    ).status,
+  ).toBe(403);
+  expect(mocks.capability).not.toHaveBeenCalled();
+  expect(mocks.delegation).not.toHaveBeenCalled();
 });
