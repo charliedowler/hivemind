@@ -62,7 +62,7 @@ const fixture = vi.hoisted(() => {
     confirmFlaggedCapture: vi.fn(async () => ({ id: "lrn_test" })),
   };
 });
-vi.mock("@/server/db/client", () => ({getSql: () => fixture.latest}));
+vi.mock("@/server/db/client", () => ({getSql: () => (strings: TemplateStringsArray) => strings.join("").includes("hive-oauth-cutover") ? Promise.resolve([]) : fixture.latest()}));
 vi.mock("@/server/auth", () => ({
   getWebContext: fixture.getWebContext,
   authenticateApiKey: fixture.authenticateApiKey,
@@ -137,6 +137,10 @@ beforeEach(() => {
       return handler(req, {
         hive_member_id: fixture.ctx.memberId,
         hive_team_id: fixture.ctx.teamId,
+        hive_credential_version: 2,
+        hive_credential_epoch: 0,
+        hive_access: "team",
+        scope: "hive",
         sub: fixture.ctx.memberId,
       });
     },
@@ -163,7 +167,7 @@ describe("effective capture rule bearer boundary", () => {
     expect(fixture.requireMcpAuth).toHaveBeenCalledWith(
       expect.anything(),
       expect.any(Function),
-      { resource: "https://hive.example/api/mcp", requiredScopes: ["hive"] },
+      expect.objectContaining({ resource: "https://hive.example/api/mcp", requiredScopes: ["hive"] }),
     );
     expect(fixture.memberContext).toHaveBeenCalledWith(
       fixture.ctx.memberId,

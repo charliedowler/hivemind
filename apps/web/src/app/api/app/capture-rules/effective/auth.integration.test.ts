@@ -37,7 +37,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
       );
       const sql = getSql();
       await sql`INSERT INTO teams (id, name, invite_code) VALUES (${ctx.teamId}, ${ctx.teamName}, ${hashToken(suffix)})`;
-      await sql`INSERT INTO members (id, team_id, name, role) VALUES (${ctx.memberId}, ${ctx.teamId}, ${ctx.memberName}, 'admin'), (${peerId}, ${ctx.teamId}, 'Peer fixture', 'member')`;
+      await sql`INSERT INTO members (id, name) VALUES (${ctx.memberId}, ${ctx.memberName}), (${peerId}, 'Peer fixture')`;
+      await sql`INSERT INTO hive_memberships (member_id, team_id, role) VALUES (${ctx.memberId}, ${ctx.teamId}, 'admin'), (${peerId}, ${ctx.teamId}, 'member')`;
       await sql`INSERT INTO api_keys (id, team_id, member_id, key_hash, prefix) VALUES (${keyId}, ${ctx.teamId}, ${ctx.memberId}, ${hashToken(key)}, ${key.slice(0, 10)})`;
       const common = {
         action: "drop" as const,
@@ -71,7 +72,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const sql = getSql();
       await sql`DELETE FROM capture_rules WHERE team_id = ${ctx.teamId}`;
       await sql`DELETE FROM api_keys WHERE team_id = ${ctx.teamId}`;
-      await sql`DELETE FROM members WHERE team_id = ${ctx.teamId}`;
+      await sql`DELETE FROM members WHERE id IN (${ctx.memberId}, ${peerId})`;
       await sql`DELETE FROM teams WHERE id = ${ctx.teamId}`;
       vi.unstubAllEnvs();
     });
@@ -95,7 +96,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await sql`UPDATE api_keys SET revoked_at = now() WHERE id = ${keyId}`;
       expect((await GET(request(`Bearer ${key}`))).status).toBe(401);
       await sql`UPDATE api_keys SET revoked_at = NULL WHERE id = ${keyId}`;
-      await sql`UPDATE members SET removed_at = now() WHERE id = ${ctx.memberId}`;
+      await sql`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${ctx.memberId} AND team_id = ${ctx.teamId}`;
       expect((await GET(request(`Bearer ${key}`))).status).toBe(401);
     });
   },

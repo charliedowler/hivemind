@@ -13,7 +13,8 @@ export type SlackToolContext = {
   requestText?: string;
   history?: Array<{ question: string; answer: string }>;
   timeZone?: string;
-  actionType?: "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse";
+  actionType?:
+    "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse";
 };
 export async function slackToolContext(
   actor: HiveContext,
@@ -21,7 +22,7 @@ export async function slackToolContext(
   threadTs: string,
 ): Promise<SlackToolContext> {
   const rows =
-    await getSql()`SELECT role FROM members WHERE team_id=${actor.teamId} AND id=${actor.memberId} AND removed_at IS NULL`;
+    await getSql()`SELECT h.role FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.team_id=${actor.teamId} AND h.member_id=${actor.memberId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows[0])
     throw new HiveError("Join the hive before using its Slack tools.", 403);
   return {
@@ -34,7 +35,7 @@ export async function slackToolContext(
 }
 export async function toolActor(ctx: SlackToolContext): Promise<HiveContext> {
   const rows =
-    await getSql()`SELECT m.name,t.name AS team_name FROM members m JOIN teams t ON t.id=m.team_id WHERE m.team_id=${ctx.teamId} AND m.id=${ctx.memberId} AND m.removed_at IS NULL`;
+    await getSql()`SELECT m.name,t.name AS team_name FROM members m JOIN hive_memberships h ON h.member_id = m.id JOIN teams t ON t.id=h.team_id WHERE h.team_id=${ctx.teamId} AND m.id=${ctx.memberId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   if (!rows[0])
     throw new HiveError("Your hive membership is no longer active.", 403);
   return {
