@@ -201,7 +201,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(pushes[0].merged).toBe(true);
         }
         if (decision === "mark_outdated") {
-          expect(oldCell?.verifyBeforeUse).toBe(true);
+          expect(oldCell?.lifecycle).toBe("outdated");
+          const deadlines = await getSql()`SELECT verify_after <= now() AS due FROM learnings WHERE id = ${old.id} AND team_id = ${a.teamId}`;
+          expect(deadlines[0].due).toBe(true);
           expect(newCell?.lifecycle).toBe("outdated");
         }
         if (decision === "retract_new")
