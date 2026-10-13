@@ -191,7 +191,10 @@ export function registerHiveTools(server: McpServer) {
           source,
           agent: input.agent ?? input.context?.agent ?? (userAgent.includes("executor") ? "executor" : source),
         });
-        return JSON.stringify(result);
+        return JSON.stringify(result.dropped ? result : {
+          ...result,
+          cellUrl: `/app/cells/${result.id}`,
+        });
       }, ctx),
   );
 

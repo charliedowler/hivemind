@@ -166,7 +166,7 @@ it("returns the full saved capture and its inferred fields", async () => {
   const saved = {id: "lrn_aaaaaaaaaaaa", merged: false, pushCount: 1, redactions: 0, learning: {title: "A fact from a failing build", blocked: null, cost: null}, inferred: {kind: "gotcha"}, correction: {id: "lrn_aaaaaaaaaaaa", revision: 1, tool: "hive_correct"}};
   vi.mocked(pushLearning).mockResolvedValue(saved as unknown as Awaited<ReturnType<typeof pushLearning>>);
   const result = await call(input, toolContext);
-  expect(JSON.parse((result as {content: {text: string}[]}).content[0]!.text)).toEqual(saved);
+  expect(JSON.parse((result as {content: {text: string}[]}).content[0]!.text)).toEqual({...saved, cellUrl: "/app/cells/lrn_aaaaaaaaaaaa"});
   expect(pushLearning).toHaveBeenCalledWith(context, expect.objectContaining({source: "codex", agent: "codex", observation: input.observation}));
   expect(register.mock.calls.map(([name]) => name)).toEqual(expect.arrayContaining(["hive_correct", "hive_outcome"]));
 });
