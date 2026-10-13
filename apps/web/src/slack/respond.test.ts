@@ -14,6 +14,10 @@ vi.mock("@anthropic-ai/sdk", () => ({
 vi.mock("@/server/digests/connection", () => ({
   slackMemberTimezone: async () => "Europe/London",
 }));
+vi.mock("./tools/undo", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./tools/undo")>(),
+  latestThreadAction: async () => null,
+}));
 const ctx = {
   teamId: "team_test",
   memberId: "member_test",

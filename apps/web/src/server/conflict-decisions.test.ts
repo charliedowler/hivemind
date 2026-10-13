@@ -201,6 +201,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(pushes[0].merged).toBe(true);
         }
         if (decision === "mark_outdated") {
+          expect(oldCell?.lifecycle).toBe("outdated");
+          const deadlines = await getSql()`SELECT verify_after <= now() AS due FROM learnings WHERE id = ${old.id} AND team_id = ${a.teamId}`;
+          expect(deadlines[0].due).toBe(true);
           const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(oldCell!.verifyAfter!) + 1);
           try {
             expect((await getLearning(a, old.id))?.verifyBeforeUse).toBe(true);

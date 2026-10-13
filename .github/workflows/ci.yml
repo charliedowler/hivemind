@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: hivemind
+          POSTGRES_PASSWORD: hivemind
+          POSTGRES_DB: hivemind
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U hivemind -d hivemind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://hivemind:hivemind@127.0.0.1:54329/hive_capture_rules_hive_digest_ci
+      HIVE_DIGEST_TEST_DATABASE_URL: postgres://hivemind:hivemind@127.0.0.1:54329/hive_capture_rules_hive_digest_ci
+      HIVE_ANALYTICS_TEST_DATABASE_URL: postgres://hivemind:hivemind@127.0.0.1:54329/hivemind
+      PUBLIC_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: ci-only-placeholder-not-a-production-secret
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Enable the packageManager version of pnpm
+        run: npm install --global corepack@0.34.6 && corepack enable && corepack install
+      - name: Locate the pnpm store
+        id: pnpm
+        run: echo "store=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm.outputs.store }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare disposable test databases
+        env:
+          PGPASSWORD: hivemind
+        run: |
+          psql -h 127.0.0.1 -p 54329 -U hivemind -d hivemind -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hive_capture_rules_hive_digest_ci'
+          pnpm --filter web db:migrate
+      - run: pnpm -r typecheck
+      - run: pnpm -r test
+      - name: Build with local URLs and a CI-only auth secret; no external provider credentials
+        run: pnpm --filter web build

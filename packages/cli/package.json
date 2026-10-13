@@ -1,6 +1,6 @@
 {
   "name": "gohive",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Bring your coding agent to the hive",
   "type": "module",
   "bin": { "gohive": "dist/bin.js" },
@@ -12,7 +12,8 @@
     "build": "tsc && node scripts/prepare.mjs",
     "typecheck": "tsc --noEmit",
     "test": "pnpm build && node --test test/*.test.mjs",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "version:patch": "npm version patch --no-git-tag-version"
   },
   "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.3" }
 }
