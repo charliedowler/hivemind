@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { digestTime, digestZone } from "@hivemind/core";
 import { z } from "zod";
 import type { SlackTool } from "./index";
 import { HiveError } from "@/server/errors";
@@ -46,7 +47,7 @@ const tools: SlackTool[] = [
           schedules
             .map(
               (s) =>
-                `${s.id}: ${restateSchedule(s)} in #${slackEscape(s.channelName)}, ${s.enabled ? `next ${s.nextDueAt}` : "stopped"}`,
+                `${s.id}: ${restateSchedule(s)} in #${slackEscape(s.channelName)} (${digestZone(s.timezone)}), ${s.enabled ? `next ${digestTime(s.nextDueAt, s.timezone, { relative: true })}` : "stopped"}`,
             )
             .join("\n") || "No digest schedules yet.",
       };

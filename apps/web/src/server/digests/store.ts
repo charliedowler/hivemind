@@ -13,6 +13,7 @@ import { recordEvent } from "../analytics/events";
 export type DigestChannel = { id: string; name: string };
 export type DigestSchedule = DigestScheduleInput & {
   id: string;
+  undoId?: string;
   teamId: string;
   channelName: string;
   createdBy: string;
@@ -25,6 +26,7 @@ export type DigestSchedule = DigestScheduleInput & {
 export function scheduleView(r: Record<string, unknown>): DigestSchedule {
   return {
     id: String(r.id),
+    ...(r.undo_id ? { undoId: String(r.undo_id) } : {}),
     teamId: String(r.team_id),
     channelId: String(r.channel_id),
     channelName: String(r.channel_name),
@@ -49,9 +51,9 @@ export function scheduleView(r: Record<string, unknown>): DigestSchedule {
       : null,
   };
 }
-export async function listSchedules(teamId: string) {
+export async function listSchedules(teamId: string, memberId?: string) {
   return (
-    await getSql()`SELECT * FROM slack_digest_schedules WHERE team_id=${teamId} ORDER BY created_at,id`
+    await getSql()`SELECT s.*,(SELECT i.id FROM slack_digest_instructions i WHERE i.team_id=s.team_id AND i.schedule_id=s.id AND i.member_id=${memberId ?? ""} AND i.action IN ('set','disable') AND i.reversed_at IS NULL AND i.created_at>now()-interval '1 hour' AND i.after_revision=s.instruction_revision ORDER BY i.created_at DESC LIMIT 1) AS undo_id FROM slack_digest_schedules s WHERE s.team_id=${teamId} AND s.removed_at IS NULL ORDER BY s.created_at,s.id`
   ).map(scheduleView);
 }
 export async function getSchedule(teamId: string, id: string) {
@@ -67,7 +69,12 @@ export async function saveSchedule(
   id?: string,
   transaction?: postgres.TransactionSql,
 ) {
-  await requireAdmin(ctx);
+  if (transaction) {
+    const members =
+      await transaction`SELECT role FROM members WHERE id=${ctx.memberId} AND team_id=${ctx.teamId} AND removed_at IS NULL FOR SHARE`;
+    if (members[0]?.role !== "admin")
+      throw new HiveError("Only a team admin can do this.", 403);
+  } else await requireAdmin(ctx);
   const data = digestScheduleInput.parse(input);
   if (channel.id !== data.channelId)
     throw new HiveError("Choose a channel in your Slack connection.", 400);
@@ -163,11 +170,12 @@ export async function disableSchedule(ctx: HiveContext, id: string) {
 }
 export async function digestHistory(teamId: string) {
   const rows =
-    await getSql()`SELECT p.id,p.schedule_id,p.status,p.started_at,p.posted_at,p.permalink,p.counts,p.error,s.channel_name FROM slack_digest_posts p JOIN slack_digest_schedules s ON s.id=p.schedule_id AND s.team_id=p.team_id WHERE p.team_id=${teamId} ORDER BY p.started_at DESC LIMIT 10`;
+    await getSql()`SELECT p.id,p.schedule_id,p.status,p.started_at,p.posted_at,p.permalink,p.counts,p.error,s.channel_name,s.timezone FROM slack_digest_posts p JOIN slack_digest_schedules s ON s.id=p.schedule_id AND s.team_id=p.team_id WHERE p.team_id=${teamId} ORDER BY p.started_at DESC LIMIT 10`;
   return rows.map((r) => ({
     id: String(r.id),
     scheduleId: String(r.schedule_id),
     channelName: String(r.channel_name),
+    timezone: String(r.timezone),
     status: String(r.status),
     at: (r.posted_at ?? r.started_at).toISOString() as string,
     permalink: r.permalink as string | null,

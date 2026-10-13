@@ -249,7 +249,7 @@ describe.skipIf(!enabled)(
         "post every Monday at 9",
         { channelId: input.channelId, timezone: input.timezone },
       );
-      expect(proposal.restatement).toBe("Every Monday at 09:00 Europe/London");
+      expect(proposal.restatement).toBe("Every Monday at 9am");
       expect(model).toHaveBeenCalledTimes(1);
       expect(model.mock.calls[0]![0]).toMatchObject({
         tool_choice: { type: "auto" },
@@ -349,12 +349,16 @@ describe.skipIf(!enabled)(
             input.timezone,
           )
         ).text,
-      ).toContain("Undone.");
+      ).toContain("Removed.");
       expect((await getSchedule(a.teamId, saved.id)).enabled).toBe(false);
+      const saved2 = await schedule();
+      expect(
+        (await listSchedules(a.teamId)).some((s) => s.id === saved.id),
+      ).toBe(false);
       respond({
         action: "disable",
         schedule: null,
-        targetScheduleId: saved.id,
+        targetScheduleId: saved2.id,
         clearInstruction: true,
         enoughDetail: true,
         timeSpecified: false,

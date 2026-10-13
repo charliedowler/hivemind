@@ -379,3 +379,18 @@ export const slackDigestProposals = pgTable("slack_digest_proposals", {
   confirmedScheduleId: text("confirmed_schedule_id"),
   createdAt: createdAt(),
 });
+
+export const slackToolActions = pgTable("slack_tool_actions", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id").notNull().references(() => teams.id),
+  memberId: text("member_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  threadTs: text("thread_ts").notNull(),
+  messageTs: text("message_ts").notNull(),
+  toolName: text("tool_name").notNull(),
+  inverse: jsonb("inverse").notNull(),
+  reply: text("reply").notNull(),
+  createdAt: createdAt(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+});

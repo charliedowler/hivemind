@@ -8,3 +8,4 @@ END $$;
 DROP INDEX IF EXISTS slack_digest_instruction_decisions;
 DROP TABLE IF EXISTS slack_digest_instructions;
 ALTER TABLE slack_digest_schedules DROP COLUMN IF EXISTS instruction_revision;
+ALTER TABLE slack_digest_schedules DROP COLUMN IF EXISTS removed_at;

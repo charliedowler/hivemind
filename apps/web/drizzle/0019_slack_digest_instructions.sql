@@ -1,5 +1,6 @@
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
+ALTER TABLE slack_digest_schedules ADD COLUMN IF NOT EXISTS removed_at timestamptz;
 ALTER TABLE slack_digest_schedules ADD COLUMN IF NOT EXISTS instruction_revision integer NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS slack_digest_instructions (
  id text PRIMARY KEY,

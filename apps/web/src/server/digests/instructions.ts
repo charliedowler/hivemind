@@ -1,4 +1,10 @@
-import { digestScheduleInput } from "@hivemind/core";
+import { z } from "zod";
+import {
+  type HiveContext,
+  digestTime,
+  digestZone,
+  digestScheduleInput,
+} from "@hivemind/core";
 import type { SlackToolContext } from "@/slack/tools";
 import { getSql } from "../db/client";
 import { newId } from "../db/ids";
@@ -7,6 +13,7 @@ import { recordEvent } from "../analytics/events";
 import { digestChannel } from "./connection";
 import {
   proposalContext,
+  digestInstructionSchema,
   proposeScheduleFromText,
   restateSchedule,
 } from "./proposal";
@@ -41,7 +48,7 @@ export async function digestInstruction(
     await getSql()`SELECT role FROM members WHERE team_id=${ctx.teamId} AND id=${ctx.memberId} AND removed_at IS NULL`
   )[0];
   ctx = { ...ctx, isAdmin: ctx.isAdmin && role?.role === "admin" };
-  const raw = (ctx.requestText ?? text).slice(0, 2000);
+  const raw = (ctx.requestText ?? ctx.instructionText ?? text).slice(0, 2000);
   const proposal = await proposeScheduleFromText(
     ctx.teamId,
     ctx.memberId,
@@ -56,7 +63,7 @@ export async function digestInstruction(
         schedules
           .map(
             (s) =>
-              `${s.id}: ${restateSchedule(s)} in #${slackEscape(s.channelName)}, ${s.enabled ? `next ${new Intl.DateTimeFormat("en-GB", { timeZone: s.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(s.nextDueAt))}` : "stopped"}`,
+              `${s.id}: ${restateSchedule(s)} in #${slackEscape(s.channelName)} (${digestZone(s.timezone)}), ${s.enabled ? `next ${digestTime(s.nextDueAt, s.timezone, { relative: true })}` : "stopped"}`,
           )
           .join("\n") || "No digest schedules yet.",
     };
@@ -98,6 +105,15 @@ export async function digestInstruction(
     return { text: "Only hive admins can change digest schedules." };
   if (decision === "clarify")
     return { text: questions[proposal.missing ?? "intent"] };
+  return applyDigestInstruction(ctx, proposal);
+}
+export async function applyDigestInstruction(
+  ctx: SlackToolContext,
+  proposal: z.infer<typeof digestInstructionSchema>,
+  expectedInstructionId?: string,
+) {
+  const member = await proposalContext(ctx.teamId, ctx.memberId);
+  const action = proposal.action;
   const channel =
     action === "set" && proposal.schedule
       ? await digestChannel(member, proposal.schedule.channelId)
@@ -117,7 +133,7 @@ export async function digestInstruction(
     let reversed: Record<string, unknown> | undefined;
     if (action === "undo") {
       reversed = (
-        await tx`SELECT * FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND member_id=${ctx.memberId} AND channel_id=${ctx.channelId} AND thread_ts=${ctx.threadTs} AND action IN ('set','disable') AND reversed_at IS NULL AND created_at>now()-interval '1 hour' ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`
+        await tx`SELECT * FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND member_id=${ctx.memberId} AND channel_id=${ctx.channelId} AND thread_ts=${ctx.threadTs} AND action IN ('set','disable') AND reversed_at IS NULL AND created_at>now()-interval '1 hour' ${expectedInstructionId ? tx`AND id=${expectedInstructionId}` : tx``} ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`
       )[0];
       if (!reversed)
         throw new HiveError(
@@ -166,17 +182,18 @@ export async function digestInstruction(
     const revision = (
       await tx`SELECT instruction_revision FROM slack_digest_schedules WHERE team_id=${ctx.teamId} AND id=${saved.id}`
     )[0].instruction_revision;
-    const next = new Intl.DateTimeFormat("en-GB", {
-      timeZone: saved.timezone,
-      day: "numeric",
-      month: "short",
-    }).format(new Date(saved.nextDueAt));
+    const next = digestTime(saved.nextDueAt, saved.timezone, { mode: "date" });
+    const removed = action === "undo" && !reversed!.before_schedule;
+    if (removed)
+      await tx`UPDATE slack_digest_schedules SET removed_at=now() WHERE team_id=${ctx.teamId} AND id=${saved.id}`;
     const reply =
       action === "undo"
-        ? `Undone. The digest schedule in #${slackEscape(saved.channelName)} is ${saved.enabled ? "restored" : "stopped"}.`
+        ? removed
+          ? "Removed. The digest schedule is removed."
+          : `Undone. The digest schedule in #${slackEscape(saved.channelName)} is ${saved.enabled ? "restored" : "stopped"}.`
         : action === "disable"
-          ? `Stopped. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)}. Reply undo to restore it.`
-          : `Set. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)}, ${saved.enabled ? `next on ${next}` : "paused"}. Reply undo to remove it.`;
+          ? `Stopped. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}).`
+          : `Set. ${restateSchedule(saved)} in #${slackEscape(saved.channelName)} (${digestZone(saved.timezone)}). ${saved.enabled ? `${old ? "Next update" : "First update"} ${next}.` : "The schedule is paused."}`;
     await tx`INSERT INTO slack_digest_instructions(id,team_id,member_id,channel_id,thread_ts,message_ts,action,schedule_id,before_schedule,after_revision,reply) VALUES(${newId("dgi")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${ctx.messageTs!},${action},${saved.id},${old ? tx.json(digestScheduleInput.parse(scheduleView(old))) : null},${revision},${reply})`;
     if (reversed)
       await tx`UPDATE slack_digest_instructions SET reversed_at=now() WHERE id=${String(reversed.id)} AND team_id=${ctx.teamId}`;
@@ -195,4 +212,31 @@ export async function isDigestFollowup(
   const rows =
     await getSql()`SELECT 1 FROM slack_digest_instructions WHERE team_id=${teamId} AND member_id=${memberId} AND channel_id=${channelId} AND thread_ts=${threadTs} AND created_at>now()-interval '1 hour' UNION ALL SELECT 1 FROM slack_decisions WHERE team_id=${teamId} AND channel_id=${channelId} AND thread_ts=${threadTs} AND policy_version='hive-digest-actions-1' AND signals->>'memberId'=${memberId} AND decision='digest_clarify' AND created_at>now()-interval '1 hour' LIMIT 1`;
   return rows.length > 0;
+}
+
+export async function undoDigestFromWeb(ctx: HiveContext, id: string) {
+  const row = (
+    await getSql()`SELECT * FROM slack_digest_instructions WHERE team_id=${ctx.teamId} AND member_id=${ctx.memberId} AND id=${id}`
+  )[0];
+  if (!row) throw new HiveError("Digest change not found.", 404);
+  return applyDigestInstruction(
+    {
+      teamId: ctx.teamId,
+      memberId: ctx.memberId,
+      isAdmin: true,
+      channelId: String(row.channel_id),
+      threadTs: String(row.thread_ts),
+      messageTs: `web:${newId("dgi")}`,
+    },
+    {
+      action: "undo",
+      schedule: null,
+      targetScheduleId: null,
+      clearInstruction: true,
+      enoughDetail: true,
+      timeSpecified: false,
+      missing: null,
+    },
+    id,
+  );
 }

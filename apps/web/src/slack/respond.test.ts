@@ -37,7 +37,16 @@ describe("Slack tool routing", () => {
       (await respondToSlack(ctx, "Show recent cells", ctx.threadTs, [])).text,
     ).toBe("Tool result");
     expect(create).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith(ctx, {});
+    expect(handler).toHaveBeenCalledWith(
+      {
+        ...ctx,
+        messageTs: ctx.threadTs,
+        instructionText: "Show recent cells",
+        requestText: "Show recent cells",
+        history: [],
+      },
+      {},
+    );
     expect(create.mock.calls[0][0].model).toBe("claude-sonnet-5-5");
   });
   it("does not execute ambiguous parallel mutations", async () => {

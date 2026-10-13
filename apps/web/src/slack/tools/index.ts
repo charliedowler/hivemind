@@ -1,8 +1,11 @@
+import { captureTools } from "./capture";
+import { decideDecisiveness } from "@/server/slack/decisiveness";
+import { undoLastAction } from "@/server/slack/actions";
+export { decideDecisiveness } from "@/server/slack/decisiveness";
+export { runReversibleAction } from "@/server/slack/actions";
 import { digestTools } from "./digests";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { HiveContext } from "@hivemind/core";
-import { getSql } from "@/server/db/client";
 import { HiveError } from "@/server/errors";
 import { askHive, recentLearnings } from "@/server/hive";
 import { channelInfo } from "@/server/slack/client";
@@ -13,16 +16,10 @@ import {
   slackCaptureReply,
 } from "@/server/slack/format";
 
-export type SlackToolContext = {
-  teamId: string;
-  memberId: string;
-  isAdmin: boolean;
-  channelId: string;
-  threadTs: string;
-  messageTs?: string;
-  requestText?: string;
-  history?: Array<{ question: string; answer: string }>;
-};
+import { toolActor } from "./context";
+import type { SlackToolContext } from "./context";
+export { toolActor, slackToolContext } from "./context";
+export type { SlackToolContext } from "./context";
 export type SlackToolResult = {
   text: string;
   blocks?: Array<Record<string, unknown>>;
@@ -39,35 +36,6 @@ export type SlackTool = {
     value: string,
   ) => Promise<SlackToolResult>;
 };
-export async function slackToolContext(
-  actor: HiveContext,
-  channelId: string,
-  threadTs: string,
-): Promise<SlackToolContext> {
-  const rows =
-    await getSql()`SELECT role FROM members WHERE team_id=${actor.teamId} AND id=${actor.memberId} AND removed_at IS NULL`;
-  if (!rows[0])
-    throw new HiveError("Join the hive before using its Slack tools.", 403);
-  return {
-    teamId: actor.teamId,
-    memberId: actor.memberId,
-    isAdmin: rows[0].role === "admin",
-    channelId,
-    threadTs,
-  };
-}
-export async function toolActor(ctx: SlackToolContext): Promise<HiveContext> {
-  const rows =
-    await getSql()`SELECT m.name,t.name AS team_name FROM members m JOIN teams t ON t.id=m.team_id WHERE m.team_id=${ctx.teamId} AND m.id=${ctx.memberId} AND m.removed_at IS NULL`;
-  if (!rows[0])
-    throw new HiveError("Your hive membership is no longer active.", 403);
-  return {
-    teamId: ctx.teamId,
-    memberId: ctx.memberId,
-    memberName: String(rows[0].name),
-    teamName: String(rows[0].team_name),
-  };
-}
 async function publicChannel(ctx: SlackToolContext) {
   if (ctx.channelId.startsWith("D")) return false;
   const inst = await installation(ctx.teamId);
@@ -82,6 +50,52 @@ const save = z.strictObject({
 });
 export const slackTools: SlackTool[] = [
   ...digestTools,
+  ...captureTools,
+  {
+    name: "undo_last_action",
+    description:
+      "Undo the last reversible admin action in this thread within an hour when the admin asks to undo. Only its author may undo it. Never select for questions about undo.",
+    input_schema: z.toJSONSchema(empty) as Anthropic.Tool.InputSchema,
+    async handler(ctx, args) {
+      empty.parse(args);
+      if (
+        await (
+          await import("@/server/digests/instructions")
+        ).isDigestFollowup(
+          ctx.teamId,
+          ctx.memberId,
+          ctx.channelId,
+          ctx.threadTs,
+        )
+      ) {
+        try {
+          return await (
+            await import("@/server/digests/instructions")
+          ).digestInstruction(
+            ctx,
+            ctx.instructionText ?? "undo",
+            await (
+              await import("@/server/digests/connection")
+            ).slackMemberTimezone(ctx.teamId, ctx.memberId),
+          );
+        } catch (error) {
+          if (error instanceof HiveError) return { text: error.message };
+          throw error;
+        }
+      }
+      const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
+        ...ctx,
+        actionType: "undo",
+      });
+      if (!judgment.act) return { text: judgment.reason };
+      try {
+        return await undoLastAction(ctx);
+      } catch (error) {
+        if (error instanceof HiveError) return { text: error.message };
+        throw error;
+      }
+    },
+  },
   {
     name: "hive_ask",
     description:

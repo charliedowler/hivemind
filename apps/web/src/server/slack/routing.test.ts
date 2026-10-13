@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleMessage, handleCommand } from "./events";
-const { query, post, root, respond, ask } = vi.hoisted(() => ({
+const { query, post, root, respond, ask, page, judge } = vi.hoisted(() => ({
   query: vi.fn(),
   post: vi.fn(),
   root: vi.fn(),
   respond: vi.fn(),
   ask: vi.fn(),
+  page: vi.fn(),
+  judge: vi.fn(),
 }));
 vi.mock("../db/client", () => ({
   getSql: () =>
@@ -27,6 +29,7 @@ vi.mock("./install", () => ({
 vi.mock("./client", async (original) => ({
   ...(await original<typeof import("./client")>()),
   postMessage: post,
+  messagePage: page,
   startSlackCommandThread: root,
   channelInfo: async () => ({
     id: "C123",
@@ -61,8 +64,14 @@ vi.mock("../analytics/events", () => ({
   withOrigin: async (_origin: unknown, action: () => unknown) => action(),
   recordEvent: async () => {},
 }));
+vi.mock("./gate", async (original) => ({
+  ...(await original<typeof import("./gate")>()),
+  judgeSlack: judge,
+}));
 beforeEach(() => {
   vi.clearAllMocks();
+  page.mockResolvedValue({ messages: [], cursor: null, more: false });
+  judge.mockResolvedValue({ signals: null, model: null, latencyMs: 0 });
   post.mockResolvedValue("1800000000.009");
   root.mockResolvedValue("1800000000.008");
   respond.mockResolvedValue({
@@ -129,6 +138,49 @@ describe("Slack reply placement", () => {
       expect(root).not.toHaveBeenCalled();
     },
   );
+  it("reads human thread answers for the gate without indexing the context", async () => {
+    page.mockResolvedValue({
+      messages: [
+        {
+          ts: "1800000000.001",
+          user: "UOTHER",
+          text: "A human already answered this question.",
+        },
+      ],
+      cursor: null,
+      more: false,
+    });
+    await handleMessage("team_fixture", {
+      type: "message",
+      channel: "C123",
+      user: "UCHARLIE",
+      ts: "1800000000.002",
+      thread_ts: "1800000000.001",
+      text: "Does Hive index direct messages?",
+    });
+    expect(judge.mock.calls[0][3]).toEqual([
+      { speaker: "Teammate", text: "A human already answered this question." },
+    ]);
+    expect(post).not.toHaveBeenCalled();
+  });
+  it("stays silent when the bounded thread context has more pages", async () => {
+    page.mockResolvedValue({ messages: [], cursor: "more", more: true });
+    await handleMessage("team_fixture", {
+      type: "message",
+      channel: "C123",
+      user: "UCHARLIE",
+      ts: "1800000000.002",
+      thread_ts: "1800000000.001",
+      text: "Does Hive index direct messages?",
+    });
+    expect(judge).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalled();
+    expect(
+      query.mock.calls.some((call) =>
+        call.includes("The thread context is incomplete."),
+      ),
+    ).toBe(true);
+  });
   it("puts slash answers in a thread under a question root, never in the main channel", async () => {
     await handleCommand("team_fixture", {
       channel_id: "C123",

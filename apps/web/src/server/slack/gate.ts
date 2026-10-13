@@ -17,6 +17,7 @@ export type GateFacts = {
   confirmedMatch: boolean;
   threadUsed: boolean;
   hourlyCount: number;
+  contextComplete?: boolean;
 };
 export type GateDecision = {
   decision: "reply_now" | "react_only" | "stay_silent";
@@ -29,6 +30,11 @@ export function decideSlack(
 ): GateDecision {
   if (facts.prompted)
     return { decision: "reply_now", reason: "Explicit request to Hive." };
+  if (facts.contextComplete === false)
+    return {
+      decision: "stay_silent",
+      reason: "The thread context is incomplete.",
+    };
   if (!signals)
     return {
       decision: "stay_silent",
@@ -85,7 +91,7 @@ const questions = {
     "Are people talking to each other without expecting Hive to reply? Chit-chat, thanks between people and questions to named humans are true. A request or follow-up to Hive is false.",
   ),
   answered: noul(
-    "Does thread already contain a human or Hive answer to what new_message asks? Changed or new questions are false.",
+    "Does thread already contain a human, Hive or another app answer to what new_message asks? Changed or new questions are false.",
   ),
   moreComing: noul(
     "Is new_message unfinished, or does it say that another message or a list is coming? A complete message is false.",
@@ -98,6 +104,7 @@ export async function judgeSlack(
   message: string,
   thread: { question: string; answer: string }[],
   cells: SearchHit[],
+  messages: Array<{ speaker: string; text: string }> = [],
 ) {
   const started = performance.now();
   if (!process.env.TYPESAFE_API_KEY)
@@ -111,7 +118,7 @@ export async function judgeSlack(
       model: jevModel,
       state: {
         new_message: redactSecrets(message).text,
-        thread,
+        thread: { hiveHistory: thread, messages },
         confirmed_cells: cells.map((c) => ({
           id: c.id,
           title: c.title,
