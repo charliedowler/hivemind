@@ -2,10 +2,8 @@ import { cellStateLabel, kindLabel } from "@/lib/learning-presentation";
 import {
   withOrigin,
   originFor,
-  bindApiKey,
-  bindRole,
 } from "@/server/analytics/events";
-import type { McpServer, AuthInfo } from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
   hiveShareProjectsInput,
@@ -20,7 +18,6 @@ import {
   hiveOutcomeInput,
   hiveRecentInput,
   hiveSearchInput,
-  type HiveContext,
   type LearningView,
 } from "@hivemind/core";
 import {
@@ -45,30 +42,11 @@ import { shareProjects } from "@/server/project-sharing";
 import { mcpJoin } from "@/server/identity/mcp-join";
 
 import { searchSlack } from "@/server/slack/search";
+import { contextSchema, getContext, type ToolContext } from "./context";
+import { registerHiveInstructions } from "./instructions";
+import { registerHivePrompts } from "./prompts";
+import { registerHiveResources } from "./resources";
 
-const contextSchema = z.object({
-  teamId: z.string(),
-  teamName: z.string(),
-  memberId: z.string(),
-  memberName: z.string(),
-  apiKeyId: z.string().nullish(),
-  role: z.enum(["admin", "member"]).nullish(),
-  sessionKind: z.enum(["api_key", "oauth"]).optional(),
-  trustedProxyIp: z.string().nullable().optional(),
-});
-type ToolContext = {
-  http?: { authInfo?: AuthInfo; req?: { headers: Headers } };
-};
-
-function getContext(ctx: ToolContext): HiveContext {
-  const parsed = contextSchema.safeParse(ctx.http?.authInfo?.extra);
-  if (!parsed.success)
-    throw new HiveError("Connect your agent to the hive and sign in.", 401);
-  const actor = parsed.data;
-  if (actor.apiKeyId) bindApiKey(actor, actor.apiKeyId);
-  if (actor.role) bindRole(actor, actor.role);
-  return actor;
-}
 
 function age(date: string): string {
   const minutes = Math.max(
@@ -125,6 +103,9 @@ async function reply(action: () => Promise<string>, ctx: ToolContext) {
 }
 
 export function registerHiveTools(server: McpServer) {
+  registerHiveInstructions(server);
+  registerHivePrompts(server);
+  registerHiveResources(server);
   server.registerTool("hive_share_projects", {
     title: "Choose projects for private capture",
     description: "Read the owner's selection, or save include/exclude patterns at its revision. Initial agent setup records the supplied humanInstruction. Adding projects later requires human authority. Captures stay personal; this never publishes to an organisation.",
@@ -211,7 +192,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Share a learning",
       description:
-        "Share one observation in your words, optional evidence and the runtime context you already know. Hive derives the title, metadata and relations. Returns the saved cell, inferred fields and a revision-bound correction handle. Keep secrets and identifying details out.",
+        "Save a requested durable observation with evidence and known project context, without secrets or personal data; explain any capture refusal.",
       inputSchema: hivePushInput,
     },
     async (input, ctx) =>
@@ -238,7 +219,7 @@ export function registerHiveTools(server: McpServer) {
   }, async (input, ctx) => reply(async () => JSON.stringify(await correctLearning(getContext(ctx), input)), ctx));
   server.registerTool("hive_outcome", {
     title: "Report a result from using a cell",
-    description: "Report a concrete result from using this cell, with evidence when available. Hive classifies useful, contradicted, stale or inconclusive. Useful results raise ranking; contradicted and stale results can hide cells from default retrieval. Retrieval alone never votes. Returns an actor-bound receipt you can withdraw with hive_feedback.",
+    description: "Report an evidenced result after using a cell so Hive can update its ranking and inclusion; reading alone never votes.",
     inputSchema: hiveOutcomeInput,
   }, async (input, ctx) => reply(async () => JSON.stringify(await reportOutcome(getContext(ctx), input)), ctx));
 
@@ -247,7 +228,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Search shared learnings",
       description:
-        "Call at the start of work in a repository and when an error appears. Find relevant learnings before repeating an investigation. The repo boosts same-repository results; tags filter results. Unhelpful and contradicted cells are hidden by default, along with outdated, superseded and retracted cells. Use include_history: true to investigate them.",
+        "Search team memory before answering about code, tools or decisions and cite the cells; include_history reveals hidden unhelpful or historical cells.",
       inputSchema: hiveSearchInput,
     },
     async (input, ctx) =>
@@ -269,7 +250,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Ask the hive",
       description:
-        "Ask a question using the team's saved learnings. The answer cites its cells. Check the confidence and gaps before acting. Unhelpful and contradicted cells are hidden by default, along with outdated, superseded and retracted cells. Use include_history: true to investigate them.",
+        "Answer from team memory with cell citations, confidence and gaps; include_history reveals hidden unhelpful or historical cells.",
       inputSchema: hiveAskInput,
     },
     async (input, ctx) =>
@@ -321,7 +302,7 @@ export function registerHiveTools(server: McpServer) {
     {
       title: "Review a learning",
       description:
-        "Optional direct useful, unhelpful or outdated vote. Prefer hive_outcome for an evidenced result. Use withdraw: true and the receipt to withdraw your feedback. Votes change ranking and inclusion in default search, ask and recent. The newest feedback replaces your prior vote; retrieval never votes.",
+        "Vote up for useful, down for unhelpful or outdated for stale cells to change ranking and inclusion, or withdraw your receipt; prefer hive_outcome for evidence.",
       inputSchema: hiveFeedbackInput,
     },
     async (input, ctx) =>
