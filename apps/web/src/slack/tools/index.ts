@@ -6,7 +6,8 @@ export { reactToSlack } from "./react";
 export type { SlackReactResult } from "./react";
 export { slackToolReply } from "./reply";
 import { undoThreadAction } from "./undo";
-export { decideDecisiveness } from "@/server/slack/decisiveness";
+import { decideDecisiveness } from "@/server/slack/decisiveness";
+export { decideDecisiveness };
 export { runReversibleAction } from "@/server/slack/actions";
 import { digestTools } from "./digests";
 import { captureRuleTools } from "./capture-rules";
@@ -65,10 +66,19 @@ export const slackTools: SlackTool[] = [
   {
     name: "undo_last_action",
     description:
-      "Undo the last capture instruction or reversible admin action in this thread within an hour when its author asks to undo. Members can undo their own member capture rules; team rules and schedules need a current admin. Never select for questions about undo.",
+      "Undo threadContext.lastReversibleAction, the latest capture rule, weekly update or admin action, when its author asks in plain language, such as undo, undo that, revert or cancel that. The only way to undo; no other tool undoes. Members can undo their own capture rules; team rules, schedules and join decisions need a current admin. Never select for questions about undo.",
     input_schema: z.toJSONSchema(empty) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       empty.parse(args);
+      const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
+        ...ctx,
+        actionType: "undo",
+      });
+      if (!judgment.act)
+        return {
+          text: judgment.reason,
+          ...(judgment.react ? { react: judgment.react } : {}),
+        };
       return undoThreadAction(ctx);
     },
   },

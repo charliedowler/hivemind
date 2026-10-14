@@ -27,7 +27,7 @@ import {
 import { mcpJoin } from "./mcp-join";
 import { notifyJoinRequestAdmins } from "../slack/join-request-notifications";
 import {
-  respondToJoinRequest,
+  joinRequestNotices,
   joinRequestTools,
 } from "@/slack/tools/join-requests";
 import { undoThreadAction } from "@/slack/tools/undo";
@@ -36,6 +36,11 @@ import { followOwnerMemberships, bindVerifiedOwner } from "./legacy-owner-fixtur
 
 const transport = vi.hoisted(() => ({ slack: vi.fn(), email: vi.fn() }));
 vi.mock("server-only", () => ({}));
+// Jev's judgment is covered by the routing tests; here every instruction is decisive and the
+// database-backed rules (admin, pending, undo window, authorship) decide.
+vi.mock("@/server/slack/decisiveness", () => ({
+  decideDecisiveness: async () => ({ act: true, reason: "Clear" }),
+}));
 vi.mock("../slack/install", () => ({
   installation: async () => ({ token: "test-token", bot_user_id: "UBOT" }),
 }));
@@ -306,14 +311,28 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await mcpJoin(person, phrase, { ...options, sessionKind: "oauth" }),
       ).toEqual({ status: "requested" });
     });
-    it("acts on a bare decisive DM reply and undoes it without a model call", async () => {
+    it("acts on a decision in the notice thread and undoes it from a top-level DM message", async () => {
       const { person, id } = await request("DM Person");
       const notice = (
         await sql`SELECT thread_ts FROM hive_join_request_notifications WHERE request_id=${id} AND admin_member_id=${admin.memberId}`
       )[0];
       const ctx = slackContext(String(notice.thread_ts));
       expect(
-        await respondToJoinRequest(ctx, "approve", ctx.messageTs),
+        await joinRequestNotices(ctx, ctx.messageTs),
+      ).toEqual([
+        expect.objectContaining({
+          kind: "join_request",
+          requestId: id,
+          person: expect.objectContaining({ name: "DM Person" }),
+          status: "pending",
+          noticeIsThisThread: true,
+        }),
+      ]);
+      expect(
+        await joinRequestTools[0].handler(
+          { ...ctx, instructionText: "approved" },
+          { decision: "approve", requestId: id },
+        ),
       ).toMatchObject({ react: "white_check_mark" });
       expect(await memberContext(person.memberId, admin.teamId)).not.toBeNull();
       const action = (
@@ -325,13 +344,17 @@ describe.skipIf(!process.env.DATABASE_URL)(
           await sql`SELECT undo_action_id FROM hive_join_requests WHERE id=${id}`
         )[0].undo_action_id,
       ).toBe(action.id);
+      expect(
+        (await joinRequestNotices(ctx, ctx.messageTs))[0].status,
+      ).toBe("approved");
       const undoTs = `${++counter}.0001`;
       expect(
-        await respondToJoinRequest(
-          { ...ctx, threadTs: undoTs },
-          "undo",
-          undoTs,
-        ),
+        await undoThreadAction({
+          ...ctx,
+          threadTs: undoTs,
+          messageTs: undoTs,
+          instructionText: "undo that",
+        }),
       ).toMatchObject({ react: "white_check_mark" });
       expect(await memberContext(person.memberId, admin.teamId)).toBeNull();
       expect(
@@ -340,6 +363,27 @@ describe.skipIf(!process.env.DATABASE_URL)(
       ).toBe("pending");
       await decideJoinRequest(admin, id, "approve");
       expect(await memberContext(person.memberId, admin.teamId)).not.toBeNull();
+    });
+    it("records a top-level DM decision under the notice it answered", async () => {
+      await sql`UPDATE hive_join_requests SET status='expired' WHERE team_id=${admin.teamId} AND status='pending'`;
+      const { person, id } = await request("Top Level Person");
+      const notice = (
+        await sql`SELECT thread_ts FROM hive_join_request_notifications WHERE request_id=${id} AND admin_member_id=${admin.memberId}`
+      )[0];
+      const ts = `${++counter}.0001`;
+      const ctx = { ...slackContext(ts), messageTs: ts, instructionText: "yes let them in" };
+      expect(await joinRequestNotices(ctx, ts)).toEqual([
+        expect.objectContaining({ requestId: id, noticeIsThisThread: false }),
+      ]);
+      expect(
+        await joinRequestTools[0].handler(ctx, { decision: "approve" }),
+      ).toMatchObject({ react: "white_check_mark" });
+      expect(await memberContext(person.memberId, admin.teamId)).not.toBeNull();
+      expect(
+        (
+          await sql`SELECT thread_ts FROM slack_tool_actions WHERE channel_id='DADMIN' AND message_ts=${ts}`
+        )[0].thread_ts,
+      ).toBe(String(notice.thread_ts));
     });
     it("replays a Slack delivery without deciding or emailing twice", async () => {
       const { id } = await request("Replay Person");
@@ -402,24 +446,31 @@ describe.skipIf(!process.env.DATABASE_URL)(
         text: "More than one person matches. Use their email.",
       });
     });
-    it("acts on an explicit named channel approval and ignores an informational question", async () => {
+    it("acts on a named channel approval, including an address in Slack link markup", async () => {
       const { person } = await request(`Unique${suffix}`);
       const ctx = { ...slackContext("100.001"), channelId: "CAPP" };
       expect(
-        await respondToJoinRequest(
-          ctx,
-          `approve Unique${suffix}`,
-          ctx.messageTs,
+        await joinRequestTools[0].handler(
+          { ...ctx, instructionText: `approve Unique${suffix}` },
+          { decision: "approve", person: `Unique${suffix}` },
         ),
       ).toMatchObject({ react: "white_check_mark" });
       expect(await memberContext(person.memberId, admin.teamId)).not.toBeNull();
+      const linked = await request("Linked Person");
+      const email = String(
+        (await sql`SELECT email FROM hive_join_requests WHERE id=${linked.id}`)[0]
+          .email,
+      );
+      const next = { ...ctx, messageTs: `${++counter}.0001` };
       expect(
-        await respondToJoinRequest(
-          ctx,
-          "how does approval work?",
-          `${++counter}.0001`,
+        await joinRequestTools[0].handler(
+          { ...next, instructionText: `approve ${email}` },
+          { decision: "approve", person: `<mailto:${email}|${email}>` },
         ),
-      ).toBeNull();
+      ).toMatchObject({ react: "white_check_mark" });
+      expect(
+        await memberContext(linked.person.memberId, admin.teamId),
+      ).not.toBeNull();
     });
     it("undoes a decline and blocks undo after an hour", async () => {
       const { id } = await request("Decline Person");

@@ -30,6 +30,8 @@ const inverseSchema = z.discriminatedUnion("kind", [
 export type SlackActionInverse = z.infer<typeof inverseSchema>;
 export type ReversibleChange = {
   inverse: SlackActionInverse;
+  // Record the receipt under this thread instead, e.g. the notice a top-level DM reply answered.
+  threadTs?: string;
   text: string;
   undo?: string;
   react?: string | false;
@@ -73,7 +75,7 @@ export async function runReversibleAction(
     const inverse = inverseSchema.parse(result.inverse);
     const react = result.react === false ? null : (result.react ?? "+1");
     const text = slackToolReply(result.text, ctx).replace(/\s+/g, " ").trim();
-    await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${ctx.threadTs},${messageTs},${toolName},${tx.json({ ...inverse, replyReact: react })},${text})`;
+    await tx`INSERT INTO slack_tool_actions(id,team_id,member_id,channel_id,thread_ts,message_ts,tool_name,inverse,reply) VALUES(${newId("sact")},${ctx.teamId},${ctx.memberId},${ctx.channelId},${result.threadTs ?? ctx.threadTs},${messageTs},${toolName},${tx.json({ ...inverse, replyReact: react })},${text})`;
     if (inverse.kind === "join_request_decided") await tx`UPDATE hive_join_requests SET undo_action_id=(SELECT id FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND channel_id=${ctx.channelId} AND message_ts=${messageTs}) WHERE id=${inverse.id} AND team_id=${ctx.teamId} AND decided_by=${ctx.memberId}`;
     return { text, ...(react ? { react } : {}) };
   });

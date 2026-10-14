@@ -1,10 +1,11 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { captureRuleInputSchema, type CaptureRule } from "@hivemind/core";
-import { captureRuleTools, isCaptureUndoInstruction, dispatchCaptureUndo } from "./capture-rules";
+import { captureRuleTools, dispatchCaptureUndo } from "./capture-rules";
 import { dispatchSlackAction, slackTools, type SlackToolContext } from "./index";
 import { respondToSlack } from "../respond";
 
-const { set, undo, effective, sql, route, createRule } = vi.hoisted(() => ({
+const { set, undo, effective, sql, route, createRule, judge } = vi.hoisted(() => ({
+  judge: vi.fn(),
   set: vi.fn(),
   undo: vi.fn(),
   effective: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/server/capture-rules", () => ({
   createCaptureRule: createRule,
 }));
 vi.mock("@/server/db/client", () => ({ getSql: () => sql }));
+vi.mock("@/server/slack/decisiveness", () => ({ decideDecisiveness: judge }));
 vi.mock("@/server/digests/connection", () => ({
   slackMemberTimezone: async () => "Europe/London",
 }));
@@ -81,16 +83,11 @@ beforeEach(() => {
   set.mockResolvedValue(saved());
   undo.mockResolvedValue({status: "undone", rule: rule(), restatement: "Removed the rule for /private/owner/documents.", counts: {...counts, restored: 2, retained: 1}});
   effective.mockResolvedValue([]);
+  judge.mockResolvedValue({act: true, reason: "Clear instruction"});
 });
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Slack direct capture instructions", () => {
-  it.each(["undo", "Please undo that", "can you undo the last rule?", "<@U123> undo", "cancel that"])("recognises an explicit undo instruction: %s", text => {
-    expect(isCaptureUndoInstruction(text)).toBe(true);
-  });
-  it.each(["What does undo do?", "Maybe undo that", "How do I undo?", "Someone said undo", "Do not undo"])("does not undo a question or tentative statement: %s", text => {
-    expect(isCaptureUndoInstruction(text)).toBe(false);
-  });
   it("routes generic undo to the latest capture instruction for a non-admin member", async () => {
     sql.mockResolvedValueOnce([{id: "sact_fixture", source: "shared", expires_at: new Date(Date.now()+60000), undone_at: null, tool_name: "hive_set_capture_rule", member_id: ctx.memberId, inverse: {kind: "capture_instruction", reversible: true, payload: {instructionId: "cinstr_aaaaaaaaaaaa"}}}]).mockResolvedValueOnce([{name: member.memberName, team_name: member.teamName}]);
     const tool = slackTools.find(tool => tool.name === "undo_last_action")!;
@@ -115,7 +112,7 @@ describe("Slack direct capture instructions", () => {
     expect(setTool.input_schema).toMatchObject({required: ["text"], additionalProperties: false});
     expect(listTool.input_schema).toMatchObject({additionalProperties: false});
     expect(setTool.description).toContain("immediately");
-    expect(setTool.description).toContain("undo");
+    expect(setTool.description).not.toMatch(/undo/i);
     expect(setTool.description).toContain("reconstruct the original instruction");
     expect(setTool.description).toContain("\nRequired detail: ");
     expect(setTool.description).toContain("never just the answer");
@@ -186,53 +183,20 @@ describe("Slack direct capture instructions", () => {
     expect(createRule).not.toHaveBeenCalled();
   });
 
-  it.each(["undo", "  UNDO  "])("routes %s to undo with the exact caller and conversation", async text => {
-    const result = await setTool.handler(ctx, {text});
-    expect(undo).toHaveBeenCalledExactlyOnceWith(member, location);
-    expect(set).not.toHaveBeenCalled();
-    expect(createRule).not.toHaveBeenCalled();
-    expect(result.text).toBe("Removed your latest choice about what Hive keeps in this conversation. 2 earlier cells were restored. 1 cell keeps later changes or other saved choices.");
-    expect(result.text).not.toContain("/private");
-    expect(result.text).not.toContain("Reply undo");
-    expect(result.blocks?.every(block => block.type === "section")).toBe(true);
-  });
-
-  it("never turns explicit undo into the model's question about setting a schedule", async () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", "synthetic");
-    route.mockResolvedValue({stop_reason: "end_turn", content: [{type: "text", text: "When should I post the weekly update?"}]});
-    sql.mockImplementation(async (strings: TemplateStringsArray) => strings.join(" ").includes("UNION ALL") ? [{id: "sact_fixture", source: "shared", member_id: ctx.memberId, tool_name: "hive_set_capture_rule", inverse: {kind: "capture_instruction", reversible: true, payload: {instructionId: "cinstr_aaaaaaaaaaaa"}}, expires_at: new Date(Date.now()+60000), undone_at: null}] : [{name: member.memberName, team_name: member.teamName}]);
-    const result = await respondToSlack(ctx, "revert", ctx.threadTs, []);
-    expect(result.react).toBe("white_check_mark");
-    expect(result.text).not.toContain("Should I set");
-    expect(route).toHaveBeenCalledTimes(1);
-    const input = JSON.parse(route.mock.calls[0][0].messages[0].content);
-    expect(input.lastReversibleAction).toMatchObject({ tool: "hive_set_capture_rule", authorIsSpeaker: true, alreadyUndone: false });
-  });
   it("routes an undo reply through the latest reversible action", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "synthetic");
-    route.mockResolvedValue({stop_reason: "tool_use", content: [{type: "tool_use", name: setTool.name, input: {text: "undo"}}]});
+    route.mockResolvedValue({stop_reason: "tool_use", content: [{type: "tool_use", name: "undo_last_action", input: {}}]});
     sql.mockImplementation(async (strings: TemplateStringsArray) => strings.join(" ").includes("UNION ALL") ? [{id: "sact_fixture", source: "shared", member_id: ctx.memberId, tool_name: "hive_set_capture_rule", inverse: {kind: "capture_instruction", reversible: true, payload: {instructionId: "cinstr_aaaaaaaaaaaa"}}, expires_at: new Date(Date.now()+60000), undone_at: null}] : [{name: member.memberName, team_name: member.teamName}]);
     await respondToSlack(ctx, "undo", ctx.threadTs, [{question: "Exclude private documents", answer: "Reply undo to remove it."}]);
     expect(undo).toHaveBeenCalledExactlyOnceWith(member, location, "cinstr_aaaaaaaaaaaa");
     expect(set).not.toHaveBeenCalled();
     expect(route).toHaveBeenCalledTimes(1);
+    const input = JSON.parse(route.mock.calls[0][0].messages[0].content);
+    expect(input.threadContext.lastReversibleAction).toMatchObject({ tool: "hive_set_capture_rule", authorIsSpeaker: true, alreadyUndone: false, withinUndoWindow: true });
+    expect(judge).toHaveBeenCalledWith("undo", expect.objectContaining({ actionType: "undo" }));
   });
 
-  it.each([
-    {channelId: "D_OTHER"},
-    {threadTs: "1800000001.002"},
-    {teamId: "team_other"},
-    {memberId: "member_other"},
-  ])("passes the exact changed context $channelId $threadTs $teamId $memberId to undo", async changed => {
-    const conversation = {...ctx, ...changed};
-    await setTool.handler(conversation, {text: "undo"});
-    expect(undo).toHaveBeenCalledExactlyOnceWith({...member, teamId: conversation.teamId, memberId: conversation.memberId}, {...location, channelId: conversation.channelId, threadTs: conversation.threadTs});
-    expect(effective).not.toHaveBeenCalled();
-  });
-
-  it("propagates expired undo and scope authorization refusals without creating a rule", async () => {
-    undo.mockRejectedValueOnce(new Error("The undo window has expired."));
-    await expect(setTool.handler(ctx, {text: "undo"})).rejects.toThrow("expired");
+  it("propagates scope authorization refusals without creating a rule", async () => {
     set.mockRejectedValueOnce(new Error("A team admin is needed."));
     await expect(setTool.handler({...ctx, isAdmin: true}, {text: "Exclude these for the team"})).rejects.toThrow("admin");
     expect(createRule).not.toHaveBeenCalled();
@@ -307,12 +271,10 @@ describe("Slack direct capture instructions", () => {
     expect(result.text).toMatch(/13 Oct|9am/);
   });
 
-  it("escapes DM questions and undo restatements", async () => {
+  it("escapes DM questions", async () => {
     const dm = {...ctx, channelId: "D_FIXTURE"};
     set.mockResolvedValue({status: "question", restatement: "Ignored", question: "Should <private> & @channel captures be excluded?"});
     expect((await setTool.handler(dm, {text: "Exclude this"})).text).toBe("Should &lt;private&gt; &amp; @\u200bchannel captures be excluded?");
-    undo.mockResolvedValue({status: "undone", restatement: "Removed the <private> & @here rule."});
-    expect((await setTool.handler(dm, {text: "undo"})).text).toBe("Removed the &lt;private&gt; &amp; @\u200bhere rule.");
   });
 
   it("bounds escaped sections without splitting an entity", async () => {
@@ -331,10 +293,9 @@ describe("Slack direct capture instructions", () => {
     expect(sql).not.toHaveBeenCalled();
   });
 
-  it("refuses removed members before saving or undoing", async () => {
+  it("refuses removed members before saving", async () => {
     sql.mockResolvedValue([]);
     await expect(setTool.handler(ctx, {text: "Exclude my private captures"})).rejects.toThrow("no longer active");
-    await expect(setTool.handler(ctx, {text: "undo"})).rejects.toThrow("no longer active");
     expect(set).not.toHaveBeenCalled();
     expect(undo).not.toHaveBeenCalled();
   });

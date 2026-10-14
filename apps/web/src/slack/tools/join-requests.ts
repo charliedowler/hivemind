@@ -1,11 +1,13 @@
+import type postgres from "postgres";
 import { z } from "zod";
-import type { SlackTool, SlackToolContext, SlackToolResult } from "./index";
+import type { SlackTool, SlackToolContext } from "./index";
+import type { SlackActionableNotice } from "./context";
 import { toolActor } from "./context";
-import { undoThreadAction, isExplicitUndoIntent } from "./undo";
 import { getSql } from "@/server/db/client";
 import { HiveError } from "@/server/errors";
 import { decideDecisiveness } from "@/server/slack/decisiveness";
 import { runReversibleAction } from "@/server/slack/actions";
+import { slackPlainText } from "@/server/slack/format";
 import {
   decideJoinRequestInTransaction,
   deliverJoinDecline,
@@ -13,82 +15,94 @@ import {
 
 const input = z.strictObject({
   decision: z.enum(["approve", "decline"]),
+  requestId: z.string().max(100).optional(),
   person: z.string().max(200).optional(),
 });
-export function parseJoinDecision(text: string) {
-  const clean = text
-    .replace(/^(?:<@[A-Z0-9]+>\s*)+/, "")
-    .replace(/\s+\*Sent using\* Slack MCP client\s*$/, "")
-    // Slack wraps addresses and links as <mailto:a@b|a@b> or <https://x|label>; keep the address or label.
-    .replace(/<mailto:([^|>]+)(?:\|[^>]*)?>/gi, "$1")
-    .replace(/<https?:\/\/[^|>]+\|([^>]+)>/gi, "$1")
-    .trim();
-  // Admins reply "approved" and "declined" as often as the imperative; both are a clear decision.
-  const match = /^(?:please\s+)?(approve|decline)d?(?:\s+(.+?))?[.!?]*$/i.exec(
-    clean,
-  );
-  return match
-    ? {
-        decision: match[1].toLowerCase() as "approve" | "decline",
-        person: match[2]?.trim(),
-      }
-    : null;
-}
-async function findRequest(ctx: SlackToolContext, person?: string) {
-  const sql = getSql();
-  if (!person && ctx.channelId.startsWith("D")) {
-    const exact =
-      await sql`SELECT r.id FROM hive_join_request_notifications n JOIN hive_join_requests r ON r.id=n.request_id WHERE r.team_id=${ctx.teamId} AND n.admin_member_id=${ctx.memberId} AND n.channel_id=${ctx.channelId} AND n.thread_ts=${ctx.threadTs}`;
-    if (exact[0]) return String(exact[0].id);
-    const pending =
-      await sql`SELECT r.id,n.thread_ts FROM hive_join_request_notifications n JOIN hive_join_requests r ON r.id=n.request_id WHERE r.team_id=${ctx.teamId} AND n.admin_member_id=${ctx.memberId} AND n.channel_id=${ctx.channelId} AND r.status='pending' AND r.expires_at>now() AND n.status='sent'`;
-    if (pending.length === 1) {
-      ctx.threadTs = String(pending[0].thread_ts);
-      return String(pending[0].id);
-    }
-    throw new HiveError(
-      pending.length
-        ? "Who should I approve or decline? Include their name or email."
-        : "There is no pending request here.",
-      409,
-    );
-  }
-  if (!person)
-    throw new HiveError(
-      "Who should I approve or decline? Include their name or email.",
-      400,
-    );
-  const target = person.trim().toLowerCase();
+type JoinDecisionInput = z.infer<typeof input>;
+const askWho = "Who should I approve or decline? Include their name or email.";
+
+// Join-request notices this message may answer: the notice that started this thread, or in a
+// top-level DM reply, every pending notice Hive sent this admin in the DM.
+export async function joinRequestNotices(
+  ctx: SlackToolContext,
+  messageTs: string,
+): Promise<SlackActionableNotice[]> {
+  if (!ctx.isAdmin) return [];
+  const topLevelDm = ctx.channelId.startsWith("D") && ctx.threadTs === messageTs;
   const rows =
-    await sql`SELECT r.id FROM hive_join_requests r JOIN members m ON m.id=r.member_id WHERE r.team_id=${ctx.teamId} AND r.status='pending' AND r.expires_at>now() AND (lower(m.name)=${target} OR lower(split_part(m.name,' ',1))=${target} OR r.email=${target} OR r.id=${target})`;
-  if (rows.length !== 1)
-    throw new HiveError(
-      rows.length
-        ? "More than one person matches. Use their email."
-        : "There is no pending request for that person.",
-      409,
-    );
-  return String(rows[0].id);
+    await getSql()`SELECT r.id,r.email,r.status,r.expires_at>now() AS live,m.name,t.name AS team_name,n.thread_ts FROM hive_join_request_notifications n JOIN hive_join_requests r ON r.id=n.request_id JOIN members m ON m.id=r.member_id JOIN teams t ON t.id=r.team_id WHERE r.team_id=${ctx.teamId} AND n.admin_member_id=${ctx.memberId} AND n.channel_id=${ctx.channelId} AND (n.thread_ts=${ctx.threadTs} OR (${topLevelDm} AND r.status='pending' AND r.expires_at>now() AND n.status='sent')) ORDER BY n.sent_at DESC NULLS LAST LIMIT 5`;
+  return rows.map((row) => ({
+    kind: "join_request",
+    requestId: String(row.id),
+    person: {
+      name: row.name && row.name !== "Your Hive" ? String(row.name) : null,
+      email: String(row.email),
+    },
+    team: String(row.team_name),
+    status:
+      row.status === "pending" && !row.live
+        ? "expired"
+        : (String(row.status) as SlackActionableNotice["status"]),
+    noticeIsThisThread: row.thread_ts === ctx.threadTs,
+  }));
 }
+
+async function findRequest(
+  tx: postgres.TransactionSql,
+  ctx: SlackToolContext,
+  data: JoinDecisionInput,
+): Promise<{ id: string; threadTs?: string }> {
+  if (data.requestId) {
+    const rows =
+      await tx`SELECT r.id,n.thread_ts FROM hive_join_requests r LEFT JOIN hive_join_request_notifications n ON n.request_id=r.id AND n.admin_member_id=${ctx.memberId} AND n.channel_id=${ctx.channelId} WHERE r.team_id=${ctx.teamId} AND r.id=${data.requestId}`;
+    if (!rows[0])
+      throw new HiveError("There is no pending request for that person.", 409);
+    const topLevel = ctx.threadTs === ctx.messageTs && rows[0].thread_ts;
+    return {
+      id: String(rows[0].id),
+      ...(topLevel ? { threadTs: String(rows[0].thread_ts) } : {}),
+    };
+  }
+  const person = data.person ? slackPlainText(data.person) : "";
+  if (person) {
+    const target = person.toLowerCase();
+    const rows =
+      await tx`SELECT r.id FROM hive_join_requests r JOIN members m ON m.id=r.member_id WHERE r.team_id=${ctx.teamId} AND r.status='pending' AND r.expires_at>now() AND (lower(m.name)=${target} OR lower(split_part(m.name,' ',1))=${target} OR r.email=${target} OR r.id=${target})`;
+    if (rows.length !== 1)
+      throw new HiveError(
+        rows.length
+          ? "More than one person matches. Use their email."
+          : "There is no pending request for that person.",
+        409,
+      );
+    return { id: String(rows[0].id) };
+  }
+  if (!ctx.channelId.startsWith("D")) throw new HiveError(askWho, 400);
+  const exact =
+    await tx`SELECT r.id FROM hive_join_request_notifications n JOIN hive_join_requests r ON r.id=n.request_id WHERE r.team_id=${ctx.teamId} AND n.admin_member_id=${ctx.memberId} AND n.channel_id=${ctx.channelId} AND n.thread_ts=${ctx.threadTs}`;
+  if (exact[0]) return { id: String(exact[0].id) };
+  const pending =
+    await tx`SELECT r.id,n.thread_ts FROM hive_join_request_notifications n JOIN hive_join_requests r ON r.id=n.request_id WHERE r.team_id=${ctx.teamId} AND n.admin_member_id=${ctx.memberId} AND n.channel_id=${ctx.channelId} AND r.status='pending' AND r.expires_at>now() AND n.status='sent'`;
+  if (pending.length === 1)
+    return {
+      id: String(pending[0].id),
+      threadTs: String(pending[0].thread_ts),
+    };
+  throw new HiveError(
+    pending.length ? askWho : "There is no pending request here.",
+    409,
+  );
+}
+
 export const joinRequestTools: SlackTool[] = [
   {
     name: "hive_decide_join_request",
     description:
-      "Approve or decline a pending request to join this hive on a clear admin instruction. person is the name or email in the instruction; omit it only for approve/decline in the request DM. Act immediately without confirmation. Membership is granted only on approval.",
+      "Approve or decline a pending request to join this hive when an admin decides, in any wording: approve, approved, yes let them in, nope, decline this one. When threadContext.notices has the join request being answered, pass its requestId. Otherwise pass person as the name or email the admin gave. Omit both when the person is unclear; the server asks who. Acts immediately without confirmation. Never select for questions about a request.",
     input_schema: z.toJSONSchema(input) as SlackTool["input_schema"],
     async handler(ctx, args) {
       try {
         const data = input.parse(args);
-        const explicit = parseJoinDecision(ctx.instructionText ?? "");
-        if (
-          explicit &&
-          (explicit.decision !== data.decision ||
-            (explicit.person &&
-              explicit.person.toLowerCase() !== data.person?.toLowerCase()))
-        )
-          return {
-            text: "Use approve or decline with the person’s name or email.",
-          };
         const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
           ...ctx,
           actionType: "join_request",
@@ -104,19 +118,21 @@ export const joinRequestTools: SlackTool[] = [
           ctx,
           "hive_decide_join_request",
           async (tx) => {
-            requestId = await findRequest(ctx, data.person);
+            const target = await findRequest(tx, ctx, data);
+            requestId = target.id;
             const changed = await decideJoinRequestInTransaction(
               tx,
               actor,
-              requestId,
+              target.id,
               data.decision,
             );
             return {
               inverse: {
                 kind: "join_request_decided",
-                id: requestId,
+                id: target.id,
                 version: changed.version,
               },
+              threadTs: target.threadTs,
               text:
                 data.decision === "approve"
                   ? "Join request approved."
@@ -131,31 +147,9 @@ export const joinRequestTools: SlackTool[] = [
       } catch (error) {
         if (error instanceof HiveError) return { text: error.message };
         if (error instanceof z.ZodError)
-          return {
-            text: "Use approve or decline with the person’s name or email.",
-          };
+          return { text: "Should I approve or decline this request?" };
         throw error;
       }
     },
   },
 ];
-export async function respondToJoinRequest(
-  ctx: SlackToolContext,
-  message: string,
-  messageTs: string,
-): Promise<SlackToolResult | null> {
-  const instruction = { ...ctx, messageTs, instructionText: message };
-  const explicit = parseJoinDecision(message);
-  if (explicit) return joinRequestTools[0].handler(instruction, explicit);
-  if (ctx.channelId.startsWith("D") && isExplicitUndoIntent(message)) {
-    if (ctx.threadTs !== messageTs) return undoThreadAction(instruction);
-    const latest =
-      await getSql()`SELECT thread_ts FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND member_id=${ctx.memberId} AND channel_id=${ctx.channelId} ORDER BY created_at DESC,id DESC LIMIT 1`;
-    if (latest[0])
-      return undoThreadAction({
-        ...instruction,
-        threadTs: String(latest[0].thread_ts),
-      });
-  }
-  return null;
-}

@@ -1,19 +1,10 @@
 import { getSql } from "@/server/db/client";
 import { HiveError } from "@/server/errors";
-import { decideDecisiveness } from "@/server/slack/decisiveness";
 import { captureUndoHandlers } from "./capture-rules";
 import { digestUndoHandlers } from "./digests";
 import type { SlackToolContext, SlackToolResult } from "./index";
+import type { SlackReversibleAction } from "./context";
 
-export function isExplicitUndoIntent(text: string) {
-  const request = text
-    .replace(/^(?:<@[A-Z0-9]+>\s*)+/, "")
-    .replace(/\s+\*Sent using\* Slack MCP client\s*$/, "")
-    .trim();
-  return /^(?:(?:please|can you|could you)\s+)?(?:(?:undo|revert)(?:\s+(?:that|this|it|(?:the\s+)?(?:last|latest)\s+(?:rule|change|action)))?|cancel\s+that)[.!?]*$/i.test(
-    request,
-  );
-}
 export async function latestThreadAction(
   ctx: Pick<SlackToolContext, "teamId" | "channelId" | "threadTs">,
 ) {
@@ -25,22 +16,45 @@ export async function latestThreadAction(
   return action ?? null;
 }
 
+// A top-level DM message has no thread of its own; it refers to the speaker's latest change in that DM,
+// which was recorded under the notice thread it answered.
+export async function latestReversibleAction(
+  ctx: Pick<
+    SlackToolContext,
+    "teamId" | "memberId" | "channelId" | "threadTs" | "messageTs"
+  >,
+) {
+  const inThread = await latestThreadAction(ctx);
+  if (inThread) return Object.assign(inThread, { thread_ts: ctx.threadTs });
+  if (!ctx.channelId.startsWith("D") || ctx.threadTs !== ctx.messageTs)
+    return null;
+  const [latest] =
+    await getSql()`SELECT thread_ts FROM slack_tool_actions WHERE team_id=${ctx.teamId} AND member_id=${ctx.memberId} AND channel_id=${ctx.channelId} ORDER BY created_at DESC,id DESC LIMIT 1`;
+  if (!latest) return null;
+  const threadTs = String(latest.thread_ts);
+  const action = await latestThreadAction({ ...ctx, threadTs });
+  return action ? Object.assign(action, { thread_ts: threadTs }) : null;
+}
+export function reversibleActionSummary(
+  action: Awaited<ReturnType<typeof latestReversibleAction>>,
+  memberId: string,
+): SlackReversibleAction | null {
+  return action
+    ? {
+        tool: String(action.tool_name),
+        authorIsSpeaker: action.member_id === memberId,
+        alreadyUndone: Boolean(action.undone_at),
+        withinUndoWindow: new Date(action.expires_at).getTime() > Date.now(),
+      }
+    : null;
+}
+
+// Undo service: thread-scoped, author only, inside the undo window. The tool handler gates intent first.
 export async function undoThreadAction(
   ctx: SlackToolContext,
 ): Promise<SlackToolResult> {
-  if (!isExplicitUndoIntent(ctx.instructionText ?? "")) {
-    const judgment = await decideDecisiveness(ctx.instructionText ?? "", {
-      ...ctx,
-      actionType: "undo",
-    });
-    if (!judgment.act)
-      return {
-        text: judgment.reason,
-        ...(judgment.react ? { react: judgment.react } : {}),
-      };
-  }
   try {
-    const action = await latestThreadAction(ctx);
+    const action = await latestReversibleAction(ctx);
     if (!action)
       return { text: "There is no reversible action in this thread." };
     if (action.member_id !== ctx.memberId)
@@ -49,6 +63,7 @@ export async function undoThreadAction(
       return { text: "This thread’s last action is already undone." };
     if (new Date(action.expires_at).getTime() <= Date.now())
       return { text: "The one-hour undo window has ended." };
+    ctx = { ...ctx, threadTs: String(action.thread_ts) };
     if (
       Object.hasOwn(digestUndoHandlers, String(action.tool_name)) &&
       action.inverse?.kind === "digest_instruction"
