@@ -367,6 +367,16 @@ function ExclusionList({
   );
 }
 
+export const captureCopy = {
+  intro:
+    "Hive learns from the Git repos your agents work in and keeps what it finds in your personal hive. Nothing reaches a team until you choose to share.",
+  never:
+    "Hive never captures from a repo without a Git remote or from your home directory. Use comma-separated projects, like github.com/team/project.",
+  workAreas:
+    "Hive uses this to tag what it captures and to suggest what to share. It never limits what Hive learns from.",
+  workAreasPlaceholder: "frontend React, dbt models, infra",
+};
+
 function ProjectSelection({
   initial,
   onSaved,
@@ -375,8 +385,11 @@ function ProjectSelection({
   onSaved?: (policy: OwnerCapturePolicy) => void;
 }) {
   const policy = useRef(initial);
+  const name = useId();
+  const [mode, setMode] = useState(initial.mode);
   const [include, setInclude] = useState(() => initial.include.join(", "));
   const [exclude, setExclude] = useState(() => initial.exclude.join(", "));
+  const [workAreas, setWorkAreas] = useState(initial.workAreas);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -391,20 +404,32 @@ function ProjectSelection({
     setPending(true);
     setError("");
     try {
+      const scope =
+        mode === "everything"
+          ? "Learn privately from every Git repo I work in"
+          : `Learn privately only from ${include || "no projects"}`;
       const saved = await requestJson<OwnerCapturePolicy>(
         `${endpoint}/projects`,
         {
+          mode,
           include: patterns(include),
           exclude: patterns(exclude),
+          workAreas,
           revision: policy.current.revision,
-          humanInstruction: `Learn privately from ${include || "no projects"}; exclude ${exclude || "none"}.`,
+          humanInstruction: `${scope}; exclude ${exclude || "none"}.${workAreas.trim() ? ` I work on ${workAreas.trim()}.` : ""}`,
         },
       );
       policy.current = saved;
       onSaved?.(saved);
+      setMode(saved.mode);
       setInclude(saved.include.join(", "));
       setExclude(saved.exclude.join(", "));
-      setMessage("Saved your projects for private capture.");
+      setWorkAreas(saved.workAreas);
+      setMessage(
+        saved.mode === "everything"
+          ? "Saved. Hive learns privately from every Git repo you work in, except the ones you left out."
+          : "Saved. Hive learns privately only from the projects you listed.",
+      );
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -413,28 +438,59 @@ function ProjectSelection({
   }
   return (
     <form className="stack" onSubmit={(event) => void save(event)}>
+      <fieldset className="stack" disabled={pending}>
+        <legend>What Hive learns from</legend>
+        <label className="row">
+          <input
+            type="radio"
+            name={name}
+            value="everything"
+            checked={mode === "everything"}
+            onChange={() => setMode("everything")}
+          />
+          <span>Every Git repo I work in</span>
+        </label>
+        <label className="row">
+          <input
+            type="radio"
+            name={name}
+            value="selected"
+            checked={mode === "selected"}
+            onChange={() => setMode("selected")}
+          />
+          <span>Only the projects I list</span>
+        </label>
+      </fieldset>
+      {mode === "selected" ? (
+        <Input
+          label="Projects Hive may learn from"
+          value={include}
+          onChange={(event) => setInclude(event.target.value)}
+          placeholder="github.com/team/project"
+          maxLength={25700}
+          disabled={pending}
+        />
+      ) : null}
       <Input
-        label="Projects Hive may learn from"
-        value={include}
-        onChange={(event) => setInclude(event.target.value)}
-        placeholder="github.com/team/project"
-        maxLength={25700}
-        disabled={pending}
-      />
-      <Input
-        label="Projects to exclude"
+        label="Repos to leave out"
         value={exclude}
         onChange={(event) => setExclude(event.target.value)}
         placeholder="github.com/team/private-*"
         maxLength={25700}
         disabled={pending}
       />
-      <p className="small muted">
-        Use comma-separated projects. Captures stay in your personal hive. With
-        no projects selected, Hive captures nothing.
-      </p>
+      <p className="small muted">{captureCopy.never}</p>
+      <Input
+        label="What you work on (optional)"
+        value={workAreas}
+        onChange={(event) => setWorkAreas(event.target.value)}
+        placeholder={captureCopy.workAreasPlaceholder}
+        maxLength={300}
+        disabled={pending}
+      />
+      <p className="small muted">{captureCopy.workAreas}</p>
       <Button type="submit" loading={pending}>
-        Save projects
+        Save
       </Button>
       {message ? <p role="status">{message}</p> : null}
       {error ? <ErrorPanel message={error} /> : null}
@@ -460,7 +516,7 @@ export function CaptureRules({
         <h2>{title}</h2>
         <p className="muted">
           {personal
-            ? "Choose the projects your agents may learn from privately. Organisation sharing is separate."
+            ? captureCopy.intro
             : "Choose what every member's agents leave out."}
         </p>
       </div>

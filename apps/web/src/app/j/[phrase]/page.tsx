@@ -6,6 +6,7 @@ import { getWebContext } from "@/server/auth";
 import { joinRequestLanding } from "@/server/identity/join-requests";
 import { ShareOnJoin, type ShareOffer } from "@/components/share-on-join";
 import { shareOnJoinOffer } from "@/server/share-on-join";
+import { ownerCapturePolicy } from "@/server/project-sharing";
 import { RequestToJoin, ApprovedJoin } from "@/components/request-to-join";
 import { trustedProxyIp } from "@/server/trusted-proxy";
 import { enabledSignInProviders } from "@/lib/auth-providers";
@@ -50,17 +51,19 @@ function JoinContent({
   phrase,
   team,
   offer,
+  workAreas,
 }: {
   phrase: string;
   team: Landing | null;
   offer: ShareOffer | null;
+  workAreas?: string;
 }) {
   if (!team) return <p role="status">{joinFailure}</p>;
   if (team.joined)
     return (
       <>
         <ApprovedJoin phrase={phrase} teamName={team.teamName} />
-        {offer ? <ShareOnJoin {...offer} /> : null}
+        {offer ? <ShareOnJoin {...offer} preselect /> : null}
       </>
     );
   if (!team.automatic)
@@ -78,6 +81,7 @@ function JoinContent({
       phrase={phrase}
       teamName={team.teamName}
       sharedProjects={team.sharedProjects}
+      workAreas={workAreas}
     />
   );
 }
@@ -106,9 +110,10 @@ export default async function Page({
     team = null;
   }
   const offer = team?.joined ? await shareOnJoinOffer(ctx, team.teamId) : null;
+  const workAreas = team && !team.joined && team.automatic ? (await ownerCapturePolicy(ctx).catch(() => null))?.workAreas : undefined;
   return (
     <JoinFrame>
-      <JoinContent phrase={phrase} team={team} offer={offer} />
+      <JoinContent phrase={phrase} team={team} offer={offer} workAreas={workAreas} />
     </JoinFrame>
   );
 }

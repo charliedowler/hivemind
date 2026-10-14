@@ -20,11 +20,11 @@ beforeEach(() => {
   host=document.createElement('div'); document.body.append(host); root=createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); dom.window.close(); vi.unstubAllGlobals(); });
-it("saves Yes with no selected projects and offers Change after the successful request", async () => {
+it("saves Yes before anything is captured and offers Change after the successful request", async () => {
   await act(async () => root.render(<ShareOnJoin teamId="team_example" teamName="Example" projects={[]} />));
   await act(async () => button('Yes').click());
-  expect(requestJson).toHaveBeenCalledWith('/api/app/share-on-join',{teamId:'team_example',mode:'all_selected',projects:[],humanInstruction:'Share my learnings from all selected projects with Example, now and in future.'});
-  expect(host.textContent).toContain('Sharing with Example: everything from your selected projects');
+  expect(requestJson).toHaveBeenCalledWith('/api/app/share-on-join',{teamId:'team_example',mode:'all_selected',projects:[],humanInstruction:'Share everything Hive captures for me with Example, now and in future.'});
+  expect(host.textContent).toContain('Sharing with Example: everything Hive captures for you');
   expect(host.textContent).not.toContain('Share your learnings with');
   await act(async () => button('Change').click());
   await act(async () => button('Not now').click());
@@ -48,4 +48,13 @@ it("keeps an unsuccessful answer visible with its error", async () => {
   await act(async () => button('Yes').click());
   expect(host.querySelector('[role="alert"]')?.textContent).toBe('Try again.');
   expect(button('Yes').disabled).toBe(false);
+});
+it("records Not now when a just-joined person unticks the pre-selected share", async () => {
+  await act(async () => root.render(<ShareOnJoin teamId="team_example" teamName="Example" projects={[]} preselect />));
+  const box = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  expect(box.checked).toBe(true);
+  await act(async () => box.click());
+  await act(async () => button('Keep everything personal').click());
+  expect(requestJson).toHaveBeenCalledWith('/api/app/share-on-join', expect.objectContaining({ teamId: 'team_example', mode: 'not_now' }));
+  expect(host.textContent).toContain('Not sharing with Example');
 });
