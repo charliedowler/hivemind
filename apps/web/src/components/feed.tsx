@@ -93,6 +93,8 @@ function SearchResults({
   );
 }
 
+const pollInterval = 30000;
+
 function useHiveFeed() {
   const [state, setState] = useState<{
     learnings: LearningStanding[];
@@ -156,15 +158,23 @@ function useHiveFeed() {
             error: errorMessage(error),
           }));
       } finally {
-        if (!stopped) timer = setTimeout(poll, 5000);
+        // Each poll is a database query plus analytics rows. A background tab must not keep the database awake all day.
+        if (!stopped && !document.hidden) timer = setTimeout(poll, pollInterval);
       }
     }
+    function onVisibility() {
+      if (stopped) return;
+      clearTimeout(timer);
+      if (!document.hidden) void poll();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
     void poll();
     return () => {
       stopped = true;
       controller.abort();
       clearTimeout(timer);
       clearTimeout(highlightTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
   return { state, setState, list };
