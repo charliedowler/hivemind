@@ -84,3 +84,18 @@ test('a stale native Codex sign-in phase from an old install does not send a Cla
   assert.ok(!status.stdout.includes('codex mcp login'),status.stdout);
   assert.ok(status.stdout.includes('run /mcp to reconnect Hive'),status.stdout);
 });
+test('install ends with only the steps the person must take before Hive questions can be saved',async t=>{
+ const {bootstrapStatus}=await import('../dist/bootstrap.js');
+ const home=mkdtempSync(join(tmpdir(),'hive-next-steps-'));mkdirSync(join(home,'.hive'));
+ let claimPending=true;
+ const server=createServer(async(req,res)=>{for await(const c of req){};const send=v=>res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(v));if(req.url==='/api/agents/status')return send({claimPending,organisations:[{teamId:'team_fixture',teamName:'Lightdash'}],shareOffers:[{teamId:'team_fixture',teamName:'Lightdash',projects:[]}]});res.writeHead(404).end();});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>server.close());
+ writeFileSync(join(home,'.hive/agent.json'),JSON.stringify({baseUrl:`http://127.0.0.1:${server.address().port}`,agents:[],credential}));
+ const logs=[];await bootstrapStatus(home,{announcement:true,log:line=>logs.push(line)});
+ assert.ok(!logs.some(line=>line.includes('share_offer')),'Install must not prompt the share question before the tools load');
+ const steps=JSON.parse(logs.find(line=>line.includes('next_steps')));
+ assert.equal(steps.say,"Two steps left: click the link in your email, then run /mcp in Claude Code (or restart Codex). I'll finish setting up Hive after that.");
+ assert.match(steps.then,/^Stop here\. Ask no other question until the Hive tools are loaded/);
+ claimPending=false;logs.length=0;await bootstrapStatus(home,{announcement:true,log:line=>logs.push(line)});
+ assert.equal(JSON.parse(logs.find(line=>line.includes('next_steps'))).say,"One step left: run /mcp in Claude Code (or restart Codex). I'll finish setting up Hive after that.");
+});

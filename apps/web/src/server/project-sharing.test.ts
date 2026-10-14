@@ -120,14 +120,16 @@ describe.skipIf(!process.env.DATABASE_URL)("private capture and publication audi
   });
 
   it("rejects unselected and unknown capture before classification or embeddings", async () => {
-    await expect(pushLearning(agent, capture())).rejects.toThrow(/No projects selected/);
+    expect(await ownerCapturePolicy(ownerOrg)).toEqual({mode: "everything", include: [], exclude: [], workAreas: "", revision: 0});
+    await expect(pushLearning(agent, hivePushInput.parse({observation}))).rejects.toThrow(/Git repository with a remote/);
+    await expect(pushLearning(agent, capture(project, {cwd: "/Users/fixture/", home: "/Users/fixture"}))).rejects.toThrow(/home directory/);
     expect(models.classify).not.toHaveBeenCalled();
     expect(models.embed).not.toHaveBeenCalled();
     expect(models.categories).not.toHaveBeenCalled();
     await expect(shareProjects(agent, {include: [project], revision: 0})).rejects.toThrow(/human's project selection/);
     await expect(pushLearning(agent, capture(project, {context: {repo: "github.com/other/repo"}}))).rejects.toMatchObject({status: 403});
-    const policy = await shareProjects(agent, {include: ["https://secret:password@github.com/selected/widget.git"], exclude: [], revision: 0, humanInstruction: "Learn from selected/widget only."});
-    expect(policy).toEqual({include: [project], exclude: [], revision: 1});
+    const policy = await shareProjects(agent, {mode: "selected", include: ["https://secret:password@github.com/selected/widget.git"], exclude: [], revision: 0, humanInstruction: "Learn from selected/widget only."});
+    expect(policy).toEqual({mode: "selected", include: [project], exclude: [], workAreas: "", revision: 1});
     expect((await sql`SELECT authority, human_instruction FROM owner_capture_policy_history WHERE owner_member_id = ${owner.memberId}`)[0]).toEqual({authority: "initial_instruction", human_instruction: "Learn from selected/widget only."});
     for (const input of [capture("github.com/unselected/widget"), hivePushInput.parse({observation}), capture(project, {remote: "git@github.com:other/widget.git"})]) await expect(pushLearning(agent, input)).rejects.toMatchObject({status: 403});
     expect(models.classify).not.toHaveBeenCalled();
@@ -152,6 +154,8 @@ describe.skipIf(!process.env.DATABASE_URL)("private capture and publication audi
     expect((await shareProjects(agent, {include: [project, "github.com/second/widget"], exclude: [], revision: 1})).revision).toBe(2);
     expect((await sql`SELECT consumed_at FROM capture_policy_delegations WHERE owner_member_id = ${owner.memberId}`)[0].consumed_at).not.toBeNull();
     await expect(withOrigin(originFor(owner, "mcp", "api_key"), () => shareProjects(owner, {include: ["github.com/*/*"], revision: 2}))).rejects.toMatchObject({status: 403});
+    await expect(shareProjects(agent, {mode: "everything", revision: 2, humanInstruction: "Capture everything"})).rejects.toThrow(/human sign-in is required to capture from every repository/);
+    await expect(withOrigin(originFor(owner, "mcp", "api_key"), () => shareProjects(owner, {mode: "everything", revision: 2}))).rejects.toMatchObject({status: 403});
   });
 
   it("rejects a capture commit when project selection changes during classification", async () => {

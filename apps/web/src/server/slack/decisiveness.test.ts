@@ -160,6 +160,20 @@ describe("Jev decisiveness gate", () => {
       role: "member",
     });
   });
+  it("lets a member record their own sharing choice and gives Jev the routed proposal", async () => {
+    sql.mockResolvedValue([{ role: "member" }]);
+    systemOne.mockResolvedValue(answers(0.96, 0.93));
+    const proposal = { mode: "all_selected", projects: [] };
+    expect(
+      await decideDecisiveness("share everything Hive captures for me", { ...ctx, isAdmin: false, actionType: "share" }, proposal),
+    ).toMatchObject({ act: true });
+    const call = systemOne.mock.calls[0][0];
+    expect(call.state.proposal).toEqual(proposal);
+    expect(call.questions.specific.instructions).toContain("proposal");
+    expect(decisivenessDecision(true, { ...clear, instruction: 0.3 }, "share").reason).toBe("Should I share your learnings with this team?");
+    expect(decisivenessDecision(true, { ...clear, specific: 0.3 }, "share").reason).toBe("What should I share with this team: everything Hive captures for you, or which projects?");
+    expect(decisivenessDecision(false, null, "share").reason).toBe("Your hive membership is no longer active.");
+  });
   it("fails closed when Jev is unavailable", async () => {
     sql.mockResolvedValue([{ role: "admin" }]);
     systemOne.mockRejectedValue(new Error("timeout"));

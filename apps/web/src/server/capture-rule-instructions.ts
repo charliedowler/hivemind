@@ -194,8 +194,9 @@ export async function setCaptureRuleFromText(ctx: HiveContext, text: string, con
       const rule = proposal.rule;
       const include = rule.kind === "repo_owner" && rule.mode === "only_allow" ? rule.owners.map(owner => `github.com/${owner}/*`) : rule.kind === "repo_match" && rule.mode === "only_allow" ? [rule.pattern] : selected.include;
       const exclude = rule.kind === "repo_owner" && rule.mode === "deny" ? [...selected.exclude, ...rule.owners.map(owner => `github.com/${owner}/*`)] : rule.kind === "repo_match" && rule.mode !== "only_allow" ? [...selected.exclude, rule.pattern] : selected.exclude;
-      const policy = await shareProjects(ctx, {include, exclude, revision: selected.revision, humanInstruction: request.data});
-      return {status: "saved", policy, restatement: "Saved your projects for private capture."};
+      const allowList = (rule.kind === "repo_owner" || rule.kind === "repo_match") && rule.mode === "only_allow";
+      const policy = await shareProjects(ctx, {...(allowList ? {mode: "selected" as const} : {}), include, exclude, revision: selected.revision, humanInstruction: request.data});
+      return {status: "saved", policy, restatement: allowList ? `Hive now learns only from ${include.join(", ")}.` : `Hive no longer learns from ${exclude.filter(pattern => !selected.exclude.includes(pattern)).join(", ") || exclude.join(", ")}.`};
     }
     const id = newId("cinstr");
     const naturalText = redactSecrets(request.data).text;

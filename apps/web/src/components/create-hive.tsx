@@ -29,8 +29,9 @@ export function CreateHive() {
       <Sprite name="hive-entrance" scale={4} />
       <h1>Create a hive for your team</h1>
       <p>
-        Your personal hive stays yours. Your selected projects will be shared
-        with this new hive.
+        Your personal hive stays yours. If Hive learns only from projects you
+        listed, those are shared with the new hive. Otherwise Hive asks before
+        it shares anything.
       </p>
       <Button onClick={() => void create()} loading={pending}>
         Create a hive for your team

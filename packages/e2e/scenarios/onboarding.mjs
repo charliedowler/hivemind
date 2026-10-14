@@ -44,7 +44,7 @@ async function agentStatus(ctx, token) {
 }
 
 async function selectProjects(ctx, owner, include, revision = 0) {
-  return post(ctx, '/api/app/capture-rules/projects', owner.cookie, { include, exclude: [], revision, humanInstruction: 'Capture the selected example projects privately.' });
+  return post(ctx, '/api/app/capture-rules/projects', owner.cookie, { mode: 'selected', include, exclude: [], revision, humanInstruction: 'Capture the selected example projects privately.' });
 }
 
 async function capture(ctx, token, repo, label) {
@@ -530,7 +530,7 @@ for (const mode of ['all_selected', 'projects', 'not_now']) {
 }
 
 scenarios.push({
-  name: 'onboarding-share-yes-empty-selection', fast: true,
+  name: 'onboarding-share-yes-before-any-capture', fast: true,
   async run(ctx) {
     const team = await organisation(ctx);
     const person = await bootstrapWithClaim(ctx, email('empty-sharing'));
@@ -540,8 +540,9 @@ scenarios.push({
     await post(ctx, '/api/app/switch-hive', person.cookie, {teamId: team.teamId});
     const before = await ctx.request('/app/team', {cookie: person.cookie});
     assert.match(before.text, /Share your learnings with/);
-    assert.match(before.text, /Nothing selected yet/);
-    const humanInstruction = 'Share all selected projects now and in future.';
+    assert.match(before.text, /Hive has not captured anything yet/);
+    assert.match(before.text, /Your originals stay in your personal hive, and you can change this later on the Team page/);
+    const humanInstruction = 'Share everything Hive captures for me, now and in future.';
     await post(ctx, '/api/app/share-on-join', person.cookie, {teamId:team.teamId, mode:'all_selected', projects:[], humanInstruction});
     const decision = (await ctx.sql`SELECT decision, human_instruction, answered_at FROM join_share_offers WHERE owner_member_id=${person.memberId} AND team_id=${team.teamId}`)[0];
     assert.equal(decision.decision, 'yes');
@@ -553,10 +554,9 @@ scenarios.push({
       assert.equal(page.status, 200, `${path} must load`);
       assert.doesNotMatch(page.text, /Share your learnings with/, `${path} must hide the answered offer`);
       if (path === '/app/team' || path === '/app/account') {
-        assert.match(page.text, /everything from your selected projects/);
+        assert.match(page.text, /everything Hive captures for you/);
         assert.match(page.text, /Change/);
       }
-      if (path === '/app/team' || path === '/app') assert.match(page.text, /pick projects on Account/);
     }
     const grants = await ctx.sql`SELECT grant_kind FROM project_sharing_grants WHERE owner_member_id=${person.memberId} AND team_id=${team.teamId} AND withdrawn_at IS NULL`;
     assert.deepEqual([...grants], [{grant_kind:'all_selected'}]);
@@ -572,6 +572,49 @@ scenarios.push({
       assert.match(page.text,/Change/);
     }
     await ctx.artifact('empty-sharing-decision.json',{decision,grants,later});
+  },
+});
+
+scenarios.push({
+  name: 'onboarding-join-step-shares-by-default', fast: true,
+  async run(ctx) {
+    const workDomain = domain();
+    const person = await human(ctx, { email: `member@${workDomain}`, name: 'Example Member' });
+    const agent = await bootstrapWithClaim(ctx, `member@${workDomain}`, { machine: 'Member Laptop' });
+    const cell = await capture(ctx, agent.credential, 'example.com/fixture/default', 'Default capture');
+    const team = await organisation(ctx, workDomain);
+    const joined = await post(ctx, '/api/app/join-phrase', person.cookie, { phrase: team.phrase, share: true, workAreas: 'frontend React, dbt models' });
+    assert.deepEqual(joined.sharing, { decision: 'yes', published: 1 });
+    await assertShares(ctx, person.memberId, team.teamId, [cell]);
+    const originals = await ctx.sql`SELECT team_id FROM learnings WHERE id = ${cell}`;
+    assert.notEqual(originals[0].team_id, team.teamId, 'The original must stay in the personal hive');
+    assert.equal((await mcp(ctx, agent.credential, 'hive_share_projects', { revision: 0 })).workAreas, 'frontend React, dbt models');
+    const later = await capture(ctx, agent.credential, 'example.com/fixture/later', 'Later default capture');
+    await assertShares(ctx, person.memberId, team.teamId, [cell, later]);
+    const app = await ctx.request('/app', { cookie: person.cookie });
+    assert.doesNotMatch(app.text, /Share your learnings/);
+  },
+});
+
+scenarios.push({
+  name: 'onboarding-join-step-decline-keeps-personal', fast: true,
+  async run(ctx) {
+    const workDomain = domain();
+    const person = await human(ctx, { email: `member@${workDomain}`, name: 'Example Member' });
+    const agent = await bootstrapWithClaim(ctx, `member@${workDomain}`, { machine: 'Member Laptop' });
+    await capture(ctx, agent.credential, 'example.com/fixture/default', 'Declined capture');
+    const team = await organisation(ctx, workDomain);
+    const page = await ctx.request(`/j/${team.phrase}`, { cookie: person.cookie });
+    assert.equal(page.status, 200);
+    const text = page.text.replace(/<!-- -->/g, '');
+    assert.match(text, /Share what Hive learns with/, 'The join landing must offer sharing');
+    assert.match(text, /type="checkbox"[^>]*checked=""/, 'Sharing must be pre-selected on the join landing');
+    assert.match(text, /now and in future\. Your originals stay [^.]*, and you can change this later on the Team page/);
+    const joined = await post(ctx, '/api/app/join-phrase', person.cookie, { phrase: team.phrase, share: false });
+    assert.deepEqual(joined.sharing, { decision: 'not_now', published: 0 });
+    await assertShares(ctx, person.memberId, team.teamId, []);
+    const decision = (await ctx.sql`SELECT decision FROM join_share_offers WHERE owner_member_id = ${person.memberId} AND team_id = ${team.teamId}`)[0];
+    assert.equal(decision.decision, 'not_now');
   },
 });
 

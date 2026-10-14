@@ -32,7 +32,7 @@ Without a usable CLI, the installer prints three steps:
 
 With session tools, the agent follows the three-line tools path on `/agent`: search/describe/call the inventory and check endpoints first; register or reuse the remote MCP integration; start OAuth and relay the connection link. Credentials move only through Executor's secure connection links. The person clicks once and signs in as themselves with person-wide consent, then runs `npx gohive status`.
 
-Executor supplies Hive's server instructions and tools after connection. The installer writes `~/.hive/EXECUTOR.md` and the local skill without hooks or a direct harness MCP server. Capture runs on-signal from selected projects. Ask the project question once if it has not been answered. Status prints Executor detection and its saved connection health; when only session tools are available, check the connection inventory through those tools.
+Executor supplies Hive's server instructions and tools after connection. The installer writes `~/.hive/EXECUTOR.md` and the local skill without hooks or a direct harness MCP server. Capture runs on-signal from repositories the owner's policy allows. Ask the work-areas question once if it has not been answered. Status prints Executor detection and its saved connection health; when only session tools are available, check the connection inventory through those tools.
 
 ## Claim and join
 
@@ -40,11 +40,11 @@ A claim email link is single-use and expires after 24 hours. Signing in with Goo
 
 Pass `--join-url https://gohive.dev/j/<phrase>` when the setup prompt supplies a join link. A verified claim completes the pending human join instruction. An outside-domain person creates a join request for an admin; no membership is granted until approval. Unclaimed agents cannot create requests.
 
-## Select and share projects
+## What Hive learns from, and sharing
 
-Ask once which detected projects Hive may learn from. Use a native multi-select picker with repositories and `github.com/<org>/*` options when remotes share an organisation. Do not scan home directories or transcripts. No answer means no capture.
+Hive captures by default. Learnings from Git repositories with a remote go to the person's personal hive; repositories without a remote and home directories capture nothing. The person can exclude repositories, or switch to "only the projects I list", on Account or by telling their agent. Setup asks one optional question: "What kinds of things do you work on that Hive can learn from? Type a few areas, or skip." The answer is saved as `workAreas`. It tags captures, nudges the capture gate towards findings in those areas and words the share question; it never limits capture.
 
-After joining, offer “Share your learnings with <Team>?” with Yes, Choose projects and Not now. Yes creates one all-selected-projects grant covering current and future project selections. Choose projects starts with unchecked choices and cell counts. Not now creates no grant; the offer remains available on Account and Team. Originals remain personal. Every grant records the human instruction.
+After joining, offer the share question from `hive_agent_status` (for example “Share your learnings about frontend React and dbt models with <Team>?”) with Yes (Recommended), Choose projects and Not now, in that order. Yes creates one grant covering everything Hive captures for the person, now and in future. Choose projects starts with unchecked choices and cell counts. Not now creates no grant; the offer remains available on Account and Team. Originals remain personal. Every grant records the human instruction.
 
 The agent reads `hive_agent_status` and sends the answer through `hive_share_with`. Joining alone never publishes cells.
 

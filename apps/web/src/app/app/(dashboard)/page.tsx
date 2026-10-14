@@ -15,13 +15,17 @@ export default async function Page() {
       justJoined?: { teamId: string; teamName: string } | null;
     }
   )?.justJoined;
-  const offer = ctx && !personal ? await shareOnJoinSettings(ctx, ctx.teamId) : null;
+  const offers = ctx
+    ? (await Promise.all(hives.filter((hive) => !hive.personal).map((hive) => shareOnJoinSettings(ctx, hive.teamId)))).filter((offer) => offer !== null)
+    : [];
+  const current = offers.find((offer) => offer.teamId === ctx?.teamId);
   return (
     <>
       {ctx && justJoined ? (
         <p role="status">You're in {justJoined.teamName}.</p>
       ) : null}
-      {offer && !offer.decision ? <ShareOnJoin {...offer} /> : offer && !offer.projects.length ? <p>Nothing selected yet; <Link href="/app/account#projects">pick projects on Account</Link>{offer.decision === "yes" ? " and they'll be shared" : ""}.</p> : null}
+      {offers.filter((offer) => !offer.decision).map((offer) => <ShareOnJoin key={offer.teamId} {...offer} preselect={offer.teamId === justJoined?.teamId} />)}
+      {current?.decision && current.mode === "selected" && !current.projects.length ? <p>Hive is set to selected projects only and none are listed; <Link href="/app/account#projects">change that on Account</Link>{current.decision === "yes" ? " and they'll be shared" : ""}.</p> : null}
       <Feed teamName={ctx?.teamName} personal={personal} />
     </>
   );

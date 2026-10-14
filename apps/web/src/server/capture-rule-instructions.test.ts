@@ -318,7 +318,7 @@ describe.skipIf(!enabled)("direct capture instructions", {timeout: 60000}, () =>
     await cell(elsewhere, {repo: "outside/repo"});
     models.create.mockResolvedValue(proposal(input({kind: "repo_owner", owners: ["work"], mode: "only_allow"})));
     const result = await setCaptureRuleFromText(member, "don't include anything from my personal repos on gh", web);
-    expect(result).toMatchObject({status: "saved", policy: {include: ["github.com/work/*"]}});
+    expect(result).toMatchObject({status: "saved", policy: {mode: "selected", include: ["github.com/work/*"]}, restatement: "Hive now learns only from github.com/work/*."});
     expect(models.systemOne.mock.calls[0][0].state.knownRepos).toEqual(["billing-cutoff", "personal/scratch", "work/repo"]);
     expect(models.create.mock.calls[0][0].system).not.toContain("confirm that list");
   });

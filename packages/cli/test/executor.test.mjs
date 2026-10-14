@@ -185,7 +185,7 @@ test('Executor instruction installation and update keep on-signal capture, proje
   install({ ...f.options, agents: [], executor: true, registerMcp: false });
   updateInstall(f.options);
   const text = readFileSync(join(f.home, '.hive/EXECUTOR.md'), 'utf8');
-  for (const term of ['Executor supplies Hive server instructions', 'Capture on-signal', 'skip the project question', 'Ask once', 'capture nothing', 'hive_push', 'Executor uses no hooks', 'secure connection links']) assert.ok(text.includes(term), term);
+  for (const term of ['Executor supplies Hive server instructions', 'Capture on-signal', 'Hive captures by default', 'What kinds of things do you work on that Hive can learn from? Type a few areas, or skip.', 'workAreas', 'relay only the connection link and stop', 'ask each at most once per setup', 'capture nothing', 'hive_push', 'Executor uses no hooks', 'secure connection links']) assert.ok(text.includes(term), term);
   assert.ok(!text.includes('needs_email'));
   assert.equal(existsSync(join(f.home, '.claude/settings.json')), false);
   assert.equal(existsSync(join(f.home, '.claude.json')), false);

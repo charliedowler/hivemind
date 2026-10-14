@@ -472,8 +472,10 @@ export const slackToolActions = pgTable("slack_tool_actions", {
 
 export const ownerCapturePolicies = pgTable("owner_capture_policies", {
   ownerMemberId: text("owner_member_id").primaryKey().references(() => members.id, {onDelete: "cascade"}),
+  captureMode: text("capture_mode").notNull().default("everything"),
   includePatterns: text("include_patterns").array().notNull().default([]),
   excludePatterns: text("exclude_patterns").array().notNull().default([]),
+  workAreas: text("work_areas").notNull().default(""),
   revision: integer("revision").notNull().default(0),
   humanInstruction: text("human_instruction").notNull().default(""),
   updatedBy: text("updated_by").references(() => members.id),
@@ -494,8 +496,10 @@ export const capturePolicyDelegations = pgTable("capture_policy_delegations", {
 export const ownerCapturePolicyHistory = pgTable("owner_capture_policy_history", {
   ownerMemberId: text("owner_member_id").notNull().references(() => members.id, {onDelete: "cascade"}),
   revision: integer("revision").notNull(),
+  captureMode: text("capture_mode").notNull(),
   includePatterns: text("include_patterns").array().notNull(),
   excludePatterns: text("exclude_patterns").array().notNull(),
+  workAreas: text("work_areas").notNull().default(""),
   humanInstruction: text("human_instruction").notNull(),
   actorMemberId: text("actor_member_id").notNull().references(() => members.id),
   authority: text("authority").notNull(),

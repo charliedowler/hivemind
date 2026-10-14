@@ -117,6 +117,7 @@ describe("MCP model-facing wire contract", () => {
       expect(
         response.result.instructions.split(/\s+/).length,
       ).toBeLessThanOrEqual(165);
+      if (agent) expect(response.result.instructions).toContain("Ask each setup question once, only when its answer can be saved next; offer sharing only after hive_agent_status shows the join.");
       expect(response.result.capabilities).toMatchObject({
         tools: {},
         prompts: {},

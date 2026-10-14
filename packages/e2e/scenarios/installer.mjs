@@ -35,8 +35,8 @@ async function hookSetup(ctx, machine, selected = true) {
   const policy = await installed(ctx, machine);
   const owner = await bootstrapWithClaim(ctx, email('hook'));
   await machine.setHiveCredential(owner.credential);
-  const selection = await applyProjectAnswer(ctx, { token: owner.credential, projects: selected ? [project] : [], humanInstruction: selected ? `Learn only from ${project}` : 'No projects', policy });
-  const transcript = await readFile(new URL(`../fixtures/transcripts/${selected ? 'fix' : 'private'}.jsonl`, import.meta.url), 'utf8');
+  const selection = await applyProjectAnswer(ctx, { token: owner.credential, projects: selected ? [project] : [], humanInstruction: selected ? `Learn only from ${project}` : 'Skip', policy });
+  const transcript = await readFile(new URL('../fixtures/transcripts/fix.jsonl', import.meta.url), 'utf8');
   const path = await machine.write('.hive/fixture.jsonl', transcript);
   await ctx.artifact('hook-transcript.jsonl', transcript);
   await ctx.request('/api/app/capture-rules/effective', { token: owner.credential });
@@ -322,17 +322,32 @@ export default [
     }),
   })),
   {
-    name: 'hooks-no-project-selection', fast: true,
+    name: 'hooks-capture-by-default-without-selection', fast: true,
+    run: ctx => withMachine(ctx, {}, async machine => {
+      const { owner, input, selection } = await hookSetup(ctx, machine, false);
+      assert.equal(selection.state, 'default');
+      assert.equal(selection.value.mode, 'everything');
+      await recordHook(ctx, machine, 'Stop', input);
+      const saved = await cells(ctx, owner);
+      assert.equal(saved.length, 1, 'With no project choice the Stop hook must capture into the personal hive');
+      assert.equal(saved[0].repo, project);
+      assert.equal((await ctx.sql`SELECT learning_id FROM learning_shares WHERE learning_id = ${saved[0].id}`).length, 0, 'Default capture must stay personal');
+    }),
+  },
+  {
+    name: 'hooks-capture-by-default-refuses-excluded-repo', fast: true,
     run: ctx => withMachine(ctx, {}, async machine => {
       const { owner, input } = await hookSetup(ctx, machine, false);
+      const excluded = await ctx.mcp(owner.credential, 'hive_share_projects', { exclude: [project], revision: 0, humanInstruction: `Leave ${project} out.` });
+      assert.equal(excluded.isError, false, excluded.text);
       const before = modelCalls(ctx);
       const eventStart = ctx.events.length;
       for (const event of ['Stop', 'PreCompact', 'SubagentStop']) await recordHook(ctx, machine, event, input);
       assert.equal((await cells(ctx, owner)).length, 0);
-      assert.equal(modelCalls(ctx), before, 'Unselected transcript must be rejected before a model call');
+      assert.equal(modelCalls(ctx), before, 'An excluded repo must be refused before a model call');
       const http = ctx.events.slice(eventStart).filter(item => item.kind === 'http-server');
       assert.ok(http.some(item => item.method === 'GET' && item.path === '/api/app/capture-rules/effective'), 'Hook must fetch real capture policy before refusing upload');
-      assert.ok(!http.some(item => item.method === 'POST' && ['/api/app/capture', '/api/mcp'].includes(item.path)), 'No-selection hooks must never upload transcript text');
+      assert.ok(!http.some(item => item.method === 'POST' && ['/api/app/capture', '/api/mcp'].includes(item.path)), 'Excluded repos must never upload transcript text');
     }),
   },
 
@@ -366,13 +381,19 @@ export default [
         const installed = await machine.install({ args: ['--join-url', phrase] });
         assert.equal(installed.status, 0, installed.stderr);
         ctx.output(installed.stdout, 'installer');
+        const lines = installed.stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+        assert.ok(!lines.some(item => item.status === 'share_offer'), 'Install must not prompt the share question before the Hive tools load');
+        const next = lines.find(item => item.status === 'next_steps');
+        assert.equal(next?.say, "Two steps left: click the link in your email, then run /mcp in Claude Code (or restart Codex). I'll finish setting up Hive after that.");
+        assert.match(next.then, /^Stop here\. Ask no other question until the Hive tools are loaded/);
+        assertHumanOutput(next.say);
         const policy = await loadPolicy(ctx, machine);
         const state = JSON.parse(await machine.read('.hive/agent.json'));
         assert.ok(state.credential);
         const pending = await applyProjectAnswer(ctx, { token: state.credential, policy });
         assert.equal(pending.state, 'question');
         assertHumanOutput(pending.question, { missingDetail: true });
-        await applyProjectAnswer(ctx, { token: state.credential, projects: [project], policy, humanInstruction: `Learn only from ${project}.` });
+        await applyProjectAnswer(ctx, { token: state.credential, workAreas: 'frontend React, dbt models', policy, humanInstruction: 'I work on frontend React, dbt models.' });
         const joining = await ctx.mcp(state.credential, 'hive_join', { phrase });
         assert.equal(joining.value.status, 'claim_pending');
         const owner = await claim(ctx, chosen);
@@ -381,14 +402,16 @@ export default [
         const status = await ctx.mcp(state.credential, 'hive_agent_status');
         const offer = status.value.shareOffers.find(item => item.teamId === team.body.teamId);
         assert.ok(offer, 'Claimed membership must expose the sharing question');
-        const shareQuestion = `Share your learnings with ${offer.teamName}?`;
+        const shareQuestion = offer.question;
+        assert.equal(shareQuestion, `Share your learnings about frontend React and dbt models with ${offer.teamName}?`);
+        assert.match(offer.explanation, /now and in future/);
         assertHumanOutput(shareQuestion, { missingDetail: true });
         ctx.output(shareQuestion, 'share-offer');
-        const sharing = await ctx.mcp(state.credential, 'hive_share_with', { teamId: offer.teamId, mode: 'all_selected', humanInstruction: 'Yes, share all selected projects with this team now and in future.' });
+        const sharing = await ctx.mcp(state.credential, 'hive_share_with', { teamId: offer.teamId, mode: 'all_selected', humanInstruction: 'Yes, share everything Hive captures for me with this team now and in future.' });
         assert.equal(sharing.isError, false, sharing.text);
         const grants = await ctx.sql`SELECT grant_kind FROM project_sharing_grants WHERE owner_member_id=${owner.memberId} AND team_id=${offer.teamId} AND withdrawn_at IS NULL`;
         assert.equal(grants[0]?.grant_kind, 'all_selected');
-        await ctx.artifact('deterministic-agent-answers.json', { question, emailAnswer: chosen, projectQuestion: pending.question, projectAnswer: project, shareQuestion, shareAnswer: 'Yes' });
+        await ctx.artifact('deterministic-agent-answers.json', { question, emailAnswer: chosen, workAreasQuestion: pending.question, workAreasAnswer: 'frontend React, dbt models', shareQuestion, shareAnswer: 'Yes' });
       });
     },
   })),

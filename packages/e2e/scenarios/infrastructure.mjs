@@ -13,7 +13,7 @@ export default [{
     assert.deepEqual(messages[0].body.to, ['infrastructure@example.com']);
     const policy = await ctx.mcp(boot.credential, 'hive_share_projects', { revision: 0 });
     assert.equal(policy.isError, false, policy.text);
-    assert.deepEqual(policy.value, { include: [], exclude: [], revision: 0 });
+    assert.deepEqual(policy.value, { mode: 'everything', include: [], exclude: [], workAreas: '', revision: 0 });
     assert.equal(Number((await ctx.sql`SELECT count(*) AS count FROM learnings`)[0].count), 0);
     await assert.rejects(ctx.request('https://gohive.dev/api/health'), /nonlocal request/);
     const rejected = await ctx.mcp('ha_' + 'x'.repeat(43), 'hive_share_projects', { revision: 0 });

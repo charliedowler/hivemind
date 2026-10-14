@@ -8,13 +8,16 @@ import {
 } from "@/server/identity/onboarding-web";
 import { trustedProxyIp } from "@/server/trusted-proxy";
 import { selectHive } from "@/server/web-hive-session";
+import { joinShareInput, shareAfterJoin } from "@/server/share-on-join";
 
 export async function POST(request: Request) {
   return authenticated(async (ctx) => {
     requireSameOrigin(request);
     try {
-      const { phrase } = z
+      const { phrase, share, workAreas } = z
         .strictObject({ phrase: z.string().min(1).max(80) })
+        .extend(joinShareInput.partial().shape)
+        .strict()
         .parse(await readJson(request));
       const joined = await joinOrRequest(
         ctx,
@@ -23,9 +26,11 @@ export async function POST(request: Request) {
       );
       if (joined.status === "requested") return Response.json({status:"requested"});
       await selectHive(ctx, joined.teamId);
+      const sharing = share === undefined ? null : await shareAfterJoin(ctx, joined.teamId, joined.teamName, { share, workAreas });
       return Response.json({
         teamName: joined.teamName,
         destination: `/app?joined=1`,
+        ...(sharing ? { sharing } : {}),
       });
     } catch (error) {
       return Response.json({ error: joinFailure }, { status: error instanceof HiveError ? error.status : 403 });

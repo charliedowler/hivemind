@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,8 +52,10 @@ function scratchRepo() {
   const directory = mkdtempSync(join(tmpdir(), 'gohive-hook-'));
   execFileSync('git', ['init', '-q', directory]);
   execFileSync('git', ['-C', directory, 'remote', 'add', 'origin', 'git@github.com:team/widget.git']);
+  mkdirSync(userHome(directory), { recursive: true });
   return directory;
 }
+const userHome = repo => join(repo, '.home');
 
 test('repository scope handles HTTPS, SSH and trailing slashes with canonical hosts', () => {
   assert.equal(repository('git@github.com:team/widget.git'), 'github.com/team/widget');
@@ -75,7 +77,7 @@ test('the summary keeps at most two short lines and stays silent for no cells', 
 test('SessionStart runs hive_recent once per session and repo, through real MCP HTTP', async t => {
   const hive = await mockHive(t);
   const home = scratchRepo();
-  const env = { HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   const input = { session_id: 'fixture-session', cwd: home };
   const first = JSON.parse(await run('session-start.mjs', input, env));
   assert.equal(first.hookSpecificOutput.hookEventName, 'SessionStart');
@@ -94,8 +96,8 @@ test('SessionStart runs hive_recent once per session and repo, through real MCP 
 test('empty hives and missing credentials leave SessionStart silent', async t => {
   const hive = await mockHive(t, 'No learnings in this time window.');
   const home = scratchRepo();
-  assert.equal(await run('session-start.mjs', { session_id: 'empty', cwd: home }, { HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' }), '');
-  assert.equal(await run('session-start.mjs', { session_id: 'no-token', cwd: home }, { HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl }), '');
+  assert.equal(await run('session-start.mjs', { session_id: 'empty', cwd: home }, { HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' }), '');
+  assert.equal(await run('session-start.mjs', { session_id: 'no-token', cwd: home }, { HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl }), '');
   assert.equal(hive.calls.length, 3);
   assert.equal(hive.reports.length, 1);
   assert.equal(hive.reports[0].gateDecision, 'skip');
@@ -110,7 +112,7 @@ test('the MCP client reads SSE responses', async t => {
 test('Stop stays silent without credentials, including headless sessions', async () => {
   const home = scratchRepo();
   const transcript = join(home, 'session.jsonl');
-  const env = { HOME: home, TMPDIR: home, CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' };
+  const env = { HOME: userHome(home), TMPDIR: home, CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' };
   writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'The repo uses TypeScript.' }] } }));
   assert.equal(await run('stop.mjs', { session_id: 'quiet', transcript_path: transcript }, env), '');
   writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Discovered that the migration lock persists after worker cancellation.' }] } }));
@@ -144,7 +146,7 @@ test('the packaged Stop hook honours the Jev capture decision and sends bounded 
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
-  const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
   assert.equal(await run('stop.mjs', { cwd: home, session_id: 'jev-skip', transcript_path: transcript }, env), '');
   assert.equal(captured.observations, 1);
   assert.ok(captured.text.length <= 6000);
@@ -168,7 +170,7 @@ test('Stop fails closed when the capture gate is unavailable', async t => {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
-  const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
   assert.equal(await run('stop.mjs', { cwd: home, session_id: 'failed-gate', transcript_path: transcript }, env), '');
   assert.equal(reports.length, 0);
   assert.equal(await run('stop.mjs', { session_id: 'failed-gate', transcript_path: transcript }, env), '');
@@ -234,7 +236,7 @@ test('a local repo drop never sends transcript text to the capture endpoint', as
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
-  const env = { HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture' };
   assert.equal(await run('stop.mjs', { cwd: home, session_id: 'private-drop', transcript_path: transcript }, env), '');
   assert.deepEqual(received, ['/api/app/capture-rules/effective']);
 });
@@ -259,7 +261,7 @@ for (const state of ['outage', 'empty', 'unknown', 'contradiction', 'unselected'
       assert.equal(decision.action, 'drop');
       return;
     }
-    const env = {HOME: home, TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture'};
+    const env = {HOME: userHome(home), TMPDIR: home, HIVE_URL: `http://127.0.0.1:${server.address().port}`, HIVE_KEY: 'fixture'};
     assert.equal(await run('stop.mjs', {cwd: home, session_id: state, transcript_path: transcript}, env), '');
     assert.deepEqual(received.map(r => r.url), ['/api/app/capture-rules/effective']);
     assert.equal(received[0].body, '');
@@ -295,7 +297,7 @@ test('a mid-session MCP push receipt prevents the Stop sweep from uploading the 
   const home = scratchRepo();
   const observation = 'Discovered that a cancelled worker can retain the migration lock.';
   const transcript = learnedTranscript(home, observation);
-  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   const base = {cwd: home, session_id: 'mid-push', transcript_path: transcript};
   assert.equal(await run('stop.mjs', {...base, hook_event_name: 'PostToolUse', tool_name: 'mcp__hive__hive_push', tool_input: {observation}, tool_response: {content: [{type: 'text', text: JSON.stringify({id: 'lrn_fixture'})}]}}, env), '');
   assert.equal(await run('stop.mjs', {...base, hook_event_name: 'Stop'}, env), '');
@@ -312,7 +314,7 @@ test('successful transcript receipts dedupe, but a failed mid-session push is st
     {type: 'assistant', message: {content: [{type: 'text', text: observation}, {type: 'tool_use', id: 'push', name: 'mcp__hive__hive_push', input: {observation}}]}},
     {type: 'user', message: {content: [{type: 'tool_result', tool_use_id: 'push', content: [{type: 'text', text: JSON.stringify({id: 'lrn_fixture'})}]}]}},
   ];
-  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   writeFileSync(file, records.map(record => JSON.stringify(record)).join('\n'));
   assert.equal(await run('stop.mjs', {cwd: home, session_id: 'transcript-dedupe', transcript_path: file}, env), '');
   assert.equal(hive.pushes.length, 0);
@@ -328,7 +330,7 @@ for (const event of ['PreCompact', 'SubagentStop']) test(`${event} uses the proj
   const hive = await captureHive(t);
   const home = scratchRepo();
   const file = learnedTranscript(home, 'Discovered a reliable workaround for the migration lock failure.');
-  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   const base = {cwd: home, session_id: event, transcript_path: file, agent_transcript_path: file};
   assert.equal(await run('stop.mjs', {...base, hook_event_name: event}, env), '');
   assert.equal(hive.gates.length, 1);
@@ -343,7 +345,7 @@ test('PreCompact respects a Jev skip and unselected projects send no text', asyn
     const hive = await captureHive(t, {policy: {include: selected ? selectedPolicy.include : [], exclude: [], revision: 1}, gate: 'skip'});
     const home = scratchRepo();
     const file = learnedTranscript(home, 'Discovered a workaround that is private until its project is selected.');
-    const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+    const env = { HOME: userHome(home), HIVE_HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
     assert.equal(await run('stop.mjs', {cwd: home, session_id: 'gated', transcript_path: file, hook_event_name: 'PreCompact'}, env), '');
     assert.equal(hive.gates.length, selected ? 1 : 0);
     assert.equal(hive.pushes.length, 0);
@@ -353,7 +355,7 @@ test('PreCompact respects a Jev skip and unselected projects send no text', asyn
 test('PostToolUse nudges only the same test/build failing then passing and never captures', async t => {
   const hive = await captureHive(t);
   const home = scratchRepo();
-  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   const base = {cwd: home, session_id: 'fail-pass', tool_name: 'Bash', tool_input: {command: 'pnpm test'}, hook_event_name: 'PostToolUse'};
   assert.equal(await run('stop.mjs', {...base, tool_response: {exit_code: 0}}, env), '');
   assert.equal(await run('stop.mjs', {...base, hook_event_name: 'PostToolUseFailure', tool_response: {exit_code: 1}}, env), '');
@@ -371,7 +373,7 @@ test('PostToolUse nudges only the same test/build failing then passing and never
 test('PostToolUse never nudges an unselected project or an ambiguous result', async t => {
   const hive = await captureHive(t, {policy: {include: [], exclude: [], revision: 1}});
   const home = scratchRepo();
-  const env = { HOME: home, HIVE_HOME: home, TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), TMPDIR: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   const base = {cwd: home, session_id: 'private-fail-pass', tool_name: 'Bash', tool_input: {command: 'pnpm test'}, hook_event_name: 'PostToolUse'};
   assert.equal(await run('stop.mjs', {...base, tool_response: {exit_code: 1}}, env), '');
   assert.equal(await run('stop.mjs', {...base, tool_response: {exit_code: 0}}, env), '');
@@ -388,14 +390,14 @@ for (const [name, text, rules] of [
   const hive = await captureHive(t, {rules});
   const home = scratchRepo();
   const file = learnedTranscript(home, text);
-  const env = { HOME: home, HIVE_HOME: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   const input = {cwd: home, session_id: name, transcript_path: file, hook_event_name: 'Stop'};
   assert.equal(await run('stop.mjs', input, env), '');
   assert.equal(hive.gates.length, 0);
   assert.equal(hive.pushes.length, 0);
-  assert.equal(existsSync(join(home, '.hive/capture-sessions')), false);
+  assert.equal(existsSync(join(userHome(home), '.hive/capture-sessions')), false);
   assert.equal(await run('stop.mjs', {...input, hook_event_name: 'PostToolUse', tool_name: 'mcp__hive__hive_push', tool_input: {observation: text}, tool_response: {id:'lrn_fixture'}}, env), '');
-  assert.equal(existsSync(join(home, '.hive/capture-sessions')), false);
+  assert.equal(existsSync(join(userHome(home), '.hive/capture-sessions')), false);
 });
 
 test('local privacy redaction uses only the sanitized body for the model summary, push, evidence and dedupe', async t => {
@@ -403,7 +405,7 @@ test('local privacy redaction uses only the sanitized body for the model summary
   const home = scratchRepo();
   const text = 'Fixed the database connection parser by escaping password="mango-canyon-private" in config values.';
   const file = learnedTranscript(home, text);
-  const env = { HOME: home, HIVE_HOME: home, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
   const input = {cwd: home, session_id: 'redacted', transcript_path: file, hook_event_name: 'Stop'};
   assert.equal(await run('stop.mjs', input, env), '');
   assert.equal(hive.gates.length, 1);
@@ -414,7 +416,7 @@ test('local privacy redaction uses only the sanitized body for the model summary
   assert.ok(!JSON.stringify([...hive.gates, ...hive.pushes]).includes('mango-canyon-private'));
   await run('stop.mjs', input, env);
   assert.equal(hive.pushes.length, 1);
-  const state = readFileSync(join(home, '.hive/capture-sessions', readdirSync(join(home, '.hive/capture-sessions'))[0]), 'utf8');
+  const state = readFileSync(join(userHome(home), '.hive/capture-sessions', readdirSync(join(userHome(home), '.hive/capture-sessions'))[0]), 'utf8');
   assert.ok(!state.includes('mango-canyon-private'));
 });
 
@@ -424,4 +426,41 @@ test('a filename or quoted code does not turn a progress update into a missed le
   assert.deepEqual(sessionFacts(transcript(text)).candidates, []);
   assert.deepEqual(sessionFacts(transcript('Reading fixed.txt before rerunning the test.')).candidates, []);
   assert.equal(sessionFacts(transcript('Fixed the database parser by escaping config values; the test now passes.')).candidates.length, 1);
+});
+
+const everythingPolicy = {mode: 'everything', include: [], exclude: [], workAreas: '', revision: 0};
+test('Stop captures by default from a repo with a remote when nothing is selected', async t => {
+  const hive = await captureHive(t, {policy: everythingPolicy});
+  const home = scratchRepo();
+  const file = learnedTranscript(home, 'Fixed the flaky build by pinning the Node version in CI.');
+  const env = { HOME: userHome(home), HIVE_HOME: userHome(home), HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  assert.equal(await run('stop.mjs', {cwd: home, session_id: 'default-capture', transcript_path: file, hook_event_name: 'Stop'}, env), '');
+  assert.equal(hive.gates.length, 1);
+  assert.equal(hive.gates[0].remote, 'github.com/team/widget');
+  assert.equal(hive.pushes.length, 1);
+});
+
+for (const state of ['excluded', 'no-remote', 'home-repo']) test(`capture by default sends nothing for ${state}`, async t => {
+  const policy = state === 'excluded' ? {...everythingPolicy, exclude: ['github.com/team/*']} : everythingPolicy;
+  const hive = await captureHive(t, {policy});
+  const home = scratchRepo();
+  if (state === 'no-remote') execFileSync('git', ['-C', home, 'remote', 'remove', 'origin']);
+  const file = learnedTranscript(home, 'Discovered a private marker that must never be uploaded.');
+  const user = state === 'home-repo' ? home : userHome(home);
+  const env = { HOME: user, HIVE_HOME: user, HIVE_URL: hive.baseUrl, HIVE_KEY: 'fixture' };
+  assert.equal(await run('stop.mjs', {cwd: state === 'home-repo' ? join(home, '.home') : home, session_id: state, transcript_path: file, hook_event_name: 'Stop'}, env), '');
+  assert.deepEqual(hive.urls, ['/api/app/capture-rules/effective']);
+});
+
+test('a Git repo rooted at the home directory counts as no remote', () => {
+  const home = scratchRepo();
+  const previous = {HOME: process.env.HOME, HIVE_HOME: process.env.HIVE_HOME};
+  process.env.HOME = home; process.env.HIVE_HOME = home;
+  try {
+    const value = captureContext({ cwd: join(home, '.home') });
+    assert.equal(value.remote, undefined);
+    assert.equal(value.repo, undefined);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
 });

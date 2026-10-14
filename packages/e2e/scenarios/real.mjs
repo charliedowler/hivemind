@@ -193,7 +193,7 @@ export default [
     },
   },
   {
-    name: 'real-claude-no-selection-bash', fast: false,
+    name: 'real-claude-excluded-repo-bash', fast: false,
     run: ctx => runMachine(ctx, {}, async ({ machine, email, execute }) => {
       await ctx.resetRateLimits();
       const installation = await machine.install();
@@ -206,13 +206,13 @@ export default [
       assert.ok(result.tools.some(tool => tool.name === 'Bash' && /npm test/.test(tool.input?.command || '')), 'Real Claude must execute the fixture test');
       assert.ok(existsSync(`${machine.cwd}/fixed.txt`), 'Real Claude must implement the fixture fix');
       assert.ok(result.hooks.length, 'Real Claude must execute installed native hooks');
-      assert.ok(!result.tools.some(tool => /hive_push$/.test(tool.name)), 'No selection means no MCP capture');
+      assert.ok(result.tools.some(tool => /hive_share_projects$/.test(tool.name)), 'The agent must save the exclusion through native MCP');
       const rows = await ctx.sql`SELECT id FROM learnings WHERE team_id=${owner.teamId}`;
-      assert.equal(rows.length, 0, 'No selection must persist no cells');
-      assert.equal(ctx.events.filter(event => event.kind === 'model').length, 0, 'No selection must reach no Hive model boundary');
+      assert.equal(rows.length, 0, 'An excluded repo must persist no cells');
+      assert.equal(ctx.events.filter(event => event.kind === 'model').length, 0, 'An excluded repo must reach no Hive model boundary');
       const http = ctx.events.slice(eventStart).filter(event => event.kind === 'http-server');
       assert.ok(http.some(event => event.method === 'GET' && event.path === '/api/app/capture-rules/effective'), 'Native hooks must read real capture policy');
-      assert.ok(!http.some(event => event.method === 'POST' && event.path === '/api/app/capture'), 'No-selection hooks must not upload the transcript');
+      assert.ok(!http.some(event => event.method === 'POST' && event.path === '/api/app/capture'), 'Hooks in an excluded repo must not upload the transcript');
     }),
   },
   {

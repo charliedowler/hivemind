@@ -115,6 +115,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       );
       await shareProjects(personal, {
         revision: 0,
+        mode: "selected",
         include: ["github.com/team/selected"],
         humanInstruction: "Select this project.",
       });
@@ -130,7 +131,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         content: [
           {
             type: "text",
-            text: "Hive has no permission to capture from this project. Supply one selected, consistent repository.",
+            text: "Hive captures only from a Git repository with a remote. Supply one consistent repository.",
           },
         ],
       });

@@ -195,10 +195,14 @@ it("registers bounded owner-free project selection and returns one line", async 
   const registered = vi.spyOn(server, "registerTool");
   registerHiveTools(server);
   const callback = registered.mock.calls.find(([name]) => name === "hive_share_projects")![2] as ToolCallback<typeof hiveShareProjectsInput>;
-  vi.mocked(shareProjects).mockResolvedValue({include: ["github.com/team/repo"], exclude: [], revision: 1});
-  const input = hiveShareProjectsInput.parse({include: ["https://github.com/team/repo.git"], revision: 0, humanInstruction: "Only this repository."});
+  vi.mocked(shareProjects).mockResolvedValue({mode: "selected", include: ["github.com/team/repo"], exclude: [], workAreas: "", revision: 1});
+  const input = hiveShareProjectsInput.parse({mode: "selected", include: ["https://github.com/team/repo.git"], revision: 0, humanInstruction: "Only this repository."});
   const result = await callback(input, toolContext);
-  expect(result.content).toEqual([{type: "text", text: '{"include":["github.com/team/repo"],"exclude":[],"revision":1}'}]);
+  expect(result.content).toEqual([{type: "text", text: '{"mode":"selected","include":["github.com/team/repo"],"exclude":[],"workAreas":"","revision":1}'}]);
+  expect(hiveShareProjectsInput.parse({workAreas: "  frontend React, dbt models, infra ", revision: 2, humanInstruction: "I work on frontend React, dbt models, infra."})).toEqual({workAreas: "frontend React, dbt models, infra", revision: 2, humanInstruction: "I work on frontend React, dbt models, infra."});
+  expect(hiveShareProjectsInput.safeParse({workAreas: "x".repeat(301), revision: 0}).success).toBe(false);
+  expect(hiveShareProjectsInput.safeParse({mode: "all", revision: 0}).success).toBe(false);
+  expect(hiveShareProjectsInput.shape.workAreas.description).toContain("never limits capture");
   expect(hiveShareProjectsInput.safeParse({ownerId: "another", revision: 0}).success).toBe(false);
   expect(hiveShareProjectsInput.safeParse({include: Array(101).fill("team/repo"), revision: 0}).success).toBe(false);
   expect(hiveShareProjectsInput.safeParse({revision: -1}).success).toBe(false);

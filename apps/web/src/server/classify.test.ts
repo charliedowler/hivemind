@@ -149,6 +149,14 @@ describe("Jev policy eval without network", () => {
       expect(decide({ point: "capture", facts, probability })).toBe("capture");
     },
   );
+  it("weights a capture in the person's work areas without letting empty areas block capture", () => {
+    const work = { ...facts, text: "Fixed the React hydration warning by moving the date format to the server.", workAreas: "frontend React, dbt models" };
+    expect(decide({ point: "capture", facts: work, probability: 0.58 })).toBe("capture");
+    expect(decide({ point: "capture", facts: { ...work, workAreas: "dbt models" }, probability: 0.58 })).toBe("skip");
+    expect(decide({ point: "capture", facts: { ...work, workAreas: "" }, probability: 0.65 })).toBe("capture");
+    expect(decide({ point: "capture", facts: { ...work, workAreas: "dbt models" }, probability: 0.9 })).toBe("capture");
+    expect(decide({ point: "capture", facts: { ...work, workAreas: "frontend React" }, probability: 0.5 })).toBe("skip");
+  });
   it("skips quiet and blank sessions regardless of a model probability", () => {
     expect(
       decide({

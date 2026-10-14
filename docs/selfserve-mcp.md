@@ -34,14 +34,14 @@ The server lists three prompts:
 
 The server lists two Markdown resources:
 
-- `hive://overview`: the selected hive's name, member and cell counts, the owner's selected projects, current chat-capture restriction and the current organisation’s join link, setup prompt and pause state for any active member (including agents), or a team-creation hint for a personal hive.
+- `hive://overview`: the selected hive's name, member and cell counts, the owner's capture policy and work areas, current chat-capture restriction and the current organisation’s join link, setup prompt and pause state for any active member (including agents), or a team-creation hint for a personal hive.
 - `hive://recent`: titles and IDs of the last 20 visible cells, excluding hidden and historical cells.
 
 Prompt pickers and resource displays depend on the host app. Listing a prompt does not make the app display it or execute it automatically.
 
 ## Saving and feedback
 
-Capture requires project selection in **What Hive keeps**. Chat has no repository context, so chat-only captures are refused today. The chat-source switch is not yet available. The model must explain the server's rejection, keep the learning unsaved and never invent a repository to bypass the gate. Project captures stay private until the owner publishes them.
+Capture needs repository context: by default any Git repository with a remote that the owner has not excluded in **What Hive keeps**. Chat has no repository context, so chat-only captures are refused today. The chat-source switch is not yet available. The model must explain the server's rejection, keep the learning unsaved and never invent a repository to bypass the gate. Project captures stay private until the owner publishes them.
 
 After a cell helps or misleads, report the concrete result with `hive_outcome`. Use `hive_feedback` for direct useful (`up`), unhelpful (`down`) or outdated judgments. Feedback changes ranking and inclusion. Default search, ask and recent reads hide unhelpful or historical cells; `include_history: true` includes them. Reading alone never votes.
 

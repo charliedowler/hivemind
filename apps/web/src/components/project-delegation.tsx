@@ -46,7 +46,7 @@ export function ProjectDelegation({
       setPending(false);
     }
   }
-  if (!agents.length) return null;
+  if (!agents.length || policy.mode === "everything") return null;
   return (
     <details className="install-fallback">
       <summary>Let an agent update projects</summary>

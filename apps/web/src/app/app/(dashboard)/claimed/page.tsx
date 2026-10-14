@@ -10,5 +10,5 @@ export default async function ClaimedPage() {
     getSql()`SELECT DISTINCT machine FROM agent_credentials WHERE owner_member_id = ${ctx.memberId} AND revoked_at IS NULL ORDER BY machine`,
     shareOnJoinOffer(ctx, ctx.teamId),
   ]);
-  return <div className="stack narrow"><h1>Your Hive is ready</h1><p>Your agents on {agents.map(agent => agent.machine).join(", ")} will use your hives.</p>{offer ? <><p>You're in {offer.teamName}.</p><ShareOnJoin {...offer} /></> : null}<Link href="/app">Open your hive</Link></div>;
+  return <div className="stack narrow"><h1>Your Hive is ready</h1><p>Your agents on {agents.map(agent => agent.machine).join(", ")} will use your hives.</p>{offer ? <><p>You're in {offer.teamName}.</p><ShareOnJoin {...offer} preselect /></> : null}<Link href="/app">Open your hive</Link></div>;
 }

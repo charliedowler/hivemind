@@ -62,6 +62,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await sql.begin((tx) => followOwnerMemberships(tx, owner.memberId));
       agent = (await memberContext(agentId, owner.teamId))!;
       await shareProjects(owner, {
+        mode: "selected",
         include: ["github.com/team/widget"],
         exclude: [],
         revision: 0,

@@ -16,6 +16,7 @@ import {
   renderOrganisationCreated,
 } from "@/server/identity/welcome-template";
 import { Consent } from "./consent";
+import { JoinHive } from "./join-hive";
 const mocks = vi.hoisted(() => ({ request: vi.fn(), consent: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/auth-client", () => ({
@@ -473,8 +474,10 @@ it("grants one named agent only the exact project selection at the current revis
   const { host, close } = await mount(
     <ProjectDelegation
       policy={{
+        mode: "selected",
         include: ["github.com/team/platform"],
         exclude: ["github.com/team/private"],
+        workAreas: "",
         revision: 4,
       }}
       agents={[{ id: "agent", name: "Codex on laptop" }]}
@@ -510,4 +513,21 @@ it("grants one named agent only the exact project selection at the current revis
   } finally {
     await close();
   }
+});
+
+it("pre-selects sharing on the join step, explains it and lets the person decline", async () => {
+  mocks.request.mockResolvedValue({ destination: "#joined" });
+  const { host, close } = await mount(<JoinHive phrase="amber-honey-fox" teamName="Lightdash" sharedProjects={2} />);
+  const share = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  expect(share.checked).toBe(true);
+  expect(host.textContent).toContain("Share what Hive learns with Lightdash");
+  expect(host.textContent).toContain("Hive captures learnings from the Git repos your agents work in and keeps them in your personal hive. With this ticked, Lightdash also sees the cells from those repos, now and in future. Your originals stay personal, and you can change this later on the Team page.");
+  expect(host.querySelector<HTMLInputElement>('input[placeholder="frontend React, dbt models, infra"]')).not.toBeNull();
+  const button = () => [...host.querySelectorAll("button")].find((item) => item.textContent?.startsWith("Join"))!;
+  expect(button().textContent).toBe("Join and share with Lightdash");
+  await act(async () => share.click());
+  expect(button().textContent).toBe("Join Lightdash");
+  await act(async () => button().click());
+  expect(mocks.request).toHaveBeenCalledWith("/api/app/join-phrase", { phrase: "amber-honey-fox", share: false });
+  await close();
 });

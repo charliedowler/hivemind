@@ -30,17 +30,19 @@ export async function POST(request: Request) {
   try {
     return await withHiveBearerAuth(request, async (request, ctx, claims) => {
     const input = inputSchema.parse(await readJson(request));
-    ctx = (await requireSelectedProject(ctx, input)).personal;
+    const selection = await requireSelectedProject(ctx, input);
+    ctx = selection.personal;
+    const workAreas = selection.policy.workAreas || undefined;
     await rateLimit("capture", `${ctx.teamId}/${ctx.memberId}`, 30, 60);
     const result = await withOrigin(originFor(ctx, "hook", claims ? "oauth" : "api_key"), async () => {
-      const capture = await enforceCaptureRules(ctx, {title: "", body: input.text, repo: input.repo, remote: input.remote, cwd: input.cwd, home: input.home, paths: input.paths, agent: input.agent ?? "claude-code", sessionType: input.sessionType}, "hook", [input.branch, input.sessionRef].filter((value): value is string => Boolean(value)));
+      const capture = await enforceCaptureRules(ctx, {title: "", body: input.text, repo: input.repo, remote: input.remote, cwd: input.cwd, home: input.home, paths: input.paths, agent: input.agent ?? "claude-code", sessionType: input.sessionType}, "hook", [input.branch, input.sessionRef].filter((value): value is string => Boolean(value)), workAreas);
       if (capture.action === "drop") {
         const matched = capture.matches.find(match => match.action === "drop");
         if (!matched) throw new HiveError("Hive could not check what to keep. Try again.", 503);
         await recordEvent({name: "hook.fired", outcome: "skip", reasonCode: "capture_rule", properties: {hookKind: "stop", gateDecision: "skip", pushedCount: null}});
         return {decision: "skip" as const, dropped: true, rule: matched.kind, classification: null};
       }
-      const result = await classifyCapture({...redactCaptureSecrets(input).input, text: capture.body});
+      const result = await classifyCapture({...redactCaptureSecrets(input).input, text: capture.body, workAreas});
       await recordEvent({
         name: "hook.fired",
         outcome: result.decision,

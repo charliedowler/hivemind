@@ -49,7 +49,7 @@ it("mounts the shared onboarding offer only after approval", async () => {
   expect(html).toContain("You&#x27;re in Example Hive.");
   expect(html).toContain("Shared organisation offer");
   expect(mocks.offer).toHaveBeenCalledExactlyOnceWith(actor, "organisation");
-  expect(mocks.share.mock.calls[0][0]).toEqual(offer);
+  expect(mocks.share.mock.calls[0][0]).toEqual({ ...offer, preselect: true });
 });
 it("keeps the pending page informative without reading personal sharing choices", async () => {
   mocks.landing.mockResolvedValue({

@@ -20,11 +20,12 @@ const categoryDescriptions = {
   customer_data:
     "Customer identities, customer-identifying records, private customer communications or customer-specific business data. Generic customer workflows and anonymised technical facts do not match.",
   non_work:
-    "Personal activities or subjects unrelated to the team's work. Technical findings, developer tooling and observations about team workflow count as work even without a repository.",
+    "Personal activities or subjects unrelated to the team's work. Technical findings, developer tooling and observations about team workflow count as work even without a repository. workAreas, when present, are areas the person says they work on and count as work.",
 } as const satisfies Record<CaptureCategory, string>;
 
 type CaptureInput = Omit<CaptureEvaluationInput, "categories"> & {
   teamId?: string;
+  workAreas?: string | null;
 };
 type Verdicts = Partial<Record<CaptureCategory, boolean>>;
 const categoryModel = "claude-sonnet-5-5";
@@ -154,6 +155,7 @@ function prepareState(input: CaptureInput) {
     paths: (input.paths ?? []).map(redact),
     agent: input.agent == null ? null : redact(input.agent),
     sessionType: input.sessionType == null ? null : redact(input.sessionType),
+    ...(input.workAreas ? { workAreas: redactSecrets(input.workAreas).text } : {}),
   };
   return { state, credentials };
 }
@@ -164,9 +166,10 @@ export async function classifyCaptureCategories(
 ): Promise<Verdicts> {
   const requested = [...new Set(categories)].sort();
   if (!requested.length) return {};
-  const privacy = gateCapturePrivacy(input);
+  const { workAreas, ...captured } = input;
+  const privacy = gateCapturePrivacy(captured);
   if (privacy.action === "refuse") return Object.fromEntries(requested.map(category => [category, true]));
-  input = privacy.input;
+  input = { ...privacy.input, workAreas };
   const key = createHash("sha256")
     .update(
       JSON.stringify({
@@ -180,6 +183,7 @@ export async function classifyCaptureCategories(
         sessionType: input.sessionType ?? null,
         categories: requested,
         teamId: input.teamId ?? null,
+        workAreas: input.workAreas ?? null,
       }),
     )
     .digest("hex");

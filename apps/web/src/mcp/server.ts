@@ -115,8 +115,8 @@ export function registerHiveTools(server: McpServer) {
     inputSchema: z.strictObject({}),
   }, async (_input, ctx) => reply(async () => JSON.stringify(await hiveInviteLink(getContext(ctx))), ctx));
   server.registerTool("hive_share_projects", {
-    title: "Choose projects for private capture",
-    description: "Read the owner's selection, or save include/exclude patterns at its revision. Initial agent setup records the supplied humanInstruction. Adding projects later requires human authority. Captures stay personal; this never publishes to an organisation.",
+    title: "Read or change what Hive captures privately",
+    description: "Read the owner's capture policy, or save it at its revision. mode everything (the default) captures from every Git repository with a remote except exclude; mode selected captures only from include. workAreas is optional free text about what the person works on. Record the human's words as humanInstruction. Agents may exclude repos, switch to selected or set workAreas; adding projects or switching back to everything needs human authority. Captures stay personal; this never publishes to an organisation.",
     inputSchema: hiveShareProjectsInput,
   }, async (input, ctx) => reply(async () => {
     const policy = await shareProjects(getContext(ctx), input);
@@ -128,8 +128,8 @@ export function registerHiveTools(server: McpServer) {
     inputSchema: z.strictObject({}),
   }, async (_input, ctx) => reply(async () => JSON.stringify(await agentStatus(getContext(ctx))), ctx));
   server.registerTool("hive_share_with", {
-    title: "Share selected projects with a team",
-    description: "Publish only the projects the human picked for a joined organisation. Record their explicit humanInstruction; originals stay personal and future captures keep flowing.",
+    title: "Share captured learnings with a team",
+    description: "Record the human's answer to a share offer for a joined organisation: all_selected shares everything Hive captures for them, now and in future; projects shares only the picked projects; not_now keeps everything personal. Record their explicit humanInstruction; originals stay personal.",
     inputSchema: shareWithInput,
   }, async (input, ctx) => reply(async () => JSON.stringify(await shareWith(getContext(ctx), input)), ctx));
   server.registerTool("hive_join", {

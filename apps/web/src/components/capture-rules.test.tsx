@@ -59,6 +59,31 @@ describe("What Hive keeps", () => {
     await send("never keep anything from the wayfarer repo");
     expect(api).toHaveBeenCalledWith("/api/app/capture-rules/propose", {text: "never keep anything from the wayfarer repo", scope: "personal"});
   });
+  it("captures from every repo by default with an exclude list, work areas and a switch to selected projects", async () => {
+    const policy = {mode: "everything" as const, include: [], exclude: [], workAreas: "", revision: 3};
+    await act(async () => root.render(<CaptureRules initial={{rules: defaults, isAdmin: false, policy}} scope="personal" />));
+    expect(host.textContent).toContain("Hive learns from the Git repos your agents work in and keeps what it finds in your personal hive. Nothing reaches a team until you choose to share.");
+    expect(host.textContent).toContain("Hive never captures from a repo without a Git remote or from your home directory.");
+    expect(host.textContent).toContain("Hive uses this to tag what it captures and to suggest what to share. It never limits what Hive learns from.");
+    const radios = [...host.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    expect(radios.map(radio => [radio.value, radio.checked])).toEqual([["everything", true], ["selected", false]]);
+    expect(host.textContent).not.toContain("Projects Hive may learn from");
+    const field = (label: string) => [...host.querySelectorAll("label")].find(item => item.textContent?.includes(label))!.querySelector("input") ?? host.querySelector<HTMLInputElement>(`#${[...host.querySelectorAll("label")].find(item => item.textContent?.includes(label))!.htmlFor}`)!;
+    const areas = field("What you work on (optional)");
+    expect(areas.placeholder).toBe("frontend React, dbt models, infra");
+    const type = async (input: HTMLInputElement, value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", {bubbles: true}));
+    });
+    await type(areas, "frontend React, dbt models");
+    await type(field("Repos to leave out"), "github.com/team/private");
+    api.mockResolvedValueOnce({...policy, exclude: ["github.com/team/private"], workAreas: "frontend React, dbt models", revision: 4});
+    await act(async () => areas.form!.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    expect(api).toHaveBeenCalledWith("/api/app/capture-rules/projects", {mode: "everything", include: [], exclude: ["github.com/team/private"], workAreas: "frontend React, dbt models", revision: 3, humanInstruction: "Learn privately from every Git repo I work in; exclude github.com/team/private. I work on frontend React, dbt models."});
+    expect(host.textContent).toContain("Saved. Hive learns privately from every Git repo you work in, except the ones you left out.");
+    await act(async () => [...host.querySelectorAll<HTMLInputElement>('input[type="radio"]')][1].click());
+    expect(host.textContent).toContain("Projects Hive may learn from");
+  });
   it("saves a sentence immediately, highlights one line, and undoes that result", async () => {
     await mount();
     api.mockResolvedValueOnce({status: "saved", rule: custom, undoUntil: new Date(Date.now() + 3600000).toISOString()});
