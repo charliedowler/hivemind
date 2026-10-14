@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type postgres from "postgres";
 import { getSql } from "../db/client";
+import { forgetCachedAuth } from "../auth-cache";
 
 type Sql = ReturnType<typeof getSql>;
 type Transaction = postgres.TransactionSql;
@@ -24,7 +25,9 @@ export async function oauthCutoverReport() {
 }
 
 export async function revokeLegacyOAuth(expectedDigest: string) {
-  return getSql().begin(tx => revokeLegacyOAuthInTransaction(tx, expectedDigest));
+  const result = await getSql().begin(tx => revokeLegacyOAuthInTransaction(tx, expectedDigest));
+  forgetCachedAuth();
+  return result;
 }
 
 export async function revokeLegacyOAuthInTransaction(tx: Transaction, expectedDigest: string) {

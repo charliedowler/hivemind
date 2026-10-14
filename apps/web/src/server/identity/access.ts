@@ -13,6 +13,7 @@ import { hashToken, newToken } from "../db/ids";
 import { HiveError, HiveInputError, HiveNotFoundError } from "../errors";
 import { emailDomain, isPublicDomain } from "./email-domain";
 import { requireHuman } from "./agent-enrollment";
+import { forgetCachedAuth } from "../auth-cache";
 export async function requireAdmin(ctx: HiveContext): Promise<void> {
   await requireHuman(ctx.memberId);
   const rows =
@@ -49,6 +50,7 @@ export async function revokeKey(ctx: HiveContext, id: string): Promise<void> {
   const rows =
     await getSql()`UPDATE api_keys SET revoked_at = now() WHERE id = ${id} AND team_id = ${ctx.teamId} AND (member_id = ${ctx.memberId} OR EXISTS (SELECT 1 FROM hive_memberships h JOIN members m ON m.id = h.member_id WHERE h.member_id = ${ctx.memberId} AND h.team_id = ${ctx.teamId} AND h.role = 'admin' AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional)) RETURNING id`;
   if (!rows.length) throw new HiveNotFoundError("Key not found in your team.");
+  forgetCachedAuth();
   await accessEvent(ctx, "key_revoked", { keyId: id }, id);
 }
 export async function rotateInvite(ctx: HiveContext) {
@@ -101,6 +103,7 @@ export async function removeMember(
     await tx`UPDATE api_keys SET revoked_at = now() WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
     await tx`DELETE FROM web_sessions WHERE member_id IN ${tx(removed)} AND team_id = ${ctx.teamId}`;
   });
+  forgetCachedAuth();
   await accessEvent(
     ctx,
     "member_removed",

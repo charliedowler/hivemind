@@ -10,6 +10,7 @@ import { followOwnerMemberships } from "./owner-bindings";
 import { recordMembershipJoin } from "./join-receipts";
 import { deliverEmail } from "./email";
 import { notifyJoinRequestAdmins } from "../slack/join-request-notifications";
+import { forgetCachedAuth } from "../auth-cache";
 
 export type JoinRequestView = {
   id: string;
@@ -284,6 +285,7 @@ export async function undoJoinRequest(
     await tx`UPDATE api_keys SET revoked_at=now() WHERE team_id=${ctx.teamId} AND member_id=ANY(${ids}::text[]) AND revoked_at IS NULL`;
     await tx`DELETE FROM web_sessions WHERE team_id=${ctx.teamId} AND member_id=ANY(${ids}::text[])`;
     await tx`UPDATE hive_join_requests SET undone_at=${stamp} WHERE id=${id}`;
+    forgetCachedAuth();
   } else await tx`UPDATE hive_join_requests SET undone_at=now() WHERE id=${id}`;
   await tx`UPDATE hive_join_requests SET status=CASE WHEN expires_at>now() THEN 'pending' ELSE 'expired' END,decided_by=NULL,decided_at=NULL,membership_created=false,approved_joined_at=NULL WHERE id=${id}`;
 }
