@@ -77,6 +77,7 @@ import {
 } from "./capture-visibility";
 import {
   requireSelectedProject,
+  noProjectSelection,
   lockCapturePolicy,
   refreshProjectPublications,
 } from "./project-sharing";
@@ -146,7 +147,12 @@ export async function pushLearning(
           403,
         );
     }
-    ctx = (await requireSelectedProject(ctx, project)).personal;
+    try {
+      ctx = (await requireSelectedProject(ctx, project)).personal;
+    } catch (error) {
+      if (error instanceof HiveError) await recordEvent({ name: "learning.refused", outcome: "refused", reasonCode: error.message === noProjectSelection ? "no_selection" : "project_not_selected", properties: { agent: (input.agent ?? input.context?.agent ?? null) as "claude-code" | "codex" | "executor" | null } });
+      throw error;
+    }
   }
   return withOperation(ctx, "push", () => pushLearningAction(ctx, input));
 }

@@ -22,6 +22,7 @@ export const eventNames = [
   "digest_skipped_empty",
   "digest_failed",
   "learning.pushed",
+  "learning.refused",
   "conflict.decided",
   "learning.superseded",
   "learning.lifecycle_changed",
@@ -78,6 +79,8 @@ export const outcomes = [
   "silent",
 ] as const;
 export const reasonCodes = [
+  "no_selection",
+  "project_not_selected",
   "capture_rule",
   "sensitive_refused",
   "provider_failed",

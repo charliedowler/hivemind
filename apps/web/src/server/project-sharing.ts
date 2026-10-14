@@ -198,14 +198,7 @@ export async function requireSelectedProject(
         : "Hive has no permission to capture from this project. Supply one selected, consistent repository.",
       403,
     );
-  if (
-    ["api_key", "oauth"].includes(currentOrigin()?.sessionKind ?? "") &&
-    ctx.teamId !== actor.personal.teamId
-  )
-    throw new HiveError(
-      "Connect to your personal hive before capturing selected projects.",
-      403,
-    );
+  // Captures always land in the owner's personal hive (actor.personal), so a session connected to an organisation hive with OAuth or an API key is fine here; callers switch ctx to the personal hive below.
   return { ...actor, policy, project: decision.project! };
 }
 

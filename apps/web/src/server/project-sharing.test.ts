@@ -130,7 +130,6 @@ describe.skipIf(!process.env.DATABASE_URL)("private capture and publication audi
     expect(policy).toEqual({include: [project], exclude: [], revision: 1});
     expect((await sql`SELECT authority, human_instruction FROM owner_capture_policy_history WHERE owner_member_id = ${owner.memberId}`)[0]).toEqual({authority: "initial_instruction", human_instruction: "Learn from selected/widget only."});
     for (const input of [capture("github.com/unselected/widget"), hivePushInput.parse({observation}), capture(project, {remote: "git@github.com:other/widget.git"})]) await expect(pushLearning(agent, input)).rejects.toMatchObject({status: 403});
-    await expect(withOrigin(originFor({...agent, teamId: orgA.teamId}, "mcp", "api_key"), () => pushLearning({...agent, teamId: orgA.teamId}, capture()))).rejects.toThrow(/personal hive/);
     expect(models.classify).not.toHaveBeenCalled();
     expect(await sql`SELECT id FROM learnings WHERE member_id = ${agent.memberId}`).toHaveLength(0);
   });
