@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /api/
+Disallow: /app/
+Disallow: /j/
+Disallow: /oauth2/
+Disallow: /signed-in

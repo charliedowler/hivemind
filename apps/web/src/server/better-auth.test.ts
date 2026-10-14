@@ -237,6 +237,14 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     expect(config.registration_endpoint).toBe(`${baseUrl}/api/auth/oauth2/register`);
     expect(config.code_challenge_methods_supported).toEqual(["S256"]);
   });
+  it("serves discovery and signing keys without database rate-limit writes", async () => {
+    const counted = async () => Number((await getSql()`SELECT count(*)::int + coalesce(sum(count), 0)::int AS total FROM auth_rate_limit`)[0].total);
+    const before = await counted();
+    for (const path of ["/.well-known/oauth-protected-resource/api/mcp", "/.well-known/oauth-authorization-server/api/auth", "/api/auth/jwks"]) expect((await request(path)).status).toBe(200);
+    expect(await counted()).toBe(before);
+    expect((await request("/api/auth/sign-in/email", { email: `nobody-${suffix}@auth.example.test`, password })).status).toBe(401);
+    expect(await counted()).toBeGreaterThan(before);
+  });
   it("challenges requests without a key or OAuth token", async () => {
     const response = await request("/api/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" });
     expect(response.status).toBe(401);
