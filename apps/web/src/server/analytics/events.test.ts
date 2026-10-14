@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accessEvent,
   analyticsTransaction,
+  beginCall,
   eventRow,
   originFor,
   propertiesSchema,
   recordEvent,
   recordMutation,
+  STARTED_AFTER_MS,
   withOperation,
   withOrigin,
   type EventRow,
@@ -19,6 +21,7 @@ const ctx = {
   memberName: "Fixture",
 };
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -171,13 +174,43 @@ describe("analytics envelope", () => {
         rows.push(row);
       },
     );
-    expect(rows.map((row) => row.event_name)).toEqual([
-      "operation.started",
-      "operation.finished",
-    ]);
-    expect(rows[1].outcome).toBe("failed");
-    expect(rows[0].properties.operationId).toBe(rows[1].properties.operationId);
+    expect(rows.map((row) => row.event_name)).toEqual(["operation.finished"]);
+    expect(rows[0].outcome).toBe("failed");
+    expect(rows[0].latency_ms).not.toBeNull();
     expect(JSON.stringify(rows)).not.toContain("private");
+  });
+  it("writes a start row only for calls still running after the stall threshold", async () => {
+    vi.useFakeTimers();
+    const rows: EventRow[] = [];
+    let release!: () => void;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    const startedAt = Date.now();
+    const done = withOrigin(
+      originFor(ctx, "mcp"),
+      async () => {
+        await withOperation(ctx, "search", async () => "fast");
+        const finish = await beginCall("model", "synthesis", "claude-sonnet-5-5");
+        await finish();
+        await withOperation(ctx, "ask", () => slow);
+      },
+      async (row) => {
+        rows.push(row);
+      },
+    );
+    await vi.advanceTimersByTimeAsync(STARTED_AFTER_MS - 1);
+    expect(rows.map((row) => row.event_name)).toEqual(["operation.finished", "model.completed"]);
+    await vi.advanceTimersByTimeAsync(1);
+    release();
+    await done;
+    expect(rows.map((row) => [row.event_name, row.properties.operation])).toEqual([
+      ["operation.finished", "search"],
+      ["model.completed", null],
+      ["operation.started", "ask"],
+      ["operation.finished", "ask"],
+    ]);
+    expect(rows[2].occurred_at.getTime()).toBe(startedAt);
+    expect(rows[2].request_id).toBe(rows[3].request_id);
+    expect(rows[2].properties.operationId).toBe(rows[3].properties.operationId);
   });
 });
 
