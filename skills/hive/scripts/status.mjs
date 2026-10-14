@@ -19,6 +19,8 @@ async function main() {
       console.log(`Open ${state.url}`);
       console.log("Sign in with Google in the tab that just opened; run `npx gohive status` when done."); return;
     }
+    // An expired token that could not be refreshed looks like a sign-in problem, but it is usually the server being down. Check before blaming the sign-in.
+    if (!(await serverReachable())) throw new TypeError('fetch failed');
     throw new Error('Sign in first');
   }
   await callTool('hive_share_projects', { revision: 0 }, { token, signal: AbortSignal.timeout(5000) });
@@ -46,6 +48,12 @@ async function main() {
       console.log(invitation.invitePrompt || invitation.prompt || `Set me up on Hive and join the ${invitation.teamName || invitation.team} hive: read https://gohive.dev/agent and follow it, then join with ${invitation.joinUrl}`);
     }
   } catch {}
+}
+async function serverReachable() {
+  try {
+    const response = await fetch(`${endpoint()}/api/mcp`, { method: 'POST', signal: AbortSignal.timeout(4000), headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-03-26' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'gohive-status', version: '0' } } }) });
+    return response.status < 500;
+  } catch { return false; }
 }
 const unreachable = error => error instanceof TypeError || /HTTP 5\d\d|fetch failed|could not complete|Bad gateway/i.test(String(error?.message));
 main().catch(error => {
