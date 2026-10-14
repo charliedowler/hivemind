@@ -7,6 +7,7 @@ import {
   normalizeRepo,
   canonicalProject,
   projectFromContext,
+  matchWorkAreas,
   normalizeTags,
   parseSince,
   rankCandidates,
@@ -77,7 +78,7 @@ import {
 } from "./capture-visibility";
 import {
   requireSelectedProject,
-  noProjectSelection,
+  projectRefusalReason,
   lockCapturePolicy,
   refreshProjectPublications,
 } from "./project-sharing";
@@ -150,7 +151,7 @@ export async function pushLearning(
     try {
       ctx = (await requireSelectedProject(ctx, project)).personal;
     } catch (error) {
-      if (error instanceof HiveError) await recordEvent({ name: "learning.refused", outcome: "refused", reasonCode: error.message === noProjectSelection ? "no_selection" : "project_not_selected", properties: { agent: (input.agent ?? input.context?.agent ?? null) as "claude-code" | "codex" | "executor" | null } });
+      if (error instanceof HiveError) await recordEvent({ name: "learning.refused", outcome: "refused", reasonCode: projectRefusalReason(error.message), properties: { agent: (input.agent ?? input.context?.agent ?? null) as "claude-code" | "codex" | "executor" | null } });
       throw error;
     }
   }
@@ -235,6 +236,7 @@ async function pushLearningAction(
     },
     undefined,
     sidecar,
+    selection?.policy.workAreas,
   );
   if (capture.action === "drop") {
     const matched = capture.matches.find((match) => match.action === "drop");
@@ -318,6 +320,7 @@ async function pushLearningAction(
     blocked: data.blocked ?? null,
     cost: data.cost,
     kind: data.kind,
+    workAreas: selection?.policy.workAreas,
   });
   if (decision.action === "refuse") {
     await recordEvent({
@@ -374,7 +377,15 @@ async function pushLearningAction(
   };
   workaround = redactSecrets(data.workaround ?? "");
   if (supplied.tags === undefined)
-    tags.push(...decision.tags.filter((tag) => !tags.includes(tag)));
+    tags.push(
+      ...normalizeTags([
+        ...decision.tags,
+        ...matchWorkAreas(
+          selection?.policy.workAreas,
+          [title.text, body.text, ...paths, repo ?? ""].join("\n"),
+        ),
+      ]).filter((tag) => !tags.includes(tag)),
+    );
   const captureKey =
     supplied.observation && !data.supersedes
       ? createHash("sha256")

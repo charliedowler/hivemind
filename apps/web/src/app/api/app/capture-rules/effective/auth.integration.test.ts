@@ -85,7 +85,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(
         result.rules.map((rule: { name: string }) => rule.name).sort(),
       ).toEqual(["Exclude credentials", "Exclude customer data", "Exclude personal data", "Own rule"]);
-      expect(result.policy).toEqual({include: [], exclude: [], revision: 0});
+      expect(result.policy).toEqual({mode: "everything", include: [], exclude: [], workAreas: "", revision: 0});
     });
     it("rejects a cookie-only request and an invalid key", async () => {
       expect((await GET(request())).status).toBe(401);

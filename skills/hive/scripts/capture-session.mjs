@@ -134,7 +134,7 @@ export async function postToolNudge(input) {
   const nudge = passed && state.failedCommands.includes(key);
   if (nudge) state.failedCommands = state.failedCommands.filter(value => value !== key);
   persist(paths.file, state);
-  if (nudge) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "A test or build failed and now passes. If this established a non-obvious fix, capture the cause, fix and evidence now with hive_push. Check the selected project and Hive skill first. Skip anything already saved. Do not ask a question or delay the answer." } }) + "\n");
+  if (nudge) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "A test or build failed and now passes. If this established a non-obvious fix, capture the cause, fix and evidence now with hive_push. Check the Hive skill first. Skip anything already saved. Do not ask a question or delay the answer." } }) + "\n");
 }
 
 export async function rememberPush(input) {

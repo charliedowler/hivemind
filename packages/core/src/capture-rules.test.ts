@@ -345,6 +345,33 @@ it("canonicalises projects without credentials and keeps hosts and nested namesp
   expect(evaluateProjectPolicy({...policy, include: []}, {repo: "team/allowed"}).allowed).toBe(false);
 });
 
+it("captures from every known repository by default, never from exclusions, unknown repos or home directories", async () => {
+  const {evaluateProjectPolicy} = await import("./capture-matchers.mjs");
+  const everything = {mode: "everything" as const, include: [], exclude: ["github.com/team/private-*"], revision: 0};
+  expect(evaluateProjectPolicy(everything, {repo: "team/anything"})).toEqual({allowed: true, project: "github.com/team/anything", reason: "captured"});
+  expect(evaluateProjectPolicy(everything, {remote: "git@gitlab.com:group/tool.git"}).allowed).toBe(true);
+  expect(evaluateProjectPolicy(everything, {repo: "team/private-notes"}).reason).toBe("excluded_project");
+  expect(evaluateProjectPolicy(everything, {}).reason).toBe("unknown_project");
+  expect(evaluateProjectPolicy(everything, {remote: "file:///tmp/project"}).allowed).toBe(false);
+  expect(evaluateProjectPolicy(everything, {repo: "team/anything", cwd: "/Users/fixture/", home: "/Users/fixture"}).reason).toBe("home_directory");
+  expect(evaluateProjectPolicy(everything, {repo: "team/anything", cwd: "/Users/fixture/work", home: "/Users/fixture"}).allowed).toBe(true);
+  expect(evaluateProjectPolicy({...everything, mode: "selected"}, {repo: "team/anything"}).reason).toBe("no_selection");
+  expect(evaluateProjectPolicy({include: [], exclude: [], revision: 0}, {repo: "team/anything"}).reason).toBe("no_selection");
+});
+
+it("parses free-text work areas and matches them without becoming an allow-list", async () => {
+  const {parseWorkAreas, matchWorkAreas, describeWorkAreas, hiveShareProjectsInput} = await import("./project-sharing");
+  expect(parseWorkAreas("frontend React, dbt models and infra")).toEqual(["frontend React", "dbt models", "infra"]);
+  expect(parseWorkAreas("")).toEqual([]);
+  expect(describeWorkAreas("frontend React, dbt models, infra")).toBe("frontend React, dbt models and infra");
+  expect(describeWorkAreas("infra")).toBe("infra");
+  expect(matchWorkAreas("frontend React, dbt models, infra", "React hydration warning fixed by moving formatting to the server")).toEqual(["frontend React"]);
+  expect(matchWorkAreas("frontend React, dbt models", "The dbt model for revenue needs a unique key")).toEqual(["dbt models"]);
+  expect(matchWorkAreas("", "anything")).toEqual([]);
+  expect(hiveShareProjectsInput.parse({workAreas: " frontend React ", revision: 1})).toEqual({workAreas: "frontend React", revision: 1});
+  expect(hiveShareProjectsInput.safeParse({workAreas: "x".repeat(301), revision: 1}).success).toBe(false);
+});
+
 it("supports inverted repository matching with unknown repositories denied", () => {
   const rule = captureRuleInputSchema.parse({name: "One project", kind: "repo_match", pattern: "team/allowed", mode: "only_allow", action: "drop"});
   const stored = {...rule, id: "allow", teamId: "team", memberId: "owner", createdBy: "owner", createdAt: "", updatedAt: ""};

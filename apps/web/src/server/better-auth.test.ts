@@ -339,12 +339,12 @@ describe.skipIf(!process.env.DATABASE_URL)("Better Auth and MCP OAuth integratio
     expect(await contextFromClaims({ ...payload, hive_credential_epoch: -1 })).toBeNull();
     expect(await contextFromClaims({ ...payload, scope: "hive" })).toBeNull();
   });
-  it("accepts scoped OAuth and keys in MCP while the Stop gate requires project selection", async () => {
+  it("accepts scoped OAuth and keys in MCP while the Stop gate requires a repository", async () => {
     for (const token of [accessToken, legacyKey]) {
       expect(token).toBeTruthy();
       const response = await fetch(`${baseUrl}/api/app/capture`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ changes: 0, errors: 0, observations: 0, text: "Quiet fixture" }) });
       expect(response.status, await response.clone().text()).toBe(403);
-      expect((await response.json()).error).toContain("No projects selected");
+      expect((await response.json()).error).toContain("Git repository with a remote");
       const mcp = await fetch(`${baseUrl}/api/mcp`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
       expect(mcp.status).toBe(200);
       expect(await mcp.text()).toContain("hive_recent");

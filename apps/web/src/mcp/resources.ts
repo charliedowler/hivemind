@@ -14,7 +14,7 @@ export function registerHiveResources(server: McpServer) {
     {
       title: "Hive overview",
       description:
-        "Selected hive, counts, selected projects and capture state.",
+        "Selected hive, counts, capture policy and capture state.",
       mimeType: "text/markdown",
     },
     async (uri, ctx) =>
@@ -23,7 +23,7 @@ export function registerHiveResources(server: McpServer) {
         let projects = "Unavailable for this identity.";
         try {
           const policy = await ownerCapturePolicy(actor);
-          projects = `Included: ${JSON.stringify(policy.include)}\nExcluded: ${JSON.stringify(policy.exclude)}`;
+          projects = `${policy.mode === "everything" ? "Captures from every Git repository with a remote" : `Captures only from: ${JSON.stringify(policy.include)}`}\nExcluded: ${JSON.stringify(policy.exclude)}${policy.workAreas ? `\nWork areas: ${policy.workAreas}` : ""}`;
         } catch (error) {
           if (!(error instanceof HiveError) || error.status !== 403)
             throw error;
@@ -34,7 +34,7 @@ export function registerHiveResources(server: McpServer) {
             {
               uri: uri.href,
               mimeType: "text/markdown",
-              text: `# ${overview.teamName}\n\nMembers: ${overview.memberCount}\nCells: ${overview.learningCount}\n\n## Installer updates\n\n${cliVersionInstructions}\n\n## Selected projects\n\n${projects}\n\nChat capture: disabled; captures without selected project context are refused.\n\n## Invite teammates\n\n\`\`\`json\n${JSON.stringify(invite, null, 2)}\n\`\`\`\n`,
+              text: `# ${overview.teamName}\n\nMembers: ${overview.memberCount}\nCells: ${overview.learningCount}\n\n## Installer updates\n\n${cliVersionInstructions}\n\n## Capture\n\n${projects}\n\nChat capture: disabled; captures without repository context are refused.\n\n## Invite teammates\n\n\`\`\`json\n${JSON.stringify(invite, null, 2)}\n\`\`\`\n`,
             },
           ],
         };

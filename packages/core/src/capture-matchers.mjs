@@ -336,11 +336,19 @@ export function projectPatternMatches(pattern, project) {
     const canonical = canonicalProject(pattern, true);
     return Boolean(canonical && project && globMatches(canonical, project));
 }
+function samePath(left, right) {
+    const clean = value => String(value).trim().replace(/[\\/]+$/, "");
+    return clean(left) !== "" && clean(left) === clean(right);
+}
 export function evaluateProjectPolicy(policy, input) {
     const project = projectFromContext(input);
-    if (!policy || !Array.isArray(policy.include) || !Array.isArray(policy.exclude) || !policy.include.length) return {allowed: false, project, reason: "no_selection"};
+    const mode = policy?.mode === "everything" ? "everything" : "selected";
+    if (!policy || !Array.isArray(policy.include) || !Array.isArray(policy.exclude) || (mode === "selected" && !policy.include.length)) return {allowed: false, project, reason: "no_selection"};
     if (policy.include.length > 100 || policy.exclude.length > 100 || [...policy.include, ...policy.exclude].some(pattern => !canonicalProject(pattern, true))) return {allowed: false, project, reason: "invalid_policy"};
+    if (input.cwd != null && input.home != null && samePath(input.cwd, input.home)) return {allowed: false, project, reason: "home_directory"};
     if (!project) return {allowed: false, project: null, reason: "unknown_project"};
-    const allowed = policy.include.some(pattern => projectPatternMatches(pattern, project)) && !policy.exclude.some(pattern => projectPatternMatches(pattern, project));
+    if (policy.exclude.some(pattern => projectPatternMatches(pattern, project))) return {allowed: false, project, reason: "excluded_project"};
+    if (mode === "everything") return {allowed: true, project, reason: "captured"};
+    const allowed = policy.include.some(pattern => projectPatternMatches(pattern, project));
     return {allowed, project, reason: allowed ? "selected" : "unselected_project"};
 }

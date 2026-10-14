@@ -10,6 +10,7 @@ import {
   type HiveContext,
   type HiveShareProjectsInput,
   type OwnerCapturePolicy,
+  workAreasLimit,
 } from "@hivemind/core";
 import { getSql } from "./db/client";
 import { newId } from "./db/ids";
@@ -47,8 +48,10 @@ export async function captureOwner(ctx: HiveContext, sql: Sql = getSql()) {
 
 function policyView(row?: postgres.Row): OwnerCapturePolicy {
   return {
+    mode: row?.capture_mode === "selected" ? "selected" : "everything",
     include: row?.include_patterns ?? [],
     exclude: row?.exclude_patterns ?? [],
+    workAreas: row?.work_areas ?? "",
     revision: Number(row?.revision ?? 0),
   };
 }
@@ -73,6 +76,9 @@ export async function lockCapturePolicy(
 function narrowsPolicy(before: OwnerCapturePolicy, after: OwnerCapturePolicy) {
   const included = new Set(before.include);
   const excluded = new Set(after.exclude);
+  const keepsExclusions = before.exclude.every((pattern) => excluded.has(pattern));
+  if (after.mode === "everything") return before.mode === "everything" && keepsExclusions;
+  if (before.mode === "everything") return keepsExclusions;
   return (
     after.include.every(
       (pattern) =>
@@ -92,7 +98,12 @@ export async function shareProjects(
   input: HiveShareProjectsInput,
 ): Promise<OwnerCapturePolicy> {
   const data = hiveShareProjectsInput.parse(input);
-  if (data.include === undefined && data.exclude === undefined)
+  if (
+    data.include === undefined &&
+    data.exclude === undefined &&
+    data.mode === undefined &&
+    data.workAreas === undefined
+  )
     return ownerCapturePolicy(ctx);
   return getSql().begin(async (tx) => {
     const actor = await captureOwner(ctx, tx);
@@ -106,9 +117,14 @@ export async function shareProjects(
         "The project selection changed. Read it again before saving.",
         409,
       );
-    const after = {
+    const after: OwnerCapturePolicy = {
+      mode: data.mode ?? before.mode,
       include: data.include ?? before.include,
       exclude: data.exclude ?? before.exclude,
+      workAreas:
+        data.workAreas === undefined
+          ? before.workAreas
+          : redactSecrets(data.workAreas.replace(/\s+/g, " ")).text.slice(0, workAreasLimit),
       revision: before.revision + 1,
     };
     let authority = humanAuthority(actor.actorType) ? "human" : "restriction";
@@ -120,11 +136,13 @@ export async function shareProjects(
         );
       authority = "initial_instruction";
     } else if (authority !== "human" && !narrowsPolicy(before, after)) {
-      const delegations =
+      const delegations = after.mode === "everything" ? [] :
         await tx`SELECT id FROM capture_policy_delegations WHERE owner_member_id = ${actor.ownerId} AND agent_member_id = ${ctx.memberId} AND policy_revision = ${before.revision} AND include_patterns = ${after.include}::text[] AND exclude_patterns = ${after.exclude}::text[] AND revoked_at IS NULL AND consumed_at IS NULL AND expires_at > now() FOR UPDATE`;
       if (!delegations[0])
         throw new HiveError(
-          "A human sign-in or explicit delegation is required to add projects.",
+          after.mode === "everything" && before.mode === "selected"
+            ? "A human sign-in is required to capture from every repository."
+            : "A human sign-in or explicit delegation is required to add projects.",
           403,
         );
       await tx`UPDATE capture_policy_delegations SET consumed_at = now() WHERE id = ${delegations[0].id}`;
@@ -139,8 +157,8 @@ export async function shareProjects(
           canonicalProject(value, true) ?? "[removed repository credentials]",
       ),
     ).text;
-    await tx`INSERT INTO owner_capture_policies (owner_member_id, include_patterns, exclude_patterns, revision, human_instruction, updated_by) VALUES (${actor.ownerId}, ${after.include}, ${after.exclude}, ${after.revision}, ${instruction}, ${ctx.memberId}) ON CONFLICT (owner_member_id) DO UPDATE SET include_patterns = EXCLUDED.include_patterns, exclude_patterns = EXCLUDED.exclude_patterns, revision = EXCLUDED.revision, human_instruction = EXCLUDED.human_instruction, updated_by = EXCLUDED.updated_by, updated_at = now()`;
-    await tx`INSERT INTO owner_capture_policy_history (owner_member_id, revision, include_patterns, exclude_patterns, human_instruction, actor_member_id, authority) VALUES (${actor.ownerId}, ${after.revision}, ${after.include}, ${after.exclude}, ${instruction}, ${ctx.memberId}, ${authority})`;
+    await tx`INSERT INTO owner_capture_policies (owner_member_id, capture_mode, include_patterns, exclude_patterns, work_areas, revision, human_instruction, updated_by) VALUES (${actor.ownerId}, ${after.mode}, ${after.include}, ${after.exclude}, ${after.workAreas}, ${after.revision}, ${instruction}, ${ctx.memberId}) ON CONFLICT (owner_member_id) DO UPDATE SET capture_mode = EXCLUDED.capture_mode, include_patterns = EXCLUDED.include_patterns, exclude_patterns = EXCLUDED.exclude_patterns, work_areas = EXCLUDED.work_areas, revision = EXCLUDED.revision, human_instruction = EXCLUDED.human_instruction, updated_by = EXCLUDED.updated_by, updated_at = now()`;
+    await tx`INSERT INTO owner_capture_policy_history (owner_member_id, revision, capture_mode, include_patterns, exclude_patterns, work_areas, human_instruction, actor_member_id, authority) VALUES (${actor.ownerId}, ${after.revision}, ${after.mode}, ${after.include}, ${after.exclude}, ${after.workAreas}, ${instruction}, ${ctx.memberId}, ${authority})`;
     const activeShares =
       await tx`SELECT learning_id, team_id, public_content FROM learning_shares WHERE owner_member_id = ${actor.ownerId} AND withdrawn_at IS NULL ORDER BY team_id, learning_id FOR UPDATE`;
     for (const share of activeShares)
@@ -183,21 +201,27 @@ export async function delegateProjectSelection(
   });
 }
 
+const refusalMessages: Record<string, string> = {
+  no_selection: noProjectSelection,
+  home_directory: "Hive does not capture from a home directory. Work in a Git repository with a remote.",
+  unknown_project: "Hive captures only from a Git repository with a remote. Supply one consistent repository.",
+  excluded_project: "This repository is excluded from capture. The owner can change that on Account.",
+  unselected_project: "Hive has no permission to capture from this project. Supply one selected, consistent repository.",
+  invalid_policy: "Hive could not read the project selection. Save it again on Account.",
+};
+export const projectRefusalReason = (message: string) =>
+  message === noProjectSelection ? "no_selection" as const : "project_not_selected" as const;
+
 export async function requireSelectedProject(
   ctx: HiveContext,
-  input: { repo?: string | null; remote?: string | null },
+  input: { repo?: string | null; remote?: string | null; cwd?: string | null; home?: string | null },
   sql: Sql = getSql(),
 ) {
   const actor = await captureOwner(ctx, sql);
   const policy = await ownerCapturePolicy(ctx, sql);
   const decision = evaluateProjectPolicy(policy, input);
   if (!decision.allowed)
-    throw new HiveError(
-      decision.reason === "no_selection"
-        ? noProjectSelection
-        : "Hive has no permission to capture from this project. Supply one selected, consistent repository.",
-      403,
-    );
+    throw new HiveError(refusalMessages[decision.reason] ?? refusalMessages.unselected_project, 403);
   // Captures always land in the owner's personal hive (actor.personal), so a session connected to an organisation hive with OAuth or an API key is fine here; callers switch ctx to the personal hive below.
   return { ...actor, policy, project: decision.project! };
 }

@@ -109,7 +109,7 @@ export async function createOrganisation(ctx: HiveContext, requestKey: string) {
     await tx`UPDATE teams SET join_generation = 1, join_paused = ${!eligible} WHERE id = ${teamId}`;
     const policy = await ownerCapturePolicy(ctx, tx);
     async function publishSelected(index: number): Promise<void> {
-      if (index >= policy.include.length) return;
+      if (policy.mode !== "selected" || index >= policy.include.length) return;
       await publishProject(ctx, teamId, policy.include[index], tx);
       await publishSelected(index + 1);
     }

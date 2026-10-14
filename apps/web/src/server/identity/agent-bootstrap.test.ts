@@ -157,12 +157,12 @@ describe.skipIf(!process.env.DATABASE_URL)("Hive-issued agent bootstrap", () => 
   });
   it("shows selected projects with counts, publishes only explicit choices, records instruction and retains originals", async () => {
     const org=await organisation(),f=await fresh(org.domain);
-    await shareProjects(f.ctx,{include:["github.com/example/widget","github.com/example/private"],revision:0,humanInstruction:"Keep both privately."});
+    await shareProjects(f.ctx,{mode:"selected",include:["github.com/example/widget","github.com/example/private"],revision:0,humanInstruction:"Keep both privately."});
     const cellId=newId("lrn");await sql`INSERT INTO learnings (id,team_id,member_id,title,body,kind,source,confidence,repo) VALUES (${cellId},${f.ctx.teamId},${f.ctx.memberId},'Sharing fixture','Evidence','learning','claude-code',1,'github.com/example/widget')`;
     await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);await signInMemberContext(f.owner);
     expect(await sql`SELECT id FROM project_sharing_grants WHERE owner_member_id=${f.owner}`).toHaveLength(0);
     const offer=await shareOnJoinOffer(f.ctx,org.teamId);expect(offer?.projects).toContainEqual({pattern:"github.com/example/widget",cells:1});
-    await expect(shareWith(f.ctx,{teamId:org.teamId,projects:["github.com/example/other"],humanInstruction:"Share it"})).rejects.toThrow(/selected/);
+    await expect(shareWith(f.ctx,{teamId:org.teamId,projects:["github.com/example/other"],humanInstruction:"Share it"})).rejects.toThrow(/offered/);
     const result=await shareWith(f.ctx,{teamId:org.teamId,projects:["github.com/example/widget"],humanInstruction:"Share my widget findings with Example team."});expect(result.published).toBe(1);
     expect((await sql`SELECT team_id FROM learnings WHERE id=${cellId}`)[0].team_id).toBe(f.ctx.teamId);
     expect(await sql`SELECT learning_id FROM learning_shares WHERE learning_id=${cellId} AND team_id=${org.teamId}`).toHaveLength(1);
@@ -171,14 +171,14 @@ describe.skipIf(!process.env.DATABASE_URL)("Hive-issued agent bootstrap", () => 
   });
   it("keeps a declined offer private and available in Account and Team", async () => {
     const org=await organisation(),f=await fresh(org.domain);
-    await shareProjects(f.ctx,{include:["github.com/example/widget"],revision:0,humanInstruction:"Keep privately."});
+    await shareProjects(f.ctx,{mode:"selected",include:["github.com/example/widget"],revision:0,humanInstruction:"Keep privately."});
     await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);await signInMemberContext(f.owner);
     await shareWith(f.ctx,{teamId:org.teamId,projects:[],humanInstruction:"Keep personal."});
     expect(await shareOnJoinOffer(f.ctx,org.teamId)).toBeNull();expect(await shareOnJoinSettings(f.ctx,org.teamId)).not.toBeNull();expect(await sql`SELECT id FROM project_sharing_grants WHERE owner_member_id=${f.owner}`).toHaveLength(0);
   });
   it("records one all-selected grant and covers future selections without publishing unselected cells", async () => {
     const org=await organisation(),f=await fresh(org.domain);
-    await shareProjects(f.ctx,{include:["github.com/example/widget"],revision:0,humanInstruction:"Keep widget privately."});
+    await shareProjects(f.ctx,{mode:"selected",include:["github.com/example/widget"],revision:0,humanInstruction:"Keep widget privately."});
     await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);await signInMemberContext(f.owner);
     const result=await shareWith(f.ctx,{teamId:org.teamId,mode:"all_selected",humanInstruction:"Share all my selected projects, now and in future."});
     expect(result.shared).toBe("all_selected");

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   delegation: vi.fn(),
   invite: vi.fn(),
   email: vi.fn(),
+  shareAfterJoin: vi.fn(),
 }));
 vi.mock("@/server/auth", () => ({ getWebContext: mocks.auth }));
 vi.mock("@/server/identity/onboarding-web", () => ({
@@ -40,6 +41,10 @@ vi.mock("@/server/identity/join-phrases", () => ({
 }));
 vi.mock("@/server/project-sharing", () => ({
   delegateProjectSelection: mocks.delegation,
+}));
+vi.mock("@/server/share-on-join", async (original) => ({
+  ...(await original<typeof import("@/server/share-on-join")>()),
+  shareAfterJoin: mocks.shareAfterJoin,
 }));
 import { POST as capability } from "./join-capability/route";
 import { POST as delegation } from "./project-selection/delegate/route";
@@ -212,4 +217,19 @@ it("returns requested without selecting a hive when admin approval is required",
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ status: "requested" });
   expect(mocks.select).not.toHaveBeenCalled();
+});
+
+it("records the join step's sharing answer only after a completed join", async () => {
+  mocks.shareAfterJoin.mockResolvedValue({ decision: "yes", published: 2 });
+  const response = await join(
+    request("join-phrase", { phrase: "amber-honey-fox", share: true, workAreas: "frontend React" }, "https://gohive.dev"),
+  );
+  expect(await response.json()).toEqual({ teamName: "Team", destination: "/app?joined=1", sharing: { decision: "yes", published: 2 } });
+  expect(mocks.shareAfterJoin).toHaveBeenCalledWith(mocks.ctx, "team", "Team", { share: true, workAreas: "frontend React" });
+  mocks.shareAfterJoin.mockClear();
+  await join(request("join-phrase", { phrase: "amber-honey-fox" }, "https://gohive.dev"));
+  expect(mocks.shareAfterJoin).not.toHaveBeenCalled();
+  mocks.join.mockResolvedValue({ status: "requested", requestId: "fixture" });
+  await join(request("join-phrase", { phrase: "amber-honey-fox", share: true }, "https://gohive.dev"));
+  expect(mocks.shareAfterJoin).not.toHaveBeenCalled();
 });

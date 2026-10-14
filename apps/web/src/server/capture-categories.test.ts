@@ -150,6 +150,16 @@ describe("capture category policy", () => {
     expect(mocks.systemOne).toHaveBeenCalledTimes(1);
   });
 
+  it("gives the classifier the owner's work areas as context without gating them as capture content", async () => {
+    mocks.systemOne.mockResolvedValue(probabilities({ non_work: 0 }));
+    expect(await classify({ ...input, workAreas: "frontend React, dbt models" }, ["non_work"])).toEqual({ non_work: false });
+    expect(mocks.systemOne.mock.calls[0][0].state).toEqual({ ...input, workAreas: "frontend React, dbt models" });
+    expect(mocks.systemOne.mock.calls[0][0].questions.non_work.question ?? JSON.stringify(mocks.systemOne.mock.calls[0][0].questions.non_work)).toContain("workAreas");
+    mocks.systemOne.mockClear();
+    expect(await classify({ ...input, body: "Alex has diabetes.", workAreas: "frontend React" }, ["non_work"])).toEqual({ non_work: true });
+    expect(mocks.systemOne).not.toHaveBeenCalled();
+  });
+
   it("refuses secret-only fields before either provider is created", async () => {
     const secret = `ghp_${"a".repeat(25)}`;
     const raw = {...input, body: secret};

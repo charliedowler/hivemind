@@ -136,7 +136,7 @@ async function evaluateWithCategories(rules: CaptureRule[], input: EvaluationInp
   return {...evaluateCaptureRules(rules, {...input, categories: {...input.categories, ...categories}}), categories: {...input.categories, ...categories}};
 }
 
-export async function enforceCaptureRules(ctx: HiveContext, input: EvaluationInput, ingress?: Ingress, additionalText: string[] = []) {
+export async function enforceCaptureRules(ctx: HiveContext, input: EvaluationInput, ingress?: Ingress, additionalText: string[] = [], workAreas?: string) {
   const rules = await effectiveRules(ctx);
   const privacy = gateCapturePrivacy({...input, additionalText}, {rules});
   if (privacy.action === "refuse") {
@@ -153,7 +153,7 @@ export async function enforceCaptureRules(ctx: HiveContext, input: EvaluationInp
   const needed = [...new Set(cheap.flatMap(result => result.neededCategories))];
   const dropped = cheap.some(result => result.action === "drop");
   const categories = !dropped && needed.length
-    ? await classifyCaptureCategories({...input, teamId: ctx.teamId, body: [input.body, ...additionalText].join("\n\n")}, needed)
+    ? await classifyCaptureCategories({...input, teamId: ctx.teamId, body: [input.body, ...additionalText].join("\n\n"), ...(workAreas ? {workAreas} : {})}, needed)
     : {};
   const results = dropped ? cheap : [input, ...sidecars].map(item => evaluateCaptureRules(rules, {...item, categories: {...input.categories, ...categories}}));
   const result = {...results[0], categories: {...input.categories, ...categories}};
