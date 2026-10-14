@@ -2,7 +2,7 @@ import { requireMcpAuth } from "@better-auth/mcp";
 import type { HiveContext } from "@hivemind/core";
 import type { JWTPayload } from "jose";
 import { getAuth, mcpResource } from "./better-auth";
-import { authenticateAgentCredential } from "./identity/agent-credentials";
+import { authenticateAgentCredential, agentCredentialNotAfter } from "./identity/agent-credentials";
 import { authenticateApiKey } from "./auth";
 import { memberContext } from "./identity/enrollment";
 import { personalMemberContext } from "./identity/enrollment";
@@ -10,14 +10,14 @@ import { credentialVersion, credentialEpoch, personScope, withCredentialScope } 
 import { apiKeyId, bindApiKey, bindRole, memberRole } from "./analytics/events";
 import { authCacheKey, cachedAuth } from "./auth-cache";
 
-type Resolved = { ctx: HiveContext; role: ReturnType<typeof memberRole>; keyId: string | null };
+type Resolved = { ctx: HiveContext; role: ReturnType<typeof memberRole>; keyId: string | null; notAfter?: number };
 
 // Contexts carry their role and key id in WeakMaps, so the cache keeps a snapshot and hands out fresh copies.
-async function cachedContext(key: string, load: () => Promise<HiveContext | null>, notAfterMs?: number): Promise<HiveContext | null> {
+async function cachedContext(key: string, load: () => Promise<HiveContext | null>, notAfterMs?: number | ((ctx: HiveContext) => number | undefined)): Promise<HiveContext | null> {
   const resolved = await cachedAuth<Resolved>(key, async () => {
     const ctx = await load();
-    return ctx ? { ctx: { ...ctx }, role: memberRole(ctx), keyId: apiKeyId(ctx) } : null;
-  }, notAfterMs);
+    return ctx ? { ctx: { ...ctx }, role: memberRole(ctx), keyId: apiKeyId(ctx), notAfter: typeof notAfterMs === "function" ? notAfterMs(ctx) : notAfterMs } : null;
+  }, resolved => resolved.notAfter);
   if (!resolved) return null;
   const ctx = { ...resolved.ctx };
   if (resolved.role) bindRole(ctx, resolved.role);
@@ -45,7 +45,7 @@ export async function withHiveBearerAuth(request: Request, handler: (request: Re
   const authorization = request.headers.get("authorization");
   const agentToken = authorization?.match(/^Bearer (ha_[A-Za-z0-9_-]{43})$/i)?.[1];
   if (agentToken) {
-    const ctx = await cachedContext(authCacheKey("agent", agentToken), () => authenticateAgentCredential(agentToken));
+    const ctx = await cachedContext(authCacheKey("agent", agentToken), () => authenticateAgentCredential(agentToken), agentCredentialNotAfter);
     if (!ctx) return Response.json({ error: "This agent credential expired or was revoked." }, { status: 401 });
     return withCredentialScope(ctx.memberId, true, () => handler(request, ctx, { sub: ctx.memberId, hive_agent: true, scope: "hive" }));
   }

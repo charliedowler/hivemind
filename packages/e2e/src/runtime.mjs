@@ -56,6 +56,7 @@ export async function startRuntime({ signal } = {}) {
     PUBLIC_URL: url,
     BETTER_AUTH_URL: url,
     BETTER_AUTH_SECRET: 'hive-e2e-local-only-auth-secret-never-for-production',
+    CRON_SECRET: 'hive-e2e-local-only-cron-secret',
     RESEND_API_KEY: 're_e2e_local_only',
     EMAIL_FROM: 'Hive <hive@example.com>',
     HIVE_E2E_SINK_URL: sink.url,

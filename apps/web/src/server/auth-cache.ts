@@ -25,13 +25,14 @@ function prune(now: number) {
 }
 
 // Failed lookups (null) are never cached, so a new key or membership works on its first request.
-export async function cachedAuth<T>(key: string, load: () => Promise<T | null>, notAfterMs = Infinity): Promise<T | null> {
+export async function cachedAuth<T>(key: string, load: () => Promise<T | null>, notAfter: number | ((value: T) => number | undefined) = Infinity): Promise<T | null> {
   const now = Date.now();
   const hit = entries.get(key);
   if (hit && hit.expiresAt > now) return hit.value as T;
   if (hit) entries.delete(key);
   const loadedIn = generation;
   const value = await load();
+  const notAfterMs = value === null ? Infinity : typeof notAfter === "function" ? notAfter(value) ?? Infinity : notAfter;
   const expiresAt = Math.min(Date.now() + AUTH_CACHE_TTL_MS, notAfterMs);
   if (value !== null && loadedIn === generation && expiresAt > Date.now()) {
     if (entries.size >= MAX_ENTRIES) prune(Date.now());

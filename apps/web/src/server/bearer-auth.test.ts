@@ -6,7 +6,8 @@ import { forgetCachedAuth } from "./auth-cache";
 const mocks = vi.hoisted(() => ({ apiKey: vi.fn(), agent: vi.fn() }));
 vi.mock("./better-auth", () => ({ getAuth: vi.fn(), mcpResource: vi.fn() }));
 vi.mock("./auth", () => ({ authenticateApiKey: mocks.apiKey }));
-vi.mock("./identity/agent-credentials", () => ({ authenticateAgentCredential: mocks.agent }));
+const agentBounds = new WeakMap<HiveContext, number>();
+vi.mock("./identity/agent-credentials", () => ({ authenticateAgentCredential: mocks.agent, agentCredentialNotAfter: (ctx: HiveContext) => agentBounds.get(ctx) }));
 vi.mock("./identity/enrollment", () => ({ memberContext: vi.fn(), personalMemberContext: vi.fn() }));
 vi.mock("./db/client", () => ({ getSql: vi.fn() }));
 
@@ -22,6 +23,15 @@ afterEach(() => {
 });
 
 describe("bearer auth cache", () => {
+  it("drops a provisional owner's agent credential from the cache at its expiry", async () => {
+    mocks.agent.mockImplementation(async () => { const ctx = fixture(); agentBounds.set(ctx, Date.now() + 40); return ctx; });
+    await withHiveBearerAuth(request(agentKey), async () => Response.json({}));
+    await withHiveBearerAuth(request(agentKey), async () => Response.json({}));
+    expect(mocks.agent).toHaveBeenCalledTimes(1);
+    await new Promise(resolve => setTimeout(resolve, 60));
+    await withHiveBearerAuth(request(agentKey), async () => Response.json({}));
+    expect(mocks.agent).toHaveBeenCalledTimes(2);
+  });
   it("resolves an API key once per window and keeps its role and key id on every copy", async () => {
     mocks.apiKey.mockImplementation(async () => fixture());
     const seen: HiveContext[] = [];

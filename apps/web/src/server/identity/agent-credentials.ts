@@ -98,13 +98,18 @@ export async function cancelAgentConnection(requestId: string, pollingToken: str
   forgetCachedAuth();
 }
 
+// A provisional owner's credential stops working at provisional_expires_at; cached contexts must not outlive it.
+const notAfter = new WeakMap<HiveContext, number>();
+export function agentCredentialNotAfter(ctx: HiveContext) { return notAfter.get(ctx); }
+
 export async function authenticateAgentCredential(token: string): Promise<HiveContext | null> {
   if (!/^ha_[A-Za-z0-9_-]{43}$/.test(token)) return null;
-  const rows = await getSql()`SELECT c.agent_member_id, c.owner_member_id FROM agent_credentials c JOIN members a ON a.id = c.agent_member_id JOIN members o ON o.id = c.owner_member_id WHERE c.token_hash = ${hashToken(token)} AND c.revoked_at IS NULL AND a.disabled_at IS NULL AND o.disabled_at IS NULL AND (NOT o.provisional OR o.provisional_expires_at > now())`;
+  const rows = await getSql()`SELECT c.agent_member_id, c.owner_member_id, o.provisional, o.provisional_expires_at FROM agent_credentials c JOIN members a ON a.id = c.agent_member_id JOIN members o ON o.id = c.owner_member_id WHERE c.token_hash = ${hashToken(token)} AND c.revoked_at IS NULL AND a.disabled_at IS NULL AND o.disabled_at IS NULL AND (NOT o.provisional OR o.provisional_expires_at > now())`;
   if (!rows[0]) return null;
   const personal = await getSql()`SELECT id FROM teams WHERE personal_owner_member_id = ${rows[0].owner_member_id}`;
   const ctx = personal[0] ? await memberContext(rows[0].agent_member_id, personal[0].id) : null;
   if (!ctx) return null;
+  if (rows[0].provisional && rows[0].provisional_expires_at) notAfter.set(ctx, new Date(rows[0].provisional_expires_at).getTime());
   await getSql()`WITH touched AS (UPDATE agent_credentials SET last_used_at = now() WHERE agent_member_id = ${ctx.memberId} AND revoked_at IS NULL AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute') RETURNING agent_member_id) UPDATE members SET last_seen_at = now() WHERE id IN (SELECT agent_member_id FROM touched)`;
   return ctx;
 }

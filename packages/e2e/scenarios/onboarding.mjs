@@ -378,6 +378,8 @@ scenarios.push({
     const agents = await ctx.sql`SELECT agent_member_id FROM agent_credentials WHERE owner_member_id = ${owner.id}`;
     assert.equal(agents.length, 5, 'Rejected bootstrap must not create another agent');
     await ctx.sql`UPDATE members SET provisional_expires_at = now() - interval '1 second' WHERE id = ${owner.id}`;
+    // Production expires owners through this sweep (Vercel cron); it revokes the credentials and clears the credential cache.
+    expectStatus(await ctx.request('/api/cron/provisional-accounts', { headers: { authorization: 'Bearer hive-e2e-local-only-cron-secret' } }), 200, 'Provisional expiry sweep');
     expectStatus(await ctx.request('/api/agents/status', { token: boot.credential }), 401, 'Expired provisional owner credential');
     const claimUrl = mailFor(ctx, address)[0].body.text.match(/https?:\/\/\S+\/api\/auth\/claim\?\S+/)[0];
     const expired = await ctx.request(new URL(claimUrl).pathname + new URL(claimUrl).search);
