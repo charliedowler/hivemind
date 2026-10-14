@@ -9,9 +9,21 @@ import { HiveError } from "@/server/errors";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const handler = createMcpHandler(registerHiveTools, { serverInfo: { name: "hive", version: cliVersion.latest } });
+// Hive never publishes list changes, so it does not advertise them. Clients on the 2026-07-28 protocol otherwise
+// hold a subscriptions/listen stream open until maxDuration and reconnect every minute, re-running credential checks.
+const capabilities = { tools: { listChanged: false }, prompts: { listChanged: false }, resources: { listChanged: false } };
+
+const handler = createMcpHandler(registerHiveTools, { serverInfo: { name: "hive", version: cliVersion.latest }, capabilities });
+
+// Serving is stateless: there is no session to delete and no stream to resume, so GET and DELETE always end in 405.
+// Answer them before resolving credentials so idle clients cost no database reads. Requests without credentials still
+// get the OAuth challenge from withHiveBearerAuth.
+function methodNotAllowed() {
+  return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed." }, id: null }, { status: 405, headers: { Allow: "POST" } });
+}
 
 async function route(request: Request): Promise<Response> {
+  if (request.method !== "POST" && request.headers.has("authorization")) return methodNotAllowed();
   try {
     return await withHiveBearerAuth(request, async (req, ctx, claims) => withMcpAuth(handler, async () => ({
       token: req.headers.get("authorization")?.split(" ")[1] ?? "",
