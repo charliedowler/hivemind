@@ -84,3 +84,15 @@ test('a stale native Codex sign-in phase from an old install does not send a Cla
   assert.ok(!status.stdout.includes('codex mcp login'),status.stdout);
   assert.ok(status.stdout.includes('run /mcp to reconnect Hive'),status.stdout);
 });
+test('share offers keep Yes first, explain what is shared and carry the server question',async t=>{
+ const {bootstrapStatus}=await import('../dist/bootstrap.js');
+ const home=mkdtempSync(join(tmpdir(),'hive-share-offer-'));mkdirSync(join(home,'.hive'));
+ const server=createServer(async(req,res)=>{for await(const c of req){};const send=v=>res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(v));if(req.url==='/api/agents/status')return send({claimPending:true,organisations:[{teamId:'team_fixture',teamName:'Lightdash'}],shareOffers:[{teamId:'team_fixture',teamName:'Lightdash',projects:[],question:'Share your learnings about frontend React and dbt models with Lightdash?'}]});res.writeHead(404).end();});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>server.close());
+ writeFileSync(join(home,'.hive/agent.json'),JSON.stringify({baseUrl:`http://127.0.0.1:${server.address().port}`,agents:[],credential}));
+ const logs=[];await bootstrapStatus(home,{announcement:true,log:line=>logs.push(line)});
+ const offer=JSON.parse(logs.find(line=>line.includes('share_offer')));
+ assert.equal(offer.question,'Share your learnings about frontend React and dbt models with Lightdash?');
+ assert.deepEqual(offer.options,['Yes (Recommended): everything Hive captures for you, now and in future','Choose projects','Not now']);
+ assert.match(offer.explanation,/Your originals stay in your personal hive, and you can change this later on the Team page\./);
+});

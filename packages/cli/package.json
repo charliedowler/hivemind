@@ -1,6 +1,6 @@
 {
   "name": "gohive",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Bring your coding agent to the hive",
   "type": "module",
   "bin": { "gohive": "dist/bin.js" },

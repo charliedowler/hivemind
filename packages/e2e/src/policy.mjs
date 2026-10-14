@@ -29,7 +29,8 @@ export function readPolicy(agentText, skillText, version) {
   assert.ok(skillText.trim().length > 100, 'Installed skill must provide instructions');
   for (const tool of ['hive_share_projects', 'hive_push']) assert.ok(agentText.includes(tool) && skillText.includes(tool), `Setup and installed skill must both explain ${tool}`);
   assert.ok(agentText.includes('--join-url') || agentText.includes('hive_join'), 'Setup must explain the join entry point');
-  assert.match(agentText, /without.*(?:answer|selection)|capture nothing/is);
+  assert.match(agentText, /capture nothing/i);
+  assert.ok(agentText.includes(workAreasQuestion) && skillText.includes(workAreasQuestion), 'Setup and installed skill must both ask the work-areas question');
   assert.match(agentText, /(?:skip|reuse|already installed)/i);
   return {
     protocol: installerProtocol(version),
@@ -48,17 +49,21 @@ export async function loadPolicy(ctx, machine) {
   return policy;
 }
 
-export async function applyProjectAnswer(ctx, { token, projects, policy, humanInstruction }) {
+export const workAreasQuestion = 'What kinds of things do you work on that Hive can learn from? Type a few areas, or skip.';
+
+export async function applyProjectAnswer(ctx, { token, projects, workAreas, policy, humanInstruction }) {
   assert.ok(policy.tools.includes('hive_share_projects'));
   const current = await ctx.mcp(token, 'hive_share_projects', { revision: 0 });
   assert.equal(current.isError, false, current.text);
-  assert.ok(current.value && Number.isInteger(current.value.revision), 'Read must return the real selection revision');
-  if (current.value.include?.length) return { state: 'existing', value: current.value };
-  if (projects === undefined) return { state: 'question', question: 'Which of these should Hive learn from? example.com/fixture/widget. Anything else stays private.' };
-  assert.equal(typeof humanInstruction, 'string', 'Project selection requires the fixture human answer');
-  const saved = await ctx.mcp(token, 'hive_share_projects', { include: projects, exclude: [], revision: current.value.revision, humanInstruction });
+  assert.ok(current.value && Number.isInteger(current.value.revision), 'Read must return the real policy revision');
+  assert.ok(['everything', 'selected'].includes(current.value.mode), 'Read must return the capture mode');
+  if (projects === undefined && workAreas === undefined) return current.value.workAreas ? { state: 'existing', value: current.value } : { state: 'question', question: workAreasQuestion };
+  if (!projects?.length && !workAreas) return { state: 'default', value: current.value };
+  assert.equal(typeof humanInstruction, 'string', 'A saved answer requires the fixture human answer');
+  const saved = await ctx.mcp(token, 'hive_share_projects', { ...(projects?.length ? { mode: 'selected', include: projects, exclude: [] } : {}), ...(workAreas ? { workAreas } : {}), revision: current.value.revision, humanInstruction });
   assert.equal(saved.isError, false, saved.text);
-  assert.deepEqual(saved.value.include, projects);
+  if (projects?.length) assert.deepEqual(saved.value.include, projects);
+  if (workAreas) assert.equal(saved.value.workAreas, workAreas);
   return { state: 'saved', value: saved.value };
 }
 
@@ -92,14 +97,15 @@ export function realPrompt({ url, email, projects, share = 'Not now', joinUrl, t
     'Use the native MCP tools and installed Hive skill. Do not call bootstrap or write credentials/configuration yourself as a workaround.',
     'A human is present and has authorised setup. Use the preanswers below without asking again. A local test driver completes any claim email or OAuth page.',
   ];
-  if (existing) lines.push('This owner already exists. Reuse the account and its project selection; do not create a second person.');
+  if (existing) lines.push('This owner already exists. Reuse the account and its capture settings; do not create a second person.');
   if (email && !missingDetail) lines.push(`My email is ${email}.`);
-  if (projects !== undefined) lines.push(`Project answer: ${projects.length ? `Hive may learn from ${projects.join(', ')} only.` : 'No projects. Do not capture anything.'}`);
+  if (projects !== undefined) lines.push(`Project answer: ${projects.length ? `Hive may learn from ${projects.join(', ')} only.` : 'Leave this repo out of Hive. Do not capture anything from it.'}`);
+  lines.push('Work areas answer: skip.');
   if (joinUrl) {
     lines.push(`Organisation sharing answer: ${share}.`);
   }
   if (missingDetail) lines.push('One necessary setup detail has intentionally not been supplied. Ask one concise question for the missing detail, then stop. Do not invent an address or use a machine account.');
-  if (fix) lines.push('After setup, run npm test in this project as a standalone Bash command exactly "npm test", with no pipes, redirects, chaining or extra commands. Inspect the failure, create fixed.txt to initialise the fixture cache in a separate tool call, then run the exact standalone "npm test" again. This is necessary to exercise the installed native fail-to-pass hook matcher. Capture the observed cause, fix and test evidence only if this project is selected. Do not run any other project or touch files outside this scratch machine.');
+  if (fix) lines.push('After setup, run npm test in this project as a standalone Bash command exactly "npm test", with no pipes, redirects, chaining or extra commands. Inspect the failure, create fixed.txt to initialise the fixture cache in a separate tool call, then run the exact standalone "npm test" again. This is necessary to exercise the installed native fail-to-pass hook matcher. Capture the observed cause, fix and test evidence only if Hive may learn from this project. Do not run any other project or touch files outside this scratch machine.');
   lines.push('Finish with a short plain-English result or the single genuine blocker. Do not ask for confirmation of an already supplied answer.');
   return lines.join('\n');
 }

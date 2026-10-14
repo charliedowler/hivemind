@@ -69,7 +69,7 @@ export async function bootstrapStatus(home: string, { announcement = false, log 
   if (status.joinPending && status.claimPending) log('Join pending. It will finish when you claim your account.');
   for (const item of status.joinRequests || []) log(`Join requested. Waiting for an admin of ${item.teamName}.${item.joinUrl ? ` ${item.joinUrl}` : ''}`);
   if (status.joinError) log(status.joinError);
-  if (announcement) for (const offer of status.shareOffers || []) log(JSON.stringify({ status: 'share_offer', question: `Share your learnings with ${offer.teamName}?`, options: ['Yes (everything from your selected projects, now and in future)', 'Choose projects', 'Not now'], ...offer }));
+  if (announcement) for (const offer of status.shareOffers || []) log(JSON.stringify({ status: 'share_offer', question: `Share your learnings with ${offer.teamName}?`, explanation: `Yes shares the cells Hive captures from your repos with ${offer.teamName}, now and in future. Your originals stay in your personal hive, and you can change this later on the Team page.`, ...offer, options: ['Yes (Recommended): everything Hive captures for you, now and in future', 'Choose projects', 'Not now'] }));
   if (!status.claimPending) try {
     const script = await import(new URL('../assets/hive/scripts/mcp.mjs', import.meta.url).href);
     const result = await script.callTool('hive_invite_link', {}, { baseUrl: state.baseUrl, token: state.credential, signal: AbortSignal.timeout(5000) });

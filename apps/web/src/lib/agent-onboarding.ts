@@ -10,7 +10,7 @@ If install returns offer_executor, ask its exact question once with the harness 
 Executor uses human OAuth, with no bootstrap credential or claim email. Relay its connection link: "Click it once to connect; then run npx gohive status." If already_connected, reuse it.
 For quick_add with session tools: search for connections.list, integrations.list and mcp.getServer; describe and call them to check every remote MCP endpoint against the Hive URL. A healthy matching connection means "Hive is already connected in Executor"; a failed check means stop setup.
 Otherwise reuse a matching app, or search for the add-app/Quick Add tool (mcp.addServer); describe and call it with name Hive, slug hive, remote URL https://gohive.dev/api/mcp (HIVE_URL + /api/mcp when set), and OAuth. Keep an occupied hive slug intact. This registers a remote MCP connection; never deploy code or create an Executor app or account for the person.
-Search, describe and call OAuth probe, clients.list and (if needed) clients.registerDynamic, then oauth.start with owner user and an authorization_code client; relay the returned connection link. Credentials stay in secure links. After connection, follow Hive's server instructions for project selection and capture without hooks; stop the bootstrap steps below.
+Search, describe and call OAuth probe, clients.list and (if needed) clients.registerDynamic, then oauth.start with owner user and an authorization_code client; relay the returned connection link. Credentials stay in secure links. After connection, follow Hive's server instructions for capture without hooks; stop the bootstrap steps below.
 CLAUDECODE selects Claude Code; CODEX_* session markers (except CODEX_HOME) select Codex. Claude Code wins if both are present.
 Without markers, configure only detected clients. Use --client only when the person selects other clients.
 If the prompt includes a join link, add \`--join-url <joinUrl>\`.
@@ -32,17 +32,18 @@ If not installed, offer setup in one line and do nothing else.
 Never announce installation or print the join prompt outside an actual install.
 If latest resolves to a missing version, retry once with the version status printed, then give up quietly.
 If npm's min-release-age blocks gohive, ask the person before overriding it, and point them at the public source: https://github.com/charliedowler/hivemind
-Read \`hive_share_projects { revision: 0 }\`; if selected, skip the project question.
-Otherwise detect cwd, Git remotes and known worktrees only. Do not scan home directories or transcripts.
-Include "everything under github.com/<org>" choices when remotes share an organisation, using github.com/<org>/*.
-Ask once with the native multi-select picker: "Which projects should Hive learn from? Anything else stays private."
-Save include/exclude and humanInstruction at the read revision. Without an answer or existing selection, capture nothing.
-Joining never publishes. Read \`hive_agent_status\` after claim.
-For each completed join ask once with the native picker: "Share your learnings with <Team>?"
-Options: Yes (everything selected, now and in future), Choose projects, Not now.
+Hive captures by default: learnings from Git repositories with a remote that this agent works in go to the person's personal hive. Nothing reaches a team until they choose to share. Repos without a remote and home directories capture nothing.
+Tell the person once, in one line: "Hive learns privately from the repos you work in. Say 'not this repo' to exclude one, or name the repos to learn from only those."
+Read \`hive_share_projects { revision: 0 }\`; if workAreas is set, skip the next question.
+Ask once with the harness picker, Skip as an option and a typed answer as free text (AskUserQuestion's Other field in Claude Code): "What kinds of things do you work on that Hive can learn from? Type a few areas, or skip."
+Save a typed answer as workAreas with humanInstruction at the read revision. It tags captures and suggests what to share; it never limits capture.
+Choosing projects is optional. To exclude a repo, save exclude. For an allow-list, save mode selected with include, offering "everything under github.com/<org>" choices (github.com/<org>/*). Detect only cwd, Git remotes and known worktrees; never scan home directories or transcripts.
+Joining alone never publishes. Read \`hive_agent_status\` after claim.
+For each share offer, ask once with the native picker using the offer's question (e.g. "Share your learnings about frontend React, dbt models and infra with Lightdash?") and its explanation.
+Options in this order: Yes (Recommended): everything Hive captures for you, now and in future; Choose projects; Not now.
 Choose projects uses a multi-select list with cell counts, never pre-ticked.
-Use \`hive_share_with\` with mode all_selected, projects, or not_now and the humanInstruction.
-Originals stay personal; Yes covers future selected projects too.
+Use \`hive_share_with\` with mode all_selected for Yes, projects for the picked projects, or not_now, with the human's words as humanInstruction.
+Originals stay personal; the person can change this later on the Team page.
 During setup only, call hive_invite_link and give the team prompt once.
 Once setup is complete and the Hive tools are loaded, backfill before continuing: in the current repo (and any other project the person allowed) read the last few days of history with \`git log --since='4 days ago' --stat -p\` on the current branch plus recently merged commits, and capture each proven fix, decision, gotcha or reversed approach you find through hive_push, with the commit hash and paths as evidence and the usual context. Skip excluded repos, secrets, and anything already in Hive (search first). Then tell the person in one line how many cells you saved from the backfill.
 Save a proven fix, decision, pitfall or measured friction immediately through hive_push with repo and evidence.

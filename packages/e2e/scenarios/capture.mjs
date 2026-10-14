@@ -36,7 +36,7 @@ async function owner(ctx, selected = true) {
 }
 
 async function select(ctx, token, include, revision = 0, exclude = []) {
-  return (await call(ctx, token, 'hive_share_projects', { include, exclude, revision, humanInstruction: 'Capture these invented example.com projects privately.' })).value;
+  return (await call(ctx, token, 'hive_share_projects', { mode: 'selected', include, exclude, revision, humanInstruction: 'Capture these invented example.com projects privately.' })).value;
 }
 
 async function push(ctx, token, extra = {}) {
@@ -141,8 +141,34 @@ const scenarios = [
       assert.equal((await ctx.mcp(outsider.token, 'hive_read', { path })).isError, true);
     },
   },
+  {
+    name: 'capture-by-default-personal-only', fast: true,
+    async run(ctx) {
+      const actor = await owner(ctx, false);
+      const cell = await push(ctx, actor.token);
+      const rows = await ctx.sql`SELECT team_id, owner_member_id, repo FROM learnings WHERE id = ${cell.id}`;
+      assert.deepEqual(rows.map(row => [row.team_id, row.owner_member_id, row.repo]), [[actor.teamId, actor.memberId, repo]]);
+      assert.equal((await ctx.sql`SELECT * FROM learning_shares WHERE learning_id = ${cell.id}`).length, 0);
+    },
+  },
+  {
+    name: 'capture-by-default-refuses-excluded-and-home-directory', fast: true,
+    async run(ctx) {
+      const actor = await owner(ctx, false);
+      const excluded = await call(ctx, actor.token, 'hive_share_projects', { exclude: [otherRepo], revision: 0, humanInstruction: 'Leave the compiler repo out.' });
+      assert.equal(excluded.value.mode, 'everything');
+      await rejected(ctx, actor.token, { observation: synthetic.observation, repo: otherRepo }, /excluded/i);
+      await rejected(ctx, actor.token, { observation: synthetic.observation, repo, cwd: '/home/fixture', home: '/home/fixture' }, /home directory/i);
+      const widened = await ctx.mcp(actor.token, 'hive_share_projects', { mode: 'selected', include: [repo], revision: 1, humanInstruction: 'Only the cache repo.' });
+      assert.equal(widened.isError, false, widened.text);
+      const back = await ctx.mcp(actor.token, 'hive_share_projects', { mode: 'everything', revision: 2, humanInstruction: 'Every repo again.' });
+      assert.equal(back.isError, true);
+      assert.match(back.text, /human sign-in/i);
+      assert.equal((await ctx.sql`SELECT id FROM learnings WHERE owner_member_id = ${actor.memberId}`).length, 0);
+    },
+  },
   ...[
-    ['no-selection', false, { context: { repo } }],
+    ['selected-without-projects', false, { context: { repo } }],
     ['unselected-project', true, { context: { repo: 'example.com/fixture/private' } }],
     ['missing-project', true, { context: { agent: 'codex' } }],
     ['chat-without-project', true, { context: { agent: 'codex', sessionType: 'chat' } }],
@@ -152,6 +178,7 @@ const scenarios = [
     name: `capture-refuses-${name}`, fast: true,
     async run(ctx) {
       const actor = await owner(ctx, selected);
+      if (name === 'selected-without-projects') await select(ctx, actor.token, []);
       await rejected(ctx, actor.token, { observation: synthetic.observation, ...extra });
       assert.equal((await ctx.sql`SELECT id FROM learnings WHERE owner_member_id = ${actor.memberId}`).length, 0);
     },
