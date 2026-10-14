@@ -16,7 +16,7 @@ const fixture = (version = '0.2.0', agents = ['claude']) => {
   return home;
 };
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
-const versions = { latest: '0.2.5', minimum: '0.2.0' };
+const versions = { latest: '0.2.6', minimum: '0.2.0' };
 const response = async () => Response.json(versions);
 const env = { HIVE_NO_AUTO_UPDATE: '0' };
 
@@ -66,10 +66,10 @@ test('opt-out environment and file prevent checks and background installs', asyn
 });
 
 test('invalid metadata, current installs and uninstalled homes never launch updates', async () => {
-  for (const metadata of [{ latest: 'latest', minimum: '0.2.0' }, { latest: '0.2.5', minimum: '0.3.0' }, { latest: '0.2.5', minimum: 'x' }]) {
+  for (const metadata of [{ latest: 'latest', minimum: '0.2.0' }, { latest: '0.2.6', minimum: '0.3.0' }, { latest: '0.2.6', minimum: 'x' }]) {
     assert.equal(await checkForUpdate({ home: fixture(), env, fetcher: async () => Response.json(metadata), launch: () => assert.fail() }), '');
   }
-  await checkForUpdate({ home: fixture('0.2.5'), env, fetcher: response, launch: () => assert.fail() });
+  await checkForUpdate({ home: fixture('0.2.6'), env, fetcher: response, launch: () => assert.fail() });
   await checkForUpdate({ home: mkdtempSync(join(tmpdir(), 'hive-empty-')), env, fetcher: () => assert.fail() });
 });
 
@@ -80,7 +80,7 @@ test('minimum-version notices report only completed updates and exact failure te
     assert.match(prompt, /Hive is updating in the background/);
     assert.equal(takeNotice(home), '');
     await runUpdate({ home, ...versions, installed: '0.1.9', env, run: async () => { if (success) updateInstall({ home }); return success; } });
-    assert.equal(takeNotice(home), success ? 'Hive updated to 0.2.5' : 'Hive needs an update: run `npx gohive@latest install`');
+    assert.equal(takeNotice(home), success ? 'Hive updated to 0.2.6' : 'Hive needs an update: run `npx gohive@latest install`');
     assert.equal(takeNotice(home), '');
   }
   const home = fixture('0.2.0');
@@ -100,7 +100,7 @@ for (const version of ['0.1.9', '0.2.0']) test(`--update refreshes ${version} wi
   for (let i = 0; i < 2; i++) {
     assert.equal(execFileSync(process.execPath, args, { env: commandEnv, encoding: 'utf8' }), '');
     assert.deepEqual(json(join(home, '.hive/install.json')).agents, ['codex']);
-    assert.equal(json(join(home, '.hive/install.json')).installedVersion, '0.2.5');
+    assert.equal(json(join(home, '.hive/install.json')).installedVersion, '0.2.6');
     assert.equal(readFileSync(join(home, '.codex/config.toml'), 'utf8'), config);
     assert.equal(readFileSync(join(home, '.hive/projects.json'), 'utf8'), selection);
     assert.equal(existsSync(join(home, '.claude/settings.json')), false);
@@ -145,8 +145,8 @@ test('the detached updater runs the pinned npx command with an isolated HOME and
     startUpdate({ home, ...versions, installed: '0.1.9' });
   } finally { process.env.PATH = before; }
   for (let i = 0; i < 100 && json(join(home, '.hive/update.json')).status !== 'updated'; i++) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(json(join(home, '.hive/install.json')).installedVersion, '0.2.5');
-  assert.deepEqual(json(join(home, 'update-command.json')), { args: ['--yes', 'gohive@0.2.5', 'install', '--update'], home, hiveHome: home });
+  assert.equal(json(join(home, '.hive/install.json')).installedVersion, '0.2.6');
+  assert.deepEqual(json(join(home, 'update-command.json')), { args: ['--yes', 'gohive@0.2.6', 'install', '--update'], home, hiveHome: home });
 });
 
 test('unversioned bootstrap installs stay above minimum while OAuth-era assets request the minimum notice', async () => {

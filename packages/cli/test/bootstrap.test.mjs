@@ -64,7 +64,7 @@ test('a human login removes the agent bearer and a pending uninstall cancels its
 test('missing tools never trigger installation during routine work and all onboarding questions use pickers',()=>{
  const skill=readFileSync(new URL('../../../skills/hive/SKILL.md',import.meta.url),'utf8');
  for(const text of ["Ask with the harness's question/picker tool when one exists; otherwise a numbered list.",'AskUserQuestion','multiSelect','request_user_input','github.com/<org>/*','npx --yes gohive@latest status','NEVER run the installer unless','Hive is set up but not loaded in this session; restart Codex (or run /mcp in Claude Code) to use it','retry once with the version status printed','Never announce installation outside an actual install'])assert.ok(skill.includes(text),text);
- for(const client of ['claude','codex','executor']){const instructions=markInstructions('',client);assert.ok(instructions.includes('NEVER run the installer unless'));assert.ok(instructions.includes("Ask with the harness's question/picker tool when one exists; otherwise a numbered list."));assert.ok(instructions.includes('npx --yes gohive@latest status'));}
+ for(const client of ['claude','codex','executor']){const instructions=markInstructions('',client);assert.ok(instructions.includes('NEVER run the installer unless'));assert.ok(instructions.includes("Ask with the harness's question/picker tool when one exists; otherwise a numbered list."));assert.ok(client==='executor'?!instructions.includes('gohive@latest status'):instructions.includes('npx --yes gohive@latest status'));}
  assert.ok(!skill.includes('npx --no-install'));
 });
 
