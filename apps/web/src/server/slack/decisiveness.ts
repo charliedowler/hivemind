@@ -84,7 +84,7 @@ export async function decideDecisiveness(text: string, ctx: SlackToolContext) {
     return decisivenessDecision(allowed, null, ctx.actionType);
   try {
     const result = await new TypeSafeClient({
-      timeout: 500,
+      timeout: 2500, // Every approval and undo now waits on this verdict; half a second was tuned for an optional pre-check.
       retry: { maxRetries: 0 },
       logLevel: "off",
     }).systemOne({
