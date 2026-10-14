@@ -72,7 +72,9 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
     emailVerification: { sendOnSignUp: true, autoSignInAfterVerification: false },
     socialProviders,
     account: { accountLinking: { enabled: true, trustedProviders: [], allowDifferentEmails: false, requireLocalEmailVerified: false, updateUserInfoOnLink: true } },
-    rateLimit: { enabled: true, storage: "database", window: 60, max: 60 },
+    // Public discovery documents and the signing keys are static and served to every MCP client and crawler; a
+    // database-backed counter cost two queries per hit. Sign-in and token endpoints keep the database limit.
+    rateLimit: { enabled: true, storage: "database", window: 60, max: 60, customRules: { "/.well-known/**": false, "/jwks": false } },
     disabledPaths: ["/token", "/sign-in/email-otp", "/update-user", "/delete-user", "/change-email"],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
@@ -147,6 +149,9 @@ export function createHiveAuth(baseUrl: string, delivery = deliverCode, resource
         loginPage: "/app/login",
         consentPage: "/app/consent",
         resource: `${resourceUrl}/api/mcp`,
+        // The resource row is seeded from this config and never edited at runtime, so token and registration
+        // requests read it from memory instead of auth_oauth_resource.
+        cachedResources: new Set([`${resourceUrl}/api/mcp`]),
         scopes: ["openid", "profile", "email", "offline_access", "hive", personScope],
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
