@@ -46,6 +46,14 @@ export function messagesResponse(tool, toolInput) {
   };
 }
 
+export function declinedResponse() {
+  return {
+    id: `msg_e2e_${Date.now()}`, type: 'message', role: 'assistant', model: 'e2e-declined',
+    content: [{ type: 'text', text: '' }],
+    stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 },
+  };
+}
+
 export function isDecisiveness(body) {
   return Object.keys(body.questions ?? {}).sort().join(',') === 'allowed,instruction,specific';
 }
