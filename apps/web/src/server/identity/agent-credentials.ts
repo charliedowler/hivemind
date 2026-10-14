@@ -44,7 +44,8 @@ export async function bootstrapAgent(input: unknown, ip: string | null) {
     if (owner?.provisional_expires_at && owner.provisional_expires_at <= new Date()) throw new HiveError("This personal Hive expired. Sign in with your email to start again.", 403);
     if (!owner) {
       const id = newId("mem");
-      owner = (await tx`INSERT INTO members (id, name, email, provisional, provisional_expires_at) VALUES (${id}, 'Your Hive', ${data.email}, true, now() + interval '7 days') RETURNING *`)[0];
+      // The person has no profile yet; the address's local part reads better than a placeholder in join requests and member lists.
+      owner = (await tx`INSERT INTO members (id, name, email, provisional, provisional_expires_at) VALUES (${id}, ${data.email.split("@")[0].slice(0, 80) || "New member"}, ${data.email}, true, now() + interval '7 days') RETURNING *`)[0];
     }
     const ownerId = String(owner.id);
     await tx`SELECT hive_ensure_personal_hive(${ownerId})`;

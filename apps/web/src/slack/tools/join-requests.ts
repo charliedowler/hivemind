@@ -19,8 +19,12 @@ export function parseJoinDecision(text: string) {
   const clean = text
     .replace(/^(?:<@[A-Z0-9]+>\s*)+/, "")
     .replace(/\s+\*Sent using\* Slack MCP client\s*$/, "")
+    // Slack wraps addresses and links as <mailto:a@b|a@b> or <https://x|label>; keep the address or label.
+    .replace(/<mailto:([^|>]+)(?:\|[^>]*)?>/gi, "$1")
+    .replace(/<https?:\/\/[^|>]+\|([^>]+)>/gi, "$1")
     .trim();
-  const match = /^(?:please\s+)?(approve|decline)(?:\s+(.+?))?[.!?]*$/i.exec(
+  // Admins reply "approved" and "declined" as often as the imperative; both are a clear decision.
+  const match = /^(?:please\s+)?(approve|decline)d?(?:\s+(.+?))?[.!?]*$/i.exec(
     clean,
   );
   return match

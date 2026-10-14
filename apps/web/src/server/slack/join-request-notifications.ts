@@ -46,7 +46,7 @@ export async function notifyJoinRequestAdmins(requestId: string) {
       const clientId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
       const sent = await slackCall(inst.token, "chat.postMessage", {
         channel: String(userId),
-        text: `${slackEscape(String(request.name))} (${slackEscape(String(request.email))}) asked to join ${slackEscape(String(request.team_name))}. Reply approve or decline.`,
+        text: `${request.name && request.name !== "Your Hive" ? `${slackEscape(String(request.name))} (${slackEscape(String(request.email))})` : slackEscape(String(request.email))} asked to join ${slackEscape(String(request.team_name))}. Reply approve or decline.`,
         client_msg_id: clientId,
         parse: "none",
         unfurl_links: false,
