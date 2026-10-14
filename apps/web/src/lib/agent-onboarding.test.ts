@@ -31,6 +31,7 @@ describe("agent onboarding instructions", () => {
     expect(agentInstructions).toContain("backfill before continuing");
     expect(agentInstructions).toContain("git log --since='4 days ago'");
     expect(agentInstructions).toContain("how many cells you saved from the backfill");
+    expect(agentInstructions).toContain("any other repo Hive may learn from: every repo with a Git remote minus exclusions, or only the selected list");
     expect(agentInstructions).not.toContain("--identity agent");
     expect(agentInstructions).not.toContain("AgentMail");
     expect(agentInstructions).not.toContain("--no-install");

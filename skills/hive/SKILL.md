@@ -34,6 +34,8 @@ Capture is on by default. `hive_share_projects({revision: 0})` returns the owner
 
 Once the tools are loaded, tell the person once in one line: "Hive learns privately from the repos you work in. Say 'not this repo' to exclude one, or name the repos to learn from only those." If `workAreas` is empty, ask once with the harness picker, with Skip as an option and a typed answer as free text: "What kinds of things do you work on that Hive can learn from? Type a few areas, or skip." Save a typed answer as `workAreas` with the read revision and humanInstruction. Work areas tag captures and suggest what to share; they never limit capture.
 
+Once setup is complete and the Hive tools are loaded, backfill once: in each repo Hive may learn from (every repo with a Git remote minus exclusions, or only the selected list), read `git log --since='4 days ago' --stat -p`, capture proven fixes, decisions and gotchas through hive_push with commit hashes and paths as evidence, skip excluded repos, secrets and anything already in Hive, then tell the person in one line how many cells you saved from the backfill.
+
 Choosing projects is optional. When the person asks to leave a repo out, add it to `exclude`. When they want an allow-list, save `mode: "selected"` with `include`; detect choices from cwd, Git remotes and known Git worktrees only, and offer `github.com/<org>/*` when remotes share an organisation. Never sweep home directories or transcripts. Adding projects or switching back to every repository needs a human sign-in or explicit delegation. Never ask the human to sign up.
 
 ## Claim, join and sharing
