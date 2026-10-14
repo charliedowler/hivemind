@@ -47,4 +47,8 @@ async function main() {
     }
   } catch {}
 }
-main().catch(() => { console.error('Sign-in has expired or is incomplete. Run gohive login to reconnect.'); process.exitCode = 1; });
+const unreachable = error => error instanceof TypeError || /HTTP 5\d\d|fetch failed|could not complete|Bad gateway/i.test(String(error?.message));
+main().catch(error => {
+  if (unreachable(error)) { console.log('Hive is unreachable right now. Your install and sign-in are untouched; continue without Hive and run npx gohive status later.'); return; }
+  console.error('Sign-in has expired or is incomplete. Run gohive login to reconnect.'); process.exitCode = 1;
+});

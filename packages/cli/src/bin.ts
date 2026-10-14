@@ -116,4 +116,11 @@ async function reportDoctor(results: DoctorResult[], home: string) {
   } catch {}
 }
 
-main().catch(error => { console.error(error instanceof SyntaxError ? 'A configuration file contains invalid JSON. Fix it before retrying' : error.message); process.exitCode = 1; });
+const unreachable = (error: unknown) => error instanceof TypeError && /fetch failed|ECONN|ENOTFOUND|EAI_AGAIN|socket|network/i.test(String((error as Error).message) + String((error as { cause?: { code?: string } }).cause?.code ?? ''))
+  || (error instanceof Error && /could not complete|Bad gateway|HTTP 5\d\d/i.test(error.message));
+main().catch(error => {
+  console.error(error instanceof SyntaxError ? 'A configuration file contains invalid JSON. Fix it before retrying'
+    : unreachable(error) ? 'Hive is unreachable right now. Your install and sign-in are untouched; continue without Hive and run npx gohive status later.'
+    : error.message);
+  process.exitCode = 1;
+});
