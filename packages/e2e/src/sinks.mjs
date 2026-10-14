@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { isSlackRouting, routeSlack, messagesResponse, isDecisiveness, judgeDecisiveness } from '../fixtures/slack-routing.mjs';
+import { isSlackRouting, routeSlack, messagesResponse, declinedResponse, isDecisiveness, judgeDecisiveness } from '../fixtures/slack-routing.mjs';
 
 export async function startSinks() {
   const consentManifest = JSON.parse(await readFile(new URL('../fixtures/consent-manifest.json', import.meta.url), 'utf8'));
@@ -29,14 +29,15 @@ export async function startSinks() {
         if (method === 'users.info') data.user = { id: body.user, real_name: 'Robin Example', profile: { email: String(body.user).startsWith('U_E2E_') ? Buffer.from(body.user.slice(6), 'base64url').toString('utf8') : 'robin@example.com' } };
       } else if (path === '/v1/messages') {
         if (!isSlackRouting(body)) {
-          events.push({ kind: 'model', method: 'unhandledMessages', tools: (body.tools ?? []).map(tool => tool.name) });
-          response.writeHead(503, { 'content-type': 'application/json' });
-          response.end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'The e2e sink only answers Slack routing.' } }));
-          return;
+          // Every other Messages call gets a well-formed reply with no tool use, so product code
+          // takes its "model declined" path instead of a transport error.
+          events.push({ kind: 'model', method: 'declinedMessages', tools: (body.tools ?? []).map(tool => tool.name), system: String(body.system ?? '').slice(0, 80) });
+          data = declinedResponse();
+        } else {
+          const { input, tool, toolInput } = routeSlack(body);
+          events.push({ kind: 'model', method: 'slackRoute', input, tool, toolInput });
+          data = messagesResponse(tool, toolInput);
         }
-        const { input, tool, toolInput } = routeSlack(body);
-        events.push({ kind: 'model', method: 'slackRoute', input, tool, toolInput });
-        data = messagesResponse(tool, toolInput);
       } else if (path === '/v1/systemone' && isDecisiveness(body)) {
         const answers = judgeDecisiveness(body.state);
         events.push({ kind: 'model', method: 'decideDecisiveness', input: body.state, answers });

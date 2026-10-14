@@ -45,7 +45,26 @@ async function hookSetup(ctx, machine, selected = true) {
   assert.equal(version.status, 200, 'Version metadata must be compiled before timed hooks');
   const telemetry = await ctx.request('/api/analytics/hook', { method: 'GET' });
   assert.equal(telemetry.status, 405, 'Hook telemetry must be compiled before timed hooks');
+  await serverSettled(ctx, owner.credential);
   return { owner, selection, input: { session_id: randomUUID(), transcript_path: path, agent_transcript_path: path } };
+}
+
+// Hooks give the server one second. The dev server shares a three-connection database pool with
+// background work from earlier scenarios (embeddings, judgments, knowledge), which can hold a hook's
+// request for seconds on a slow CI runner. Wait until the hook route answers promptly several times.
+async function serverSettled(ctx, token) {
+  let fast = 0;
+  const timings = [];
+  for (let attempt = 0; attempt < 120 && fast < 3; attempt++) {
+    const started = Date.now();
+    const response = await ctx.request('/api/app/capture-rules/effective', { token });
+    const elapsed = Date.now() - started;
+    timings.push(elapsed);
+    fast = response.status === 200 && elapsed < 250 ? fast + 1 : 0;
+    if (fast < 3) await new Promise(resolve => setTimeout(resolve, fast ? 50 : 250));
+  }
+  await ctx.artifact('server-settled.json', { timings });
+  assert.equal(fast, 3, `The server must answer the hook route promptly before timed hooks: ${timings.join(', ')}ms`);
 }
 
 async function cells(ctx, owner) {
