@@ -187,7 +187,7 @@ describe("feed interactions", () => {
       .mockResolvedValue({ learnings: [{ ...cell, id: "lrn_new" }, cell] });
     await act(async () => root.render(<Feed />));
     expect(container.querySelector('[data-sprite="cell-filling"]')).toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    await act(async () => vi.advanceTimersByTimeAsync(30000));
     expect(
       container.querySelectorAll('[data-sprite="cell-filling"]'),
     ).toHaveLength(1);

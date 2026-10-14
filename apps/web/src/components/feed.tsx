@@ -159,13 +159,13 @@ function useHiveFeed() {
           }));
       } finally {
         // Each poll is a database query plus analytics rows. A background tab must not keep the database awake all day.
-        if (!stopped && !document.hidden) timer = setTimeout(poll, pollInterval);
+        if (!stopped && document.visibilityState !== "hidden") timer = setTimeout(poll, pollInterval);
       }
     }
     function onVisibility() {
       if (stopped) return;
       clearTimeout(timer);
-      if (!document.hidden) void poll();
+      if (document.visibilityState !== "hidden") void poll();
     }
     document.addEventListener("visibilitychange", onVisibility);
     void poll();
