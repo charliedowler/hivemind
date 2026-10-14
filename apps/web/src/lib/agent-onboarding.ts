@@ -44,7 +44,7 @@ Choose projects uses a multi-select list with cell counts, never pre-ticked.
 Use \`hive_share_with\` with mode all_selected, projects, or not_now and the humanInstruction.
 Originals stay personal; Yes covers future selected projects too.
 During setup only, call hive_invite_link and give the team prompt once.
-Once setup is complete and the Hive tools are loaded, backfill before continuing: in the current repo (and any other project the person allowed) read the last few days of history with \`git log --since='4 days ago' --stat -p\` on the current branch plus recently merged commits, and capture each proven fix, decision, gotcha or reversed approach you find through hive_push, with the commit hash and paths as evidence and the usual context. Skip excluded repos, secrets, and anything already in Hive (search first). Then tell the person in one line how many cells you saved from the backfill.
+Once setup is complete and the Hive tools are loaded, backfill before continuing: in the current repo (and any other project the person allowed) read the last few days of history with \`git log --since='4 days ago' --stat -p\` on the current branch plus recently merged commits, and capture each proven fix, decision, pitfall or reversed approach you find through hive_push, with the commit hash and paths as evidence and the usual context. Skip excluded repos, secrets, and anything already in Hive (search first). Then tell the person in one line how many cells you saved from the backfill.
 Save a proven fix, decision, pitfall or measured friction immediately through hive_push with repo and evidence.
 Keep the Jev gate; avoid duplicates and sensitive data. Stop is a safety net.
 Never ask the human to sign up, create an organisation, or add authority steps.
