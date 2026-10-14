@@ -109,13 +109,16 @@ export async function authenticateAgentCredential(token: string): Promise<HiveCo
 
 export async function agentStatus(ctx: HiveContext) {
   const rows = await getSql()`SELECT c.owner_member_id, c.machine, c.join_phrase, c.join_error, o.provisional, o.email_verified, o.provisional_expires_at FROM agent_credentials c JOIN members o ON o.id = c.owner_member_id WHERE c.agent_member_id = ${ctx.memberId} AND c.revoked_at IS NULL`;
-  if (!rows[0]) throw new HiveError("This agent credential is no longer active.", 403);
-  const row = rows[0];
+  // A person signed in with OAuth (Claude Code /mcp, gohive login) has no agent credential; report their own state instead of a revoked-credential error.
+  const people = rows[0] ? [] : await getSql()`SELECT id AS owner_member_id, NULL::text AS machine, NULL::text AS join_phrase, NULL::text AS join_error, provisional, email_verified, provisional_expires_at FROM members WHERE id = ${ctx.memberId} AND actor_type = 'human' AND disabled_at IS NULL`;
+  const row = rows[0] ?? people[0];
+  if (!row) throw new HiveError("This agent credential is no longer active.", 403);
+  const identity = rows[0] ? "agent" : "human";
   const hives = await listHiveContexts(ctx.memberId);
   const organisations = hives.filter(hive => !hive.personal);
   const requests = await getSql()`SELECT r.status, r.team_id, t.name AS team_name, p.phrase FROM hive_join_requests r JOIN teams t ON t.id = r.team_id LEFT JOIN hive_join_phrases p ON p.team_id = r.team_id AND p.generation = r.phrase_generation AND p.retired_at IS NULL WHERE r.member_id = ${row.owner_member_id} AND r.status = 'pending' AND r.expires_at > now()`;
   const offers = await Promise.all(organisations.map(hive => shareOnJoinOffer(ctx, hive.teamId)));
-  return { agentId: ctx.memberId, claimPending: Boolean(row.provisional || !row.email_verified), expiresAt: row.provisional ? row.provisional_expires_at?.toISOString() : null, joinPending: row.join_phrase, joinError: row.join_error, joinRequests: requests.map(request => ({ teamId: String(request.team_id), teamName: String(request.team_name), status: "requested", joinUrl: request.phrase ? `${process.env.PUBLIC_URL || "https://gohive.dev"}/j/${request.phrase}` : null })), organisations: organisations.map(hive => ({ teamId: hive.teamId, teamName: hive.teamName })), shareOffers: offers.filter(Boolean) };
+  return { agentId: ctx.memberId, identity, claimPending: Boolean(row.provisional || !row.email_verified), expiresAt: row.provisional ? row.provisional_expires_at?.toISOString() : null, joinPending: row.join_phrase, joinError: row.join_error, joinRequests: requests.map(request => ({ teamId: String(request.team_id), teamName: String(request.team_name), status: "requested", joinUrl: request.phrase ? `${process.env.PUBLIC_URL || "https://gohive.dev"}/j/${request.phrase}` : null })), organisations: organisations.map(hive => ({ teamId: hive.teamId, teamName: hive.teamName })), shareOffers: offers.filter(Boolean) };
 }
 
 export async function revokeAgentCredential(ctx: HiveContext, agentId = ctx.memberId) {

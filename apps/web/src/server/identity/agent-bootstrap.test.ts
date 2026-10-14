@@ -146,6 +146,15 @@ describe.skipIf(!process.env.DATABASE_URL)("Hive-issued agent bootstrap", () => 
     expect(await sql`SELECT id FROM learnings WHERE id=${cellId}`).toHaveLength(0);
     expect((await sql`SELECT disabled_at FROM members WHERE id=${f.owner}`)[0].disabled_at).not.toBeNull();
   });
+  it("reports a person's own state when they are signed in with OAuth instead of an agent credential", async () => {
+    const org=await organisation(),f=await fresh(org.domain);
+    await claimWelcome(new URL(await issueWelcomeLink(f.owner)).searchParams.get("token")!);
+    const person=await signInMemberContext(f.owner);expect(person).not.toBeNull();
+    const state=await agentStatus(person!);
+    expect(state.identity).toBe("human");expect(state.agentId).toBe(f.owner);expect(state.claimPending).toBe(false);expect(state.joinPending).toBeNull();
+    expect(state.organisations.map(o=>o.teamId)).toContain(org.teamId);
+    expect((await agentStatus(f.ctx)).identity).toBe("agent");
+  });
   it("shows selected projects with counts, publishes only explicit choices, records instruction and retains originals", async () => {
     const org=await organisation(),f=await fresh(org.domain);
     await shareProjects(f.ctx,{include:["github.com/example/widget","github.com/example/private"],revision:0,humanInstruction:"Keep both privately."});

@@ -30,11 +30,13 @@ async function main() {
     if (state.attempt) updateSignIn({ joinedPhrase: phrase, teamName: joined.teamName });
     console.log(joined.teamName ? `You're in ${joined.teamName}.` : 'Your hive membership is ready.');
   }
-  console.log(state.phase === 'native-waiting' ? 'Signed in. Finish the native MCP connection in the open tab, then run gohive status.' : state.phase === 'native-incomplete' ? 'Signed in. Run codex mcp login hive to finish the native connection.' : 'Installed. Signed in. Hive is ready.');
   let agents = state.agents;
   try { agents = JSON.parse(readFileSync(join(homeDirectory(), '.hive/install.json'), 'utf8')).agents; } catch {}
+  // A native Codex sign-in only matters while it is fresh, Codex is an installed client, and this is not a Claude Code session. A stale phase from an old install must not send people to Codex.
+  const codexPending = ['native-waiting', 'native-incomplete'].includes(state.phase) && Boolean(agents?.includes('codex')) && !process.env.CLAUDECODE && Date.now() - (state.started || 0) < 600000;
+  console.log(!codexPending ? 'Installed. Signed in. Hive is ready.' : state.phase === 'native-waiting' ? 'Signed in. Finish the native MCP connection in the open tab, then run gohive status.' : 'Signed in. Run codex mcp login hive to finish the native connection.');
   if (state.identity === 'human' && agents?.includes('claude')) console.log('If Hive tools are not loaded in Claude Code, run /mcp to reconnect Hive.');
-  if (state.phase === 'native-waiting' && state.url) console.log(`Open ${state.url}`);
+  if (codexPending && state.phase === 'native-waiting' && state.url) console.log(`Open ${state.url}`);
   try {
     const result = payload(await callTool('hive_invite_link', {}, { token, signal: AbortSignal.timeout(2500) }));
     const links = result.invitations ?? result.links ?? (result.joinUrl ? [result] : []);

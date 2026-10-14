@@ -67,3 +67,20 @@ test('missing tools never trigger installation during routine work and all onboa
  for(const client of ['claude','codex','executor']){const instructions=markInstructions('',client);assert.ok(instructions.includes('NEVER run the installer unless'));assert.ok(instructions.includes("Ask with the harness's question/picker tool when one exists; otherwise a numbered list."));assert.ok(instructions.includes('npx --yes gohive@latest status'));}
  assert.ok(!skill.includes('npx --no-install'));
 });
+
+test('a stale native Codex sign-in phase from an old install does not send a Claude Code person to Codex',async t=>{
+  const home=mkdtempSync(join(tmpdir(),'hive-stale-native-'));
+  const server=createServer((req,res)=>{res.setHeader('content-type','application/json');if(req.url==='/api/cli/version'){res.end(JSON.stringify({latest:'0.0.0',minimum:'0.0.0'}));return;}res.end(JSON.stringify({jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:'{}'}]}}));});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>server.close());
+  const baseUrl=`http://127.0.0.1:${server.address().port}`;
+  mkdirSync(join(home,'.hive'),{recursive:true});
+  writeFileSync(join(home,'.hive/install.json'),JSON.stringify({version:1,agents:['claude','codex'],files:{},registered:[],backupDirectories:[],ownedHooks:[]}));
+  writeFileSync(join(home,'.hive/oauth.json'),JSON.stringify({baseUrl,access_token:'fixture-access',expires_at:Date.now()+3600000}));
+  writeFileSync(join(home,'.hive/sign-in.json'),JSON.stringify({identity:'human',phase:'native-incomplete',started:Date.now()-86400000,agents:['claude','codex']}));
+  writeFileSync(join(home,'.hive/update.json'),JSON.stringify({checkedAt:Date.now()}));
+  const env={...testEnv,HIVE_URL:baseUrl,CLAUDECODE:'1',CODEX_THREAD_ID:''};
+  const status=await exec(process.execPath,[bin,'status','--home',home],{env});
+  assert.ok(status.stdout.includes('Installed. Signed in. Hive is ready.'),status.stdout);
+  assert.ok(!status.stdout.includes('codex mcp login'),status.stdout);
+  assert.ok(status.stdout.includes('run /mcp to reconnect Hive'),status.stdout);
+});
