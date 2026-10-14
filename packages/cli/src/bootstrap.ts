@@ -47,12 +47,18 @@ export async function bootstrap({ home, agents, email, phrase, executor = false,
   if (state.credential) configureAgentBearer(home, agents, state.credential, `${base}/api/mcp`, log);
   return state;
 }
+export const reloadStep = 'run /mcp in Claude Code (or restart Codex)';
+export const stopUntilLoaded = 'Stop here. Ask no other question until the Hive tools are loaded in this session; then read hive_agent_status and ask each remaining setup question once, only when its answer can be saved with the next tool call.';
+export function nextSteps(claimPending: boolean) {
+  return { status: 'next_steps', say: claimPending ? `Two steps left: click the link in your email, then ${reloadStep}. I'll finish setting up Hive after that.` : `One step left: ${reloadStep}. I'll finish setting up Hive after that.`, then: stopUntilLoaded };
+}
+const connectStep = { status: 'next_steps', say: 'Click the link in your email to connect this machine, then tell me when it is done.', then: 'Stop here. After they confirm, run npx --yes gohive@latest status. Ask no other question until the Hive tools are loaded in this session.' };
 export async function bootstrapStatus(home: string, { announcement = false, log = console.log }: { announcement?: boolean; log?: (line: string) => void } = {}) {
   const state = readAgentState(home);
   if (!state) return false;
   if (!state.credential && state.requestId && state.pollingToken) {
     const result = await request(state.baseUrl, '/api/agents/connect', { requestId: state.requestId, pollingToken: state.pollingToken });
-    if (result.status === 'pending') { log('Installed. Click the link in your email to connect this machine.'); return true; }
+    if (result.status === 'pending') { log('Installed. Click the link in your email to connect this machine.'); if (announcement) log(JSON.stringify(connectStep)); return true; }
     state.credential = result.credential; state.agentId = result.agentId; state.claimPending = false;
     if (!state.credential || !/^ha_[A-Za-z0-9_-]{43}$/.test(state.credential)) throw new Error('Hive did not return an agent credential');
     delete state.pollingToken; delete state.requestId;
@@ -69,7 +75,7 @@ export async function bootstrapStatus(home: string, { announcement = false, log 
   if (status.joinPending && status.claimPending) log('Join pending. It will finish when you claim your account.');
   for (const item of status.joinRequests || []) log(`Join requested. Waiting for an admin of ${item.teamName}.${item.joinUrl ? ` ${item.joinUrl}` : ''}`);
   if (status.joinError) log(status.joinError);
-  if (announcement) for (const offer of status.shareOffers || []) log(JSON.stringify({ status: 'share_offer', question: `Share your learnings with ${offer.teamName}?`, explanation: `Yes shares the cells Hive captures from your repos with ${offer.teamName}, now and in future. Your originals stay in your personal hive, and you can change this later on the Team page.`, ...offer, options: ['Yes (Recommended): everything Hive captures for you, now and in future', 'Choose projects', 'Not now'] }));
+  if (announcement) log(JSON.stringify(nextSteps(Boolean(status.claimPending))));
   if (!status.claimPending) try {
     const script = await import(new URL('../assets/hive/scripts/mcp.mjs', import.meta.url).href);
     const result = await script.callTool('hive_invite_link', {}, { baseUrl: state.baseUrl, token: state.credential, signal: AbortSignal.timeout(5000) });

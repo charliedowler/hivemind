@@ -31,6 +31,7 @@ export function readPolicy(agentText, skillText, version) {
   assert.ok(agentText.includes('--join-url') || agentText.includes('hive_join'), 'Setup must explain the join entry point');
   assert.match(agentText, /capture nothing/i);
   assert.ok(agentText.includes(workAreasQuestion) && skillText.includes(workAreasQuestion), 'Setup and installed skill must both ask the work-areas question');
+  for (const rule of ["say only the installer's next_steps line", 'only when the Hive tools are loaded and the answer can be saved with the next tool call', 'at most once per setup']) assert.ok(agentText.includes(rule) && skillText.includes(rule), `Setup and installed skill must both say: ${rule}`);
   assert.match(agentText, /(?:skip|reuse|already installed)/i);
   return {
     protocol: installerProtocol(version),

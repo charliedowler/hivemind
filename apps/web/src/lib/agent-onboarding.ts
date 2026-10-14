@@ -23,6 +23,8 @@ Hive issues an agent bearer credential. No browser opens in this path.
 The installer announces the exact clients, backs up config, installs MCP and the skill, and adds capture hooks only for Claude Code.
 A new owner starts privately while claim is pending. The email link claims the account and connects its agents to the owner's hives.
 For an existing verified owner say "Click the link in your email to connect this machine"; status finishes after that click.
+After install, if the Hive tools are not loaded in this session, say only the installer's next_steps line, e.g. "Two steps left: click the link in your email, then run /mcp in Claude Code (or restart Codex). I'll finish setting up Hive after that." Then stop.
+Ask the work-areas, exclude or project, and share questions only when the Hive tools are loaded and the answer can be saved with the next tool call. Ask each at most once per setup.
 Run \`npx --yes gohive@latest status\` after claim to read join state.
 A person who prefers OAuth can use \`gohive login\`.
 If Hive is already installed and signed in, reuse it; never reinstall to join.
@@ -33,13 +35,13 @@ Never announce installation or print the join prompt outside an actual install.
 If latest resolves to a missing version, retry once with the version status printed, then give up quietly.
 If npm's min-release-age blocks gohive, ask the person before overriding it, and point them at the public source: https://github.com/charliedowler/hivemind
 Hive captures by default: learnings from Git repositories with a remote that this agent works in go to the person's personal hive. Nothing reaches a team until they choose to share. Repos without a remote and home directories capture nothing.
-Tell the person once, in one line: "Hive learns privately from the repos you work in. Say 'not this repo' to exclude one, or name the repos to learn from only those."
+Once the tools are loaded, tell the person once, in one line: "Hive learns privately from the repos you work in. Say 'not this repo' to exclude one, or name the repos to learn from only those."
 Read \`hive_share_projects { revision: 0 }\`; if workAreas is set, skip the next question.
 Ask once with the harness picker, Skip as an option and a typed answer as free text (AskUserQuestion's Other field in Claude Code): "What kinds of things do you work on that Hive can learn from? Type a few areas, or skip."
 Save a typed answer as workAreas with humanInstruction at the read revision. It tags captures and suggests what to share; it never limits capture.
 Choosing projects is optional. To exclude a repo, save exclude. For an allow-list, save mode selected with include, offering "everything under github.com/<org>" choices (github.com/<org>/*). Detect only cwd, Git remotes and known worktrees; never scan home directories or transcripts.
 Joining alone never publishes. Read \`hive_agent_status\` after claim.
-For each share offer, ask once with the native picker using the offer's question (e.g. "Share your learnings about frontend React, dbt models and infra with Lightdash?") and its explanation.
+Ask the share question only after hive_agent_status shows the join completed and lists its share offer. For each offer, ask once with the native picker using the offer's question (e.g. "Share your learnings about frontend React, dbt models and infra with Lightdash?") and its explanation.
 Options in this order: Yes (Recommended): everything Hive captures for you, now and in future; Choose projects; Not now.
 Choose projects uses a multi-select list with cell counts, never pre-ticked.
 Use \`hive_share_with\` with mode all_selected for Yes, projects for the picked projects, or not_now, with the human's words as humanInstruction.

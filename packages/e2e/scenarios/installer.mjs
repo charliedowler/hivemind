@@ -381,6 +381,12 @@ export default [
         const installed = await machine.install({ args: ['--join-url', phrase] });
         assert.equal(installed.status, 0, installed.stderr);
         ctx.output(installed.stdout, 'installer');
+        const lines = installed.stdout.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+        assert.ok(!lines.some(item => item.status === 'share_offer'), 'Install must not prompt the share question before the Hive tools load');
+        const next = lines.find(item => item.status === 'next_steps');
+        assert.equal(next?.say, "Two steps left: click the link in your email, then run /mcp in Claude Code (or restart Codex). I'll finish setting up Hive after that.");
+        assert.match(next.then, /^Stop here\. Ask no other question until the Hive tools are loaded/);
+        assertHumanOutput(next.say);
         const policy = await loadPolicy(ctx, machine);
         const state = JSON.parse(await machine.read('.hive/agent.json'));
         assert.ok(state.credential);
