@@ -98,6 +98,7 @@ async function installSlackFixture(ctx, team) {
 }
 
 async function slackMessage(ctx, slack, notification, text) {
+  const start = ctx.events.length;
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const body = { type: 'event_callback', team_id: slack.workspace, event_id: `Ev_${randomUUID()}`, event: {
     type: 'message', channel_type: 'im', channel: notification.channel_id, thread_ts: notification.thread_ts,
@@ -105,6 +106,44 @@ async function slackMessage(ctx, slack, notification, text) {
   } };
   const signature = createHmac('sha256', ctx.env?.SLACK_SIGNING_SECRET || 'hive-e2e-slack-signing').update(`v0:${timestamp}:${JSON.stringify(body)}`).digest('hex');
   expectStatus(await ctx.request('/api/slack/events', { method: 'POST', body, headers: { 'x-slack-request-timestamp': timestamp, 'x-slack-signature': `v0=${signature}` } }), 200, `Slack ${text}`);
+  return start;
+}
+
+// What the routing model double saw for the message sent at `start`, and the tool it chose.
+async function routed(ctx, start, method = 'slackRoute') {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const event = ctx.events.slice(start).find(item => item.kind === 'model' && item.method === method);
+    if (event) return event;
+    await delay(250);
+  }
+  assert.fail(`Slack message never reached ${method}`);
+}
+
+function assertNoticeFor(route, request, address) {
+  assert.deepEqual(route.input.threadContext.notices.map(notice => ({ kind: notice.kind, requestId: notice.requestId, email: notice.person.email, status: notice.status, noticeIsThisThread: notice.noticeIsThisThread })), [
+    { kind: 'join_request', requestId: request.id, email: address, status: 'pending', noticeIsThisThread: true },
+  ], 'The routing model must see the pending join request this thread answers');
+}
+
+async function slackDecision(ctx, text) {
+  const team = await organisation(ctx);
+  const slack = await installSlackFixture(ctx, team);
+  const address = email('slack');
+  const person = await bootstrapWithClaim(ctx, address);
+  const request = await requestJoin(ctx, team, person);
+  const [notification] = await ctx.sql`SELECT * FROM hive_join_request_notifications WHERE request_id = ${request.id} AND admin_member_id = ${team.owner.memberId}`;
+  assert.equal(notification.status, 'sent', 'The admin must receive the request DM');
+  const start = await slackMessage(ctx, slack, notification, text(address));
+  const route = await routed(ctx, start);
+  await waitRequest(ctx, request.id, 'approved');
+  await membership(ctx, person.memberId, team.teamId);
+  await membership(ctx, person.agentId, team.teamId);
+  assertNoticeFor(route, request, address);
+  assert.equal(route.tool, 'hive_decide_join_request');
+  const jev = await routed(ctx, start, 'decideDecisiveness');
+  assert.equal(jev.input.action, 'join_request');
+  assert.equal(jev.input.context.notices[0].requestId, request.id, 'Jev must judge the reply with the notice it answers');
+  return { request, address, route, jev };
 }
 
 async function waitRequest(ctx, requestId, status) {
@@ -329,12 +368,21 @@ const scenarios = [
       const request = await requestJoin(ctx, team, person);
       const [notification] = await ctx.sql`SELECT * FROM hive_join_request_notifications WHERE request_id = ${request.id} AND admin_member_id = ${team.owner.memberId}`;
       assert.equal(notification.status, 'sent', 'The admin must receive the request DM');
-      await slackMessage(ctx, slack, notification, 'approve');
+      const address = (await ctx.sql`SELECT email FROM hive_join_requests WHERE id = ${request.id}`)[0].email;
+      let start = await slackMessage(ctx, slack, notification, 'approve');
       await waitRequest(ctx, request.id, 'approved');
+      const approval = await routed(ctx, start);
+      assertNoticeFor(approval, request, address);
+      assert.deepEqual([approval.tool, approval.toolInput], ['hive_decide_join_request', { decision: 'approve', requestId: request.id }]);
+      assert.equal(approval.input.threadContext.lastReversibleAction, null);
       await membership(ctx, person.memberId, team.teamId);
       await membership(ctx, person.agentId, team.teamId);
-      await slackMessage(ctx, slack, notification, 'undo');
+      start = await slackMessage(ctx, slack, notification, 'undo');
       await waitRequest(ctx, request.id, 'pending');
+      const undo = await routed(ctx, start);
+      assert.equal(undo.tool, 'undo_last_action');
+      assert.deepEqual(undo.input.threadContext.lastReversibleAction, { tool: 'hive_decide_join_request', authorIsSpeaker: true, alreadyUndone: false, withinUndoWindow: true }, 'The routing model must see the approval it can undo');
+      assert.equal(undo.input.threadContext.notices[0].status, 'approved');
       await membership(ctx, person.memberId, team.teamId, false);
       await membership(ctx, person.agentId, team.teamId, false);
       await slackMessage(ctx, slack, notification, 'approve');
@@ -342,8 +390,7 @@ const scenarios = [
       await membership(ctx, person.memberId, team.teamId);
       await membership(ctx, person.agentId, team.teamId);
       await ctx.sql`UPDATE slack_tool_actions SET expires_at = now() - interval '1 second' WHERE id = ${approved.undo_action_id}`;
-      const eventStart = ctx.events.length;
-      await slackMessage(ctx, slack, notification, 'undo');
+      const eventStart = await slackMessage(ctx, slack, notification, 'undo');
       let refusal;
       for (let attempt = 0; attempt < 80; attempt++) {
         refusal = ctx.events.slice(eventStart).find(event => event.kind === 'slack' && event.method === 'chat.postMessage' && /one-hour undo window has ended/i.test(event.body.text ?? ''));
@@ -351,9 +398,30 @@ const scenarios = [
         await delay(250);
       }
       assert.ok(refusal, 'Undo after one hour must return an explicit refusal');
+      const late = await routed(ctx, eventStart);
+      assert.equal(late.tool, 'undo_last_action');
+      assert.equal(late.input.threadContext.lastReversibleAction.withinUndoWindow, false);
       assert.equal((await ctx.sql`SELECT status FROM hive_join_requests WHERE id = ${request.id}`)[0].status, 'approved');
       await membership(ctx, person.memberId, team.teamId);
       await ctx.artifact('undo-evidence.json', { requestId: request.id, refusal, timeFixture: 'Slack action undo expiry moved into the past' });
+    },
+  },
+  {
+    name: 'onboarding-slack-approved-past-tense', fast: true,
+    async run(ctx) {
+      const { route, jev } = await slackDecision(ctx, () => 'approved');
+      assert.equal(route.input.message, 'approved');
+      assert.equal(jev.input.request, 'approved');
+      await ctx.artifact('routing-evidence.json', { route, jev });
+    },
+  },
+  {
+    name: 'onboarding-slack-approve-mailto-markup', fast: true,
+    async run(ctx) {
+      const { address, route, jev } = await slackDecision(ctx, address => `approve <mailto:${address}|${address}>`);
+      assert.equal(route.input.message, `approve ${address}`, 'The routing model must see the address, not Slack link markup');
+      assert.equal(jev.input.request, `approve ${address}`);
+      await ctx.artifact('routing-evidence.json', { route, jev });
     },
   },
 ];

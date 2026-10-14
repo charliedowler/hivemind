@@ -62,6 +62,9 @@ export async function startRuntime({ signal } = {}) {
     HIVE_E2E_SINK_URL: sink.url,
     TYPESAFE_API_KEY: 'e2e-local-only',
     TYPESAFE_BASE_URL: sink.url,
+    // Slack routing goes to the sink's Messages API double (fixtures/slack-routing.mjs); other model calls get a 503.
+    ANTHROPIC_API_KEY: 'e2e-local-only',
+    ANTHROPIC_BASE_URL: sink.url,
     HIVE_E2E_RUN_ID: id,
     HIVE_E2E_APP_DIR: appDirectory,
     PORT: String(port),
