@@ -25,6 +25,9 @@ vi.mock("@anthropic-ai/sdk", () => ({
     messages = { create: model };
   },
 }));
+// The routed undo passes Jev's decisiveness gate; its judgment is covered by the Slack routing tests.
+const jev = vi.hoisted(() => vi.fn(async () => ({ act: true, reason: "Clear" })));
+vi.mock("@/server/slack/decisiveness", () => ({ decideDecisiveness: jev }));
 vi.mock("./connection", () => ({
   slackMemberTimezone: async () => "Europe/London",
   digestChannel: async (_ctx: HiveContext, id: string) => ({
@@ -367,6 +370,10 @@ describe.skipIf(!enabled)(
           { question: ctx.requestText, answer: first.text ?? "" },
         ]),
       ).toEqual({ text: "", react: "white_check_mark" });
+      expect(jev).toHaveBeenCalledWith(
+        "undo",
+        expect.objectContaining({ actionType: "undo" }),
+      );
       expect((await getSchedule(a.teamId, saved.id)).enabled).toBe(false);
       const saved2 = await schedule();
       expect(

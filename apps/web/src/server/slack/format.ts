@@ -6,6 +6,15 @@ export function slackEscape(text: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+// Input normalisation only: Slack wraps addresses and links in markup, and the Slack MCP client appends a footer.
+export function slackPlainText(text: string) {
+  return text
+    .replace(/\s*\*Sent using\* Slack MCP client\s*$/, "")
+    .replace(/<mailto:([^|>]+)(?:\|[^>]*)?>/gi, "$1")
+    .replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/gi, "$2")
+    .replace(/<(https?:\/\/[^|>]+)>/gi, "$1")
+    .trim();
+}
 export function shortCitationTitle(title: string) {
   const text = title.replace(/\s+/g, " ").trim();
   if (text.length <= 80) return text;

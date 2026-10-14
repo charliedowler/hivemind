@@ -140,13 +140,6 @@ const requestInput = z.strictObject({
 });
 const listInput = z.strictObject({});
 
-export function isCaptureUndoInstruction(text: string) {
-  const request = text.replace(/^(?:<@[A-Z0-9]+>\s*)+/, "").trim();
-  return /^(?:(?:please|can you|could you)\s+)?(?:undo(?:\s+(?:that|this|it|(?:the\s+)?(?:last|latest)\s+(?:rule|change|action)))?|cancel\s+that)[.!?]*$/i.test(
-    request,
-  );
-}
-
 type CaptureActionPointer = { member_id: string; inverse: unknown };
 
 export const captureUndoHandlers: Record<
@@ -198,7 +191,7 @@ export const captureRuleTools: SlackTool[] = [
   {
     name: "hive_set_capture_rule",
     description:
-      "Save a capture rule immediately from the member's full request about what agents may save, exclude, redact or keep private. Ask one question only if a required detail is missing. When continuing a clarification, reconstruct the original instruction and the member's explicit answer from conversation history: pass the original instruction + '\nRequired detail: ' + the answer as text, never just the answer. Save as soon as the required details are complete. Use this same tool with text 'undo' to remove the member's latest rule instruction in this Slack channel and thread within one hour. Team scope needs a current admin, checked by the server. Return the tool result directly without creating the rule again.",
+      "Save a capture rule immediately from the member's full request about what agents may save, exclude, redact or keep private. Ask one question only if a required detail is missing. When continuing a clarification, reconstruct the original instruction and the member's explicit answer from conversation history: pass the original instruction + '\nRequired detail: ' + the answer as text, never just the answer. Save as soon as the required details are complete. Team scope needs a current admin, checked by the server. Return the tool result directly without creating the rule again.",
     input_schema: z.toJSONSchema(requestInput) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       const input = requestInput.parse(args);
@@ -208,18 +201,10 @@ export const captureRuleTools: SlackTool[] = [
         channelId: ctx.channelId,
         threadTs: ctx.threadTs,
       };
-      if (
-        input.text.toLowerCase() === "undo" &&
-        !isCaptureUndoInstruction(ctx.instructionText ?? input.text)
-      )
-        return reply("What should Hive change about what it keeps?");
-      const result =
-        input.text.toLowerCase() === "undo"
-          ? await undoCaptureRuleInstruction(member, location)
-          : await setCaptureRuleFromText(member, input.text, {
-              ...location,
-              messageTs: ctx.messageTs,
-            });
+      const result = await setCaptureRuleFromText(member, input.text, {
+        ...location,
+        messageTs: ctx.messageTs,
+      });
       if (result.status === "question") {
         return reply(
           ctx.channelId.startsWith("D")

@@ -2,6 +2,25 @@ import type { HiveContext } from "@hivemind/core";
 import { getSql } from "@/server/db/client";
 import { HiveError } from "@/server/errors";
 
+// A Hive-authored notice this message may be answering, so the model and Jev can resolve "approved" or "nope".
+export type SlackActionableNotice = {
+  kind: "join_request";
+  requestId: string;
+  person: { name: string | null; email: string };
+  team: string;
+  status: "pending" | "approved" | "declined" | "expired";
+  noticeIsThisThread: boolean;
+};
+export type SlackReversibleAction = {
+  tool: string;
+  authorIsSpeaker: boolean;
+  alreadyUndone: boolean;
+  withinUndoWindow: boolean;
+};
+export type SlackThreadContext = {
+  notices: SlackActionableNotice[];
+  lastReversibleAction: SlackReversibleAction | null;
+};
 export type SlackToolContext = {
   teamId: string;
   memberId: string;
@@ -13,6 +32,7 @@ export type SlackToolContext = {
   requestText?: string;
   history?: Array<{ question: string; answer: string }>;
   timeZone?: string;
+  threadContext?: SlackThreadContext;
   actionType?:
     "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse" | "join_request";
 };

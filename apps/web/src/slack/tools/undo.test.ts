@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { undoThreadAction, isExplicitUndoIntent } from "./undo";
+import { undoThreadAction } from "./undo";
 const { sql, shared, digest, capture, digestPointer } = vi.hoisted(() => ({
   sql: vi.fn(),
   shared: vi.fn(),
@@ -19,7 +19,6 @@ vi.mock("./digests", () => ({
   },
 }));
 vi.mock("./capture-rules", () => ({
-  isCaptureUndoInstruction: (text: string) => text === "undo",
   captureUndoHandlers: { hive_set_capture_rule: capture },
 }));
 const ctx = {
@@ -99,21 +98,25 @@ it("reports no reversible action without trying another conversation", async () 
   expect(shared).not.toHaveBeenCalled();
 });
 
-it.each([
-  "undo",
-  "cancel that",
-  "revert",
-  "Please revert that.",
-  "undo *Sent using* Slack MCP client",
-])("recognizes a plain undo command: %s", (text) => {
-  expect(isExplicitUndoIntent(text)).toBe(true);
+it("undoes a top-level DM reply against the latest change recorded under its notice thread", async () => {
+  const dm = { ...ctx, channelId: "DADMIN", threadTs: "1800000000.9", messageTs: "1800000000.9" };
+  sql
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([{ thread_ts: "1800000000.5" }])
+    .mockResolvedValueOnce([pointer]);
+  expect(await undoThreadAction(dm)).toEqual({ react: "white_check_mark" });
+  expect(shared).toHaveBeenCalledWith(
+    { ...dm, threadTs: "1800000000.5" },
+    pointer.id,
+  );
 });
-it.each(["Maybe undo that", "What does revert do?", "Do not undo"])(
-  "does not turn a question or musing into undo: %s",
-  (text) => {
-    expect(isExplicitUndoIntent(text)).toBe(false);
-  },
-);
+it("does not look outside the thread for a threaded reply", async () => {
+  sql.mockResolvedValueOnce([]);
+  expect(
+    (await undoThreadAction({ ...ctx, channelId: "DADMIN" })).text,
+  ).toContain("no reversible action");
+  expect(sql).toHaveBeenCalledTimes(1);
+});
 
 it.each(["hive_schedule_digest", "hive_list_digest_schedules"])(
   "dispatches %s through its digest instruction pointer",

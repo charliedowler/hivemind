@@ -17,7 +17,7 @@ const tools: SlackTool[] = [
   {
     name: "hive_schedule_digest",
     description:
-      "Set a weekly update from the full original request. Clear admin instructions and fully specified suggestions save immediately, including Maybe we should post a weekly update here every Wednesday at 9am London time. Use also for undo or cancel that in a weekly update thread within one hour. Missing time or ambiguity asks one question; no confirmation buttons.",
+      "Set a weekly update from the full original request. Clear admin instructions and fully specified suggestions save immediately, including Maybe we should post a weekly update here every Wednesday at 9am London time. Missing time or ambiguity asks one question; no confirmation buttons.",
     input_schema: z.toJSONSchema(input) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       const { text } = input.parse(args);
@@ -34,7 +34,7 @@ const tools: SlackTool[] = [
   {
     name: "hive_list_digest_schedules",
     description:
-      "List schedules and next run. To stop or disable a schedule, pass the full original instruction in text, such as stop the Monday update. Clear admin instructions act immediately, ambiguous targets ask one question. Undo and cancel that can also reverse a weekly update instruction in this thread within an hour.",
+      "List schedules and next run. To stop or disable a schedule, pass the full original instruction in text, such as stop the Monday update. Clear admin instructions act immediately, ambiguous targets ask one question.",
     input_schema: z.toJSONSchema(listing) as Anthropic.Tool.InputSchema,
     async handler(ctx, args) {
       const { text } = listing.parse(args);
