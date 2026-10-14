@@ -1,6 +1,7 @@
 import { getSql } from "../db/client";
+import { forgetCachedAuth } from "../auth-cache";
 export async function expireProvisionalHumans() {
-  return getSql().begin(async tx => {
+  const result = await getSql().begin(async tx => {
     const expired = await tx`SELECT id FROM members WHERE actor_type = 'human' AND provisional AND NOT email_verified AND disabled_at IS NULL AND provisional_expires_at <= now() ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100`;
     for (const owner of expired) {
       const personal = await tx`SELECT id FROM teams WHERE personal_owner_member_id = ${owner.id}`;
@@ -17,4 +18,6 @@ export async function expireProvisionalHumans() {
     }
     return { expired: expired.length };
   });
+  if (result.expired) forgetCachedAuth();
+  return result;
 }

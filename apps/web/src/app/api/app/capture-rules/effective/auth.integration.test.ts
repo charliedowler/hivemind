@@ -4,6 +4,8 @@ import { GET } from "./route";
 import { getSql } from "@/server/db/client";
 import { createCaptureRule } from "@/server/capture-rules";
 import { hashToken } from "@/server/db/ids";
+import { AUTH_CACHE_TTL_MS } from "@/server/auth-cache";
+import { revokeKey } from "@/server/identity/access";
 
 vi.mock("server-only", () => ({}));
 const suffix = randomBytes(8).toString("hex");
@@ -91,13 +93,22 @@ describe.skipIf(!process.env.DATABASE_URL)(
         401,
       );
     });
-    it("rejects a revoked key and a removed member with a live key", async () => {
+    it("rejects a key revoked here at once and one revoked elsewhere within the cache window", async () => {
       const sql = getSql();
-      await sql`UPDATE api_keys SET revoked_at = now() WHERE id = ${keyId}`;
+      expect((await GET(request(`Bearer ${key}`))).status).toBe(200);
+      await revokeKey(ctx, keyId);
       expect((await GET(request(`Bearer ${key}`))).status).toBe(401);
       await sql`UPDATE api_keys SET revoked_at = NULL WHERE id = ${keyId}`;
+      expect((await GET(request(`Bearer ${key}`))).status).toBe(200);
+      // Another instance removes the member: this process may answer from its cache for at most the TTL.
       await sql`UPDATE hive_memberships SET removed_at = now() WHERE member_id = ${ctx.memberId} AND team_id = ${ctx.teamId}`;
-      expect((await GET(request(`Bearer ${key}`))).status).toBe(401);
+      const now = Date.now();
+      vi.spyOn(Date, "now").mockReturnValue(now + AUTH_CACHE_TTL_MS);
+      try {
+        expect((await GET(request(`Bearer ${key}`))).status).toBe(401);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   },
 );

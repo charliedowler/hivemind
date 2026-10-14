@@ -1,5 +1,6 @@
 vi.mock("@/server/project-sharing", () => ({ownerCapturePolicy: async () => ({include: [], exclude: [], revision: 0}), captureOwner: async (ctx: unknown) => ({personal: ctx})}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { forgetCachedAuth } from "@/server/auth-cache";
 import { GET as effective } from "./effective/route";
 import { GET as list, POST as create } from "./route";
 import { PATCH as update, DELETE as remove } from "./[id]/route";
@@ -80,7 +81,8 @@ vi.mock("@/server/identity/access", () => ({
 vi.mock("@/server/identity/rate-limit", () => ({
   rateLimit: vi.fn(async () => {}),
 }));
-vi.mock("@/server/analytics/events", () => ({
+vi.mock("@/server/analytics/events", async (original) => ({
+  ...(await original<typeof import("@/server/analytics/events")>()),
   originFor: () => ({}),
   withOrigin: async (_origin: unknown, action: () => unknown) => action(),
 }));
@@ -120,6 +122,7 @@ function request(body?: unknown, headers?: HeadersInit) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  forgetCachedAuth();
   fixture.getWebContext.mockResolvedValue(fixture.ctx);
   fixture.authenticateApiKey.mockImplementation(async (raw) =>
     raw === key ? fixture.ctx : null,

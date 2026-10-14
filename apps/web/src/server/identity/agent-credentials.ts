@@ -11,6 +11,7 @@ import { rateLimit } from "./rate-limit";
 import { deliverWelcome, deliverConnectionLink } from "./welcome";
 import { normaliseJoinPhrase } from "./join-phrases";
 import { shareOnJoinOffer } from "../share-on-join";
+import { forgetCachedAuth } from "../auth-cache";
 
 const label = z.string().trim().min(1).max(80).transform(value => value.normalize("NFKC").replace(/[\p{Cc}\p{Cf}]/gu, "").trim()).refine(Boolean);
 export const bootstrapInput = z.strictObject({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)), agentName: label, machine: label, joinPhrase: z.string().max(80).optional() });
@@ -94,6 +95,7 @@ export async function cancelAgentConnection(requestId: string, pollingToken: str
       await tx`UPDATE hive_join_capabilities SET revoked_at = now() WHERE agent_member_id = ${rows[0].agent_member_id}`;
     }
   });
+  forgetCachedAuth();
 }
 
 export async function authenticateAgentCredential(token: string): Promise<HiveContext | null> {
@@ -129,4 +131,5 @@ export async function revokeAgentCredential(ctx: HiveContext, agentId = ctx.memb
     await tx`DELETE FROM web_sessions WHERE member_id = ${agentId}`;
     await tx`UPDATE hive_join_capabilities SET revoked_at = now() WHERE agent_member_id = ${agentId}`;
   });
+  forgetCachedAuth();
 }
