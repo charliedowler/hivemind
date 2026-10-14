@@ -34,7 +34,7 @@ export type SlackToolContext = {
   timeZone?: string;
   threadContext?: SlackThreadContext;
   actionType?:
-    "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse" | "join_request";
+    "digest" | "digest_pause" | "capture" | "undo" | "decision_reverse" | "join_request" | "share";
 };
 export async function slackToolContext(
   actor: HiveContext,

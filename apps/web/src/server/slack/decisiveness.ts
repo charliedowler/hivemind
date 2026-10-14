@@ -25,11 +25,13 @@ const missingDetail: Record<ActionType, string> = {
   decision_reverse:
     "Which cell change should Hive reverse? Include its decision ID.",
   undo: "Which change should I undo?",
+  share: "What should I share with this team: everything Hive captures for you, or which projects?",
 };
 // When Jev hears no instruction: ask the one question that turns a reply into a decision, or just look.
 const notAnInstruction: Partial<Record<ActionType, string>> = {
   join_request: "Should I approve or decline this request?",
   undo: "Should I undo the last change here?",
+  share: "Should I share your learnings with this team?",
 };
 export function decisivenessDecision(
   allowed: boolean,
@@ -40,7 +42,7 @@ export function decisivenessDecision(
     return {
       act: false,
       reason:
-        actionType === "undo"
+        actionType === "undo" || actionType === "share"
           ? "Your hive membership is no longer active."
           : "A team admin is needed to change Hive from Slack.",
     };
@@ -72,13 +74,15 @@ export function decisivenessDecision(
     reason: "Clear, specific instruction from an authorized speaker.",
   };
 }
-export async function decideDecisiveness(text: string, ctx: SlackToolContext) {
+// proposal is the typed tool input the routing model chose, so Jev can check the request supports it.
+export async function decideDecisiveness(text: string, ctx: SlackToolContext, proposal?: { mode: string; projects: string[] }) {
   const members =
     await getSql()`SELECT h.role FROM hive_memberships h JOIN members m ON m.id=h.member_id WHERE h.member_id=${ctx.memberId} AND h.team_id=${ctx.teamId} AND h.removed_at IS NULL AND m.disabled_at IS NULL AND NOT m.provisional`;
   // The only deterministic part: who may act. Undo is open to any active member because the undo
-  // service checks authorship and admin-only targets; every other Slack mutation needs an admin.
+  // service checks authorship and admin-only targets; sharing only ever publishes the speaker's own
+  // learnings; every other Slack mutation needs an admin.
   const role = members[0]?.role as string | undefined;
-  const allowed = ctx.actionType === "undo" ? Boolean(role) : role === "admin";
+  const allowed = ctx.actionType === "undo" || ctx.actionType === "share" ? Boolean(role) : role === "admin";
   if (!allowed) return decisivenessDecision(false, null, ctx.actionType);
   if (!process.env.TYPESAFE_API_KEY)
     return decisivenessDecision(allowed, null, ctx.actionType);
@@ -102,6 +106,7 @@ export async function decideDecisiveness(text: string, ctx: SlackToolContext) {
           speakerTimezoneIsDefault: true,
         },
         speaker: { allowed, role: role ?? "none" },
+        proposal: proposal ?? null,
         channelId: ctx.channelId,
       },
       questions: {
@@ -119,7 +124,9 @@ export async function decideDecisiveness(text: string, ctx: SlackToolContext) {
                   ? "Does request identify the conflict decision to reverse by its exact decision ID or an unambiguous decision in this thread?"
                   : ctx.actionType === "undo"
                     ? "Does request clearly ask to undo the previous action in this same thread? Undo on its own is specific because context.lastReversibleAction identifies the last action."
-                    : ctx.actionType === "join_request"
+                    : ctx.actionType === "share"
+                      ? "Does request state the speaker's own sharing choice for this team, matching proposal: share everything Hive captures for them (proposal.mode all_selected), share exactly the projects in proposal.projects (mode projects), or keep their learnings personal for now (mode not_now)? A question about sharing, a choice about someone else's learnings, or a request that does not match proposal is false."
+                      : ctx.actionType === "join_request"
                       ? "Does request, read with context.notices, identify whether to approve or decline and exactly one person's join request? A name or email in request is specific. A bare approved, yes or nope is specific when context.notices has exactly one pending join request. A decision with no person and no single pending notice is not specific."
                       : "Does request name a concrete change Hive can make without guessing, or explicitly ask to undo the previous action in this thread?",
         ),
