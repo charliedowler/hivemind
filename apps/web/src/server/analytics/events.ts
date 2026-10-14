@@ -619,6 +619,25 @@ export async function accessEvent(
     });
   return ctx ? withActor(ctx, action) : action();
 }
+// Start events exist to expose calls that never finish (analytics/stalls.sql). Writing one for every call doubled
+// the rows of fast calls, so the start row is written only once a call has run for STARTED_AFTER_MS, stamped with
+// the real start time. A call killed at maxDuration still leaves its start row; one that finishes sooner needs none,
+// because its finish row carries the latency.
+export const STARTED_AFTER_MS = 10_000;
+function deferStart(input: EventInput): () => Promise<void> {
+  const occurredAt = new Date();
+  const state = context.getStore();
+  const write = () => recordEvent({ ...input, occurredAt });
+  let written: Promise<void> | undefined;
+  const timer = setTimeout(() => {
+    written = state ? context.run(state, write) : write();
+  }, STARTED_AFTER_MS);
+  timer.unref?.();
+  return async () => {
+    clearTimeout(timer);
+    await written;
+  };
+}
 export async function withOperation<T>(
   ctx: HiveContext,
   operation: NonNullable<Properties["operation"]>,
@@ -627,7 +646,7 @@ export async function withOperation<T>(
   return withActor(ctx, async () => {
     const operationId = randomUUID(),
       started = performance.now();
-    await recordEvent({
+    const settleStart = deferStart({
       name: "operation.started",
       key: operationId,
       outcome: "started",
@@ -635,6 +654,7 @@ export async function withOperation<T>(
     });
     try {
       const result = await action();
+      await settleStart();
       await recordEvent({
         name: "operation.finished",
         key: operationId,
@@ -643,6 +663,7 @@ export async function withOperation<T>(
       });
       return result;
     } catch (error) {
+      await settleStart();
       const status =
         typeof error === "object" &&
         error !== null &&
@@ -680,19 +701,20 @@ export async function beginCall(
   model: NonNullable<Properties["model"]>,
 ) {
   const callId = randomUUID();
-  await recordEvent({
+  const settleStart = deferStart({
     name: `${kind}.started`,
     key: callId,
     outcome: "started",
     properties: { callId, purpose, model, requestedModel: model },
   });
   const started = performance.now();
-  return (
+  return async (
     outcome: EventInput["outcome"] = "completed",
     reasonCode?: EventInput["reasonCode"],
     usage: Properties = {},
-  ) =>
-    recordEvent({
+  ) => {
+    await settleStart();
+    return recordEvent({
       name: `${kind}.completed`,
       key: callId,
       outcome,
@@ -706,4 +728,5 @@ export async function beginCall(
         ...usage,
       },
     });
+  };
 }
